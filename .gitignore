@@ -1,0 +1,46 @@
+
+---
+
+### **.gitignore** (исключение ненужных файлов)
+
+```gitignore
+# Общие файлы IDE
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+# Файлы сборки
+bin/
+obj/
+*.pdb
+*.cache
+*.dll
+*.exe
+
+# Логи и временные файлы
+logs/
+*.log
+*.tmp
+
+# Настройки среды
+.env
+appsettings.Development.json
+appsettings.Local.json
+
+# NuGet
+.nuget/
+packages/
+
+# Тестовые результаты
+TestResults/
+
+# Файлы Rider
+*.sln.iml
+
+# Файлы пользовательских секретов
+secrets.json
+
+# Файлы миграций (если нужно исключить)
+/Migrations/
