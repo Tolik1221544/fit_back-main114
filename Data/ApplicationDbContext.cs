@@ -58,8 +58,9 @@ namespace FitnessTracker.API.Data
             modelBuilder.Entity<Activity>(entity =>
             {
                 entity.HasKey(e => e.Id);
-                entity.Property(e => e.Mode).IsRequired().HasMaxLength(100);
-                entity.Property(e => e.Type).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Type).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.StrengthDataJson).HasColumnType("TEXT");
+                entity.Property(e => e.CardioDataJson).HasColumnType("TEXT");
                 entity.HasOne(e => e.User)
                       .WithMany(u => u.Activities)
                       .HasForeignKey(e => e.UserId);

@@ -17,7 +17,8 @@ namespace FitnessTracker.API.Repositories
         {
             return await _context.Activities
                 .Where(a => a.UserId == userId)
-                .OrderByDescending(a => a.CreatedAt)
+                .OrderByDescending(a => a.StartDate)
+                .ThenByDescending(a => a.StartTime)
                 .ToListAsync();
         }
 

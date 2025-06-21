@@ -9,23 +9,26 @@ namespace FitnessTracker.API.Controllers
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
+        private readonly IGoogleAuthService _googleAuthService;
 
-        public AuthController(IAuthService authService)
+        public AuthController(IAuthService authService, IGoogleAuthService googleAuthService)
         {
             _authService = authService;
+            _googleAuthService = googleAuthService;
         }
 
         [HttpPost("send-code")]
-        public async Task<IActionResult> SendCode([FromBody] SendCodeRequest request)
+        public async Task<IActionResult> SendVerificationCode([FromBody] SendVerificationCodeRequest request)
         {
             try
             {
                 var result = await _authService.SendVerificationCodeAsync(request.Email);
-
-                // Заглушка: возвращаем код из AuthService (для теста/проверки)
-                var code = GetFakeCodeForEmail(request.Email);
-
-                return Ok(new { success = result, code });
+                return Ok(new
+                {
+                    success = result,
+                    message = result ? "Verification code sent successfully" : "Failed to send code",
+                    email = request.Email
+                });
             }
             catch (Exception ex)
             {
@@ -43,7 +46,7 @@ namespace FitnessTracker.API.Controllers
             }
             catch (Exception ex)
             {
-                return Unauthorized(new { error = ex.Message });
+                return BadRequest(new { error = ex.Message });
             }
         }
 
@@ -52,7 +55,7 @@ namespace FitnessTracker.API.Controllers
         {
             try
             {
-                var result = await _authService.GoogleAuthAsync(request.GoogleToken);
+                var result = await _googleAuthService.AuthenticateGoogleTokenAsync(request.GoogleToken);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -74,19 +77,5 @@ namespace FitnessTracker.API.Controllers
                 return BadRequest(new { error = ex.Message });
             }
         }
-
-        // Заглушка: Получение кода через рефлексию
-        private string GetFakeCodeForEmail(string email)
-        {
-            var field = _authService.GetType()
-                .GetField("_verificationCodes", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-            if (field == null) return "000000";
-
-            var codes = (Dictionary<string, (string Code, DateTime Expiry)>)field.GetValue(_authService);
-
-            return codes.TryGetValue(email, out var data) ? data.Code : "000000";
-        }
     }
 }
-

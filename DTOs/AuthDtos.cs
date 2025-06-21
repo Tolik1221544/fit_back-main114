@@ -1,6 +1,6 @@
 namespace FitnessTracker.API.DTOs
 {
-    public class SendCodeRequest
+    public class SendVerificationCodeRequest
     {
         public string Email { get; set; } = string.Empty;
     }
@@ -21,10 +21,32 @@ namespace FitnessTracker.API.DTOs
         public string AccessToken { get; set; } = string.Empty;
     }
 
-    public class AuthResponse
+    public class AuthResponseDto
     {
         public string AccessToken { get; set; } = string.Empty;
-        public string RefreshToken { get; set; } = string.Empty;
-        public UserDto User { get; set; } = null!;
+        public UserDto User { get; set; } = new UserDto();
+    }
+
+    public class UserDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string RegisteredVia { get; set; } = string.Empty;
+        public int Level { get; set; }
+        public int Coins { get; set; }
+        public int Age { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public decimal Weight { get; set; }
+        public decimal Height { get; set; }
+        public bool IsEmailConfirmed { get; set; } = true;
+        public DateTime JoinedAt { get; set; }
+    }
+
+    public class UpdateUserProfileRequest
+    {
+        public int Age { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public decimal Weight { get; set; }
+        public decimal Height { get; set; }
     }
 }
