@@ -1,20 +1,33 @@
+using System.Text.Json;
+
 namespace FitnessTracker.API.Models
 {
     public class Activity
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
         public string UserId { get; set; } = string.Empty;
-        public string Type { get; set; } = string.Empty; // "strength", "cardio"
+        public string Type { get; set; } = string.Empty; // "strength" or "cardio"
         public DateTime StartDate { get; set; }
         public DateTime StartTime { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-        // JSON данные для гибкости
-        public string? StrengthDataJson { get; set; }
-        public string? CardioDataJson { get; set; }
+        public string StrengthDataJson { get; set; } = string.Empty;
+        public string CardioDataJson { get; set; } = string.Empty;
 
         // Navigation property
         public User User { get; set; } = null!;
+
+        // Helper properties
+        public StrengthData? StrengthData
+        {
+            get => string.IsNullOrEmpty(StrengthDataJson) ? null : JsonSerializer.Deserialize<StrengthData>(StrengthDataJson);
+            set => StrengthDataJson = value == null ? string.Empty : JsonSerializer.Serialize(value);
+        }
+
+        public CardioData? CardioData
+        {
+            get => string.IsNullOrEmpty(CardioDataJson) ? null : JsonSerializer.Deserialize<CardioData>(CardioDataJson);
+            set => CardioDataJson = value == null ? string.Empty : JsonSerializer.Serialize(value);
+        }
     }
 
     public class StrengthData

@@ -20,6 +20,10 @@ namespace FitnessTracker.API.Data
         public DbSet<CoinTransaction> CoinTransactions { get; set; }
         public DbSet<Referral> Referrals { get; set; }
 
+        // Новые таблицы для LW Coin системы
+        public DbSet<LwCoinTransaction> LwCoinTransactions { get; set; }
+        public DbSet<Subscription> Subscriptions { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -119,6 +123,31 @@ namespace FitnessTracker.API.Data
                       .HasForeignKey(e => e.UserId);
             });
 
+            // LwCoinTransaction configuration
+            modelBuilder.Entity<LwCoinTransaction>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Type).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Description).HasMaxLength(500);
+                entity.Property(e => e.FeatureUsed).HasMaxLength(100);
+                entity.HasOne(e => e.User)
+                      .WithMany(u => u.LwCoinTransactions)
+                      .HasForeignKey(e => e.UserId);
+            });
+
+            // Subscription configuration
+            modelBuilder.Entity<Subscription>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Type).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Price).HasColumnType("decimal(10,2)");
+                entity.Property(e => e.Currency).HasMaxLength(10);
+                entity.Property(e => e.PaymentTransactionId).HasMaxLength(255);
+                entity.HasOne(e => e.User)
+                      .WithMany(u => u.Subscriptions)
+                      .HasForeignKey(e => e.UserId);
+            });
+
             // Referral configuration
             modelBuilder.Entity<Referral>(entity =>
             {
@@ -136,7 +165,8 @@ namespace FitnessTracker.API.Data
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Title).IsRequired().HasMaxLength(255);
                 entity.Property(e => e.Description).HasMaxLength(1000);
-                entity.Property(e => e.IconUrl).HasMaxLength(500);});
+                entity.Property(e => e.IconUrl).HasMaxLength(500);
+            });
 
             // Seed data
             SeedData(modelBuilder);

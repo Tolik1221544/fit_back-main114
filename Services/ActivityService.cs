@@ -2,7 +2,6 @@ using FitnessTracker.API.DTOs;
 using FitnessTracker.API.Models;
 using FitnessTracker.API.Repositories;
 using AutoMapper;
-using System.Text.Json;
 
 namespace FitnessTracker.API.Services
 {
@@ -21,24 +20,16 @@ namespace FitnessTracker.API.Services
         {
             var activities = await _activityRepository.GetByUserIdAsync(userId);
 
-            // Фильтрация по типу
             if (!string.IsNullOrEmpty(type))
-            {
                 activities = activities.Where(a => a.Type.Equals(type, StringComparison.OrdinalIgnoreCase));
-            }
 
-            // Фильтрация по дате
             if (startDate.HasValue)
-            {
                 activities = activities.Where(a => a.StartDate >= startDate.Value);
-            }
 
             if (endDate.HasValue)
-            {
                 activities = activities.Where(a => a.StartDate <= endDate.Value);
-            }
 
-            return activities.Select(MapToDto).ToList();
+            return _mapper.Map<IEnumerable<ActivityDto>>(activities);
         }
 
         public async Task<ActivityDto?> GetActivityByIdAsync(string userId, string activityId)
@@ -47,7 +38,7 @@ namespace FitnessTracker.API.Services
             if (activity == null || activity.UserId != userId)
                 return null;
 
-            return MapToDto(activity);
+            return _mapper.Map<ActivityDto>(activity);
         }
 
         public async Task<ActivityDto> AddActivityAsync(string userId, AddActivityRequest request)
@@ -57,21 +48,36 @@ namespace FitnessTracker.API.Services
                 UserId = userId,
                 Type = request.Type,
                 StartDate = request.StartDate,
-                StartTime = request.StartTime
+                StartTime = request.StartTime,
+                CreatedAt = DateTime.UtcNow
             };
 
-            // Сериализуем данные в JSON
             if (request.Type == "strength" && request.StrengthData != null)
             {
-                activity.StrengthDataJson = JsonSerializer.Serialize(request.StrengthData);
+                activity.StrengthData = new StrengthData
+                {
+                    Name = request.StrengthData.Name,
+                    MuscleGroup = request.StrengthData.MuscleGroup,
+                    Equipment = request.StrengthData.Equipment,
+                    WorkingWeight = request.StrengthData.WorkingWeight,
+                    RestTimeSeconds = request.StrengthData.RestTimeSeconds
+                };
             }
-            else if (request.Type == "cardio" && request.CardioData != null)
+
+            if (request.Type == "cardio" && request.CardioData != null)
             {
-                activity.CardioDataJson = JsonSerializer.Serialize(request.CardioData);
+                activity.CardioData = new CardioData
+                {
+                    CardioType = request.CardioData.CardioType,
+                    DistanceKm = request.CardioData.DistanceKm,
+                    AvgPulse = request.CardioData.AvgPulse,
+                    MaxPulse = request.CardioData.MaxPulse,
+                    AvgPace = request.CardioData.AvgPace
+                };
             }
 
             var createdActivity = await _activityRepository.CreateAsync(activity);
-            return MapToDto(createdActivity);
+            return _mapper.Map<ActivityDto>(createdActivity);
         }
 
         public async Task<ActivityDto> UpdateActivityAsync(string userId, string activityId, UpdateActivityRequest request)
@@ -84,21 +90,32 @@ namespace FitnessTracker.API.Services
             activity.StartDate = request.StartDate;
             activity.StartTime = request.StartTime;
 
-            // Обновляем данные
-            activity.StrengthDataJson = null;
-            activity.CardioDataJson = null;
-
             if (request.Type == "strength" && request.StrengthData != null)
             {
-                activity.StrengthDataJson = JsonSerializer.Serialize(request.StrengthData);
+                activity.StrengthData = new StrengthData
+                {
+                    Name = request.StrengthData.Name,
+                    MuscleGroup = request.StrengthData.MuscleGroup,
+                    Equipment = request.StrengthData.Equipment,
+                    WorkingWeight = request.StrengthData.WorkingWeight,
+                    RestTimeSeconds = request.StrengthData.RestTimeSeconds
+                };
             }
-            else if (request.Type == "cardio" && request.CardioData != null)
+
+            if (request.Type == "cardio" && request.CardioData != null)
             {
-                activity.CardioDataJson = JsonSerializer.Serialize(request.CardioData);
+                activity.CardioData = new CardioData
+                {
+                    CardioType = request.CardioData.CardioType,
+                    DistanceKm = request.CardioData.DistanceKm,
+                    AvgPulse = request.CardioData.AvgPulse,
+                    MaxPulse = request.CardioData.MaxPulse,
+                    AvgPace = request.CardioData.AvgPace
+                };
             }
 
             var updatedActivity = await _activityRepository.UpdateAsync(activity);
-            return MapToDto(updatedActivity);
+            return _mapper.Map<ActivityDto>(updatedActivity);
         }
 
         public async Task DeleteActivityAsync(string userId, string activityId)
@@ -115,69 +132,21 @@ namespace FitnessTracker.API.Services
             var activities = await _activityRepository.GetByUserIdAsync(userId);
 
             if (startDate.HasValue)
-                activities = activities.Where(a => a.StartDate >= startDate.Value);
+                activities = activities.Where(a => a.CreatedAt >= startDate.Value);
 
             if (endDate.HasValue)
-                activities = activities.Where(a => a.StartDate <= endDate.Value);
+                activities = activities.Where(a => a.CreatedAt <= endDate.Value);
 
-            var strengthCount = activities.Count(a => a.Type == "strength");
-            var cardioCount = activities.Count(a => a.Type == "cardio");
-
-            // Подсчет общей дистанции для кардио
-            var totalDistance = 0m;
-            foreach (var activity in activities.Where(a => a.Type == "cardio" && !string.IsNullOrEmpty(a.CardioDataJson)))
-            {
-                try
-                {
-                    var cardioData = JsonSerializer.Deserialize<CardioDataDto>(activity.CardioDataJson);
-                    if (cardioData != null)
-                        totalDistance += cardioData.DistanceKm;
-                }
-                catch { /* ignore parsing errors */ }
-            }
+            var activityTypes = activities.GroupBy(a => a.Type)
+                .Select(g => new { Type = g.Key, Count = g.Count() });
 
             return new
             {
                 TotalActivities = activities.Count(),
-                StrengthWorkouts = strengthCount,
-                CardioWorkouts = cardioCount,
-                TotalDistanceKm = totalDistance,
-                WorkoutsThisWeek = activities.Count(a => a.StartDate >= DateTime.UtcNow.AddDays(-7)),
-                WorkoutsThisMonth = activities.Count(a => a.StartDate >= DateTime.UtcNow.AddDays(-30))
+                ActivityTypes = activityTypes,
+                MostPopularActivity = activityTypes.OrderByDescending(a => a.Count).FirstOrDefault()?.Type ?? "None",
+                LastActivity = activities.OrderByDescending(a => a.CreatedAt).FirstOrDefault()?.CreatedAt
             };
-        }
-
-        private ActivityDto MapToDto(Activity activity)
-        {
-            var dto = new ActivityDto
-            {
-                Id = activity.Id,
-                Type = activity.Type,
-                StartDate = activity.StartDate,
-                StartTime = activity.StartTime,
-                CreatedAt = activity.CreatedAt
-            };
-
-            // Десериализуем данные из JSON
-            if (!string.IsNullOrEmpty(activity.StrengthDataJson))
-            {
-                try
-                {
-                    dto.StrengthData = JsonSerializer.Deserialize<StrengthDataDto>(activity.StrengthDataJson);
-                }
-                catch { /* ignore parsing errors */ }
-            }
-
-            if (!string.IsNullOrEmpty(activity.CardioDataJson))
-            {
-                try
-                {
-                    dto.CardioData = JsonSerializer.Deserialize<CardioDataDto>(activity.CardioDataJson);
-                }
-                catch { /* ignore parsing errors */ }
-            }
-
-            return dto;
         }
     }
 }

@@ -19,11 +19,20 @@ namespace FitnessTracker.API.Mapping
             CreateMap<NutritionPer100gDto, NutritionPer100g>();
 
             // Activity mappings
-            CreateMap<Activity, ActivityDto>();
+            CreateMap<Activity, ActivityDto>()
+                .ForMember(dest => dest.StrengthData, opt => opt.MapFrom(src => src.StrengthData))
+                .ForMember(dest => dest.CardioData, opt => opt.MapFrom(src => src.CardioData));
             CreateMap<ActivityDto, Activity>();
+            CreateMap<StrengthData, StrengthDataDto>();
+            CreateMap<StrengthDataDto, StrengthData>();
+            CreateMap<CardioData, CardioDataDto>();
+            CreateMap<CardioDataDto, CardioData>();
 
             // Coin transaction mappings
             CreateMap<CoinTransaction, CoinTransactionDto>();
+
+            // LW Coin transaction mappings
+            CreateMap<LwCoinTransaction, LwCoinTransactionDto>();
 
             // Skin mappings
             CreateMap<Skin, SkinDto>();
