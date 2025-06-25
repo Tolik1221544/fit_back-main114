@@ -74,7 +74,9 @@ namespace FitnessTracker.API.Services
                     RegisteredVia = "email",
                     Level = 1,
                     Coins = 100,
-                    JoinedAt = DateTime.UtcNow
+                    LwCoins = 300, // Initial LW Coins allowance
+                    JoinedAt = DateTime.UtcNow,
+                    LastMonthlyRefill = DateTime.UtcNow
                 };
                 user = await _userRepository.CreateAsync(user);
             }

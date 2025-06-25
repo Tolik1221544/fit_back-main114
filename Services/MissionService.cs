@@ -79,14 +79,15 @@ namespace FitnessTracker.API.Services
                 if (!userMission.IsCompleted)
                 {
                     userMission.Progress += incrementValue;
-                    
+
                     if (userMission.Progress >= mission.TargetValue)
                     {
                         userMission.IsCompleted = true;
                         userMission.CompletedAt = DateTime.UtcNow;
-                        
-                        // Award coins
-                        await _coinService.EarnCoinsAsync(userId, mission.RewardCoins, $"Mission completed: {mission.Title}");
+
+                        // Начисляем ОПЫТ вместо монет
+                        await _experienceService.AddExperienceAsync(userId, mission.RewardExperience,
+                            "mission", $"Mission completed: {mission.Title}");
                     }
 
                     await _missionRepository.UpdateUserMissionAsync(userMission);

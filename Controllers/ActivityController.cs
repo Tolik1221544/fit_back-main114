@@ -21,7 +21,10 @@ namespace FitnessTracker.API.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetActivities([FromQuery] string? type = null, [FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
+        public async Task<IActionResult> GetActivities(
+            [FromQuery] string? type = null,
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null)
         {
             try
             {
@@ -128,6 +131,42 @@ namespace FitnessTracker.API.Controllers
 
                 var stats = await _activityService.GetActivityStatsAsync(userId, startDate, endDate);
                 return Ok(stats);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("steps")]
+        public async Task<IActionResult> AddSteps([FromBody] AddStepsRequest request)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                var steps = await _activityService.AddStepsAsync(userId, request);
+                return Ok(steps);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("steps")]
+        public async Task<IActionResult> GetSteps([FromQuery] DateTime? date = null)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                var steps = await _activityService.GetUserStepsAsync(userId, date);
+                return Ok(steps);
             }
             catch (Exception ex)
             {

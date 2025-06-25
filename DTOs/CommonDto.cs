@@ -4,21 +4,27 @@ namespace FitnessTracker.API.DTOs
     {
         public string Id { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public int RewardCoins { get; set; }
+        public string Icon { get; set; } = string.Empty; 
+        public int RewardExperience { get; set; } 
         public string Type { get; set; } = string.Empty;
         public int TargetValue { get; set; }
         public int Progress { get; set; }
         public bool IsCompleted { get; set; }
+        public DateTime? CompletedAt { get; set; }
     }
 
     public class AchievementDto
     {
         public string Id { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public string IconUrl { get; set; } = string.Empty;
-        public DateTime UnlockedAt { get; set; }
+        public string Icon { get; set; } = string.Empty; 
+        public string ImageUrl { get; set; } = string.Empty; 
+        public string Type { get; set; } = string.Empty;
+        public int RequiredValue { get; set; }
+        public int CurrentProgress { get; set; }
+        public bool IsUnlocked { get; set; }
+        public DateTime? UnlockedAt { get; set; }
+        public int ProgressPercentage => RequiredValue > 0 ? (CurrentProgress * 100 / RequiredValue) : 0;
     }
 
     public class CoinBalanceDto

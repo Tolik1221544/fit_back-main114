@@ -10,5 +10,7 @@ namespace FitnessTracker.API.Repositories
         Task<User> UpdateAsync(User user);
         Task DeleteAsync(string id);
         Task<bool> ExistsAsync(string id);
+        Task<IEnumerable<User>> GetAllUsersAsync();
+        Task<User?> GetByReferralCodeAsync(string referralCode);
     }
 }

@@ -27,6 +27,7 @@ namespace FitnessTracker.API.Services
             if (user == null)
                 throw new ArgumentException("User not found");
 
+            user.Name = request.Name;
             user.Age = request.Age;
             user.Gender = request.Gender;
             user.Weight = request.Weight;

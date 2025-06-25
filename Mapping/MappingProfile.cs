@@ -40,6 +40,15 @@ namespace FitnessTracker.API.Mapping
             // Mission mappings
             CreateMap<Mission, MissionDto>();
             CreateMap<Achievement, AchievementDto>();
+
+            // Referral mappings
+            CreateMap<Referral, ReferredUserDto>()
+                .ForMember(dest => dest.Email, opt => opt.Ignore()) // Will be set manually
+                .ForMember(dest => dest.Level, opt => opt.Ignore()) // Will be set manually
+                .ForMember(dest => dest.JoinedAt, opt => opt.MapFrom(src => src.CreatedAt))
+                .ForMember(dest => dest.RewardCoins, opt => opt.MapFrom(src => src.RewardCoins))
+                .ForMember(dest => dest.IsPremium, opt => opt.Ignore()) // Will be set manually
+                .ForMember(dest => dest.Status, opt => opt.Ignore()); // Will be set manually
         }
     }
 }

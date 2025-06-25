@@ -10,21 +10,21 @@ namespace FitnessTracker.API.Services
     {
         private readonly IUserRepository _userRepository;
         private readonly IAuthService _authService;
-        private readonly IConfiguration _configuration;
         private readonly IMapper _mapper;
+        private readonly IConfiguration _configuration;
         private readonly ILogger<GoogleAuthService> _logger;
 
         public GoogleAuthService(
             IUserRepository userRepository,
             IAuthService authService,
-            IConfiguration configuration,
             IMapper mapper,
+            IConfiguration configuration,
             ILogger<GoogleAuthService> logger)
         {
             _userRepository = userRepository;
             _authService = authService;
-            _configuration = configuration;
             _mapper = mapper;
+            _configuration = configuration;
             _logger = logger;
         }
 
@@ -34,51 +34,63 @@ namespace FitnessTracker.API.Services
             {
                 var clientId = _configuration["GoogleAuth:ClientId"];
 
-                // Проверяем Google токен
+                // Verify Google token
                 var payload = await GoogleJsonWebSignature.ValidateAsync(googleToken, new GoogleJsonWebSignature.ValidationSettings
                 {
                     Audience = new[] { clientId }
                 });
 
-                _logger.LogInformation($"Google auth successful for: {payload.Email}");
+                var email = payload.Email;
+                if (string.IsNullOrEmpty(email))
+                {
+                    throw new UnauthorizedAccessException("Unable to get email from Google token");
+                }
 
-                // Проверяем существует ли пользователь
-                var existingUser = await _userRepository.GetByEmailAsync(payload.Email);
+                // Check if user exists
+                var existingUser = await _userRepository.GetByEmailAsync(email);
 
                 User user;
                 if (existingUser == null)
                 {
-                    // Создаем нового пользователя
+                    // Create new user
                     user = new User
                     {
-                        Email = payload.Email,
+                        Email = email,
                         RegisteredVia = "google",
                         Level = 1,
                         Coins = 100,
-                        JoinedAt = DateTime.UtcNow
+                        LwCoins = 300, // Initial LW Coins
+                        JoinedAt = DateTime.UtcNow,
+                        LastMonthlyRefill = DateTime.UtcNow
                     };
                     user = await _userRepository.CreateAsync(user);
-                    _logger.LogInformation($"Created new Google user: {payload.Email}");
+
+                    _logger.LogInformation($"New user created via Google: {email}");
                 }
                 else
                 {
                     user = existingUser;
-                    _logger.LogInformation($"Existing Google user logged in: {payload.Email}");
+                    _logger.LogInformation($"Existing user logged in via Google: {email}");
                 }
 
-                // Генерируем JWT токен
-                var jwtToken = await _authService.GenerateJwtTokenAsync(user.Id);
+                // Generate JWT token
+                var token = await _authService.GenerateJwtTokenAsync(user.Id);
 
                 return new AuthResponseDto
                 {
-                    AccessToken = jwtToken,
+                    AccessToken = token,
                     User = _mapper.Map<UserDto>(user)
                 };
             }
+            catch (InvalidJwtException ex)
+            {
+                _logger.LogError($"Invalid Google token: {ex.Message}");
+                throw new UnauthorizedAccessException("Invalid Google token");
+            }
             catch (Exception ex)
             {
-                _logger.LogError($"Google authentication failed: {ex.Message}");
-                throw new UnauthorizedAccessException("Invalid Google token");
+                _logger.LogError($"Google authentication error: {ex.Message}");
+                throw new Exception("Google authentication failed");
             }
         }
     }

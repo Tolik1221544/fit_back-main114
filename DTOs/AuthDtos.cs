@@ -34,6 +34,7 @@ namespace FitnessTracker.API.DTOs
         public string RegisteredVia { get; set; } = string.Empty;
         public int Level { get; set; }
         public int Coins { get; set; }
+        public int LwCoins { get; set; } 
         public int Age { get; set; }
         public string Gender { get; set; } = string.Empty;
         public decimal Weight { get; set; }

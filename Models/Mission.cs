@@ -4,8 +4,8 @@ namespace FitnessTracker.API.Models
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
         public string Title { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public int RewardCoins { get; set; }
+        public string Icon { get; set; } = string.Empty; // Ёмодзи
+        public int RewardExperience { get; set; } // ќпыт вместо монет
         public string Type { get; set; } = string.Empty;
         public int TargetValue { get; set; }
         public bool IsActive { get; set; } = true;
@@ -33,8 +33,8 @@ namespace FitnessTracker.API.Models
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
         public string Title { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public string IconUrl { get; set; } = string.Empty;
+        public string Icon { get; set; } = string.Empty; 
+        public string ImageUrl { get; set; } = string.Empty; 
         public DateTime UnlockedAt { get; set; } = DateTime.UtcNow;
     }
 }

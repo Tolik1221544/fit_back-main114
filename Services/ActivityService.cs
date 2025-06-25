@@ -49,6 +49,9 @@ namespace FitnessTracker.API.Services
                 Type = request.Type,
                 StartDate = request.StartDate,
                 StartTime = request.StartTime,
+                EndDate = request.EndDate,
+                EndTime = request.EndTime,
+                Calories = request.Calories,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -79,7 +82,6 @@ namespace FitnessTracker.API.Services
             var createdActivity = await _activityRepository.CreateAsync(activity);
             return _mapper.Map<ActivityDto>(createdActivity);
         }
-
         public async Task<ActivityDto> UpdateActivityAsync(string userId, string activityId, UpdateActivityRequest request)
         {
             var activity = await _activityRepository.GetByIdAsync(activityId);
@@ -140,13 +142,17 @@ namespace FitnessTracker.API.Services
             var activityTypes = activities.GroupBy(a => a.Type)
                 .Select(g => new { Type = g.Key, Count = g.Count() });
 
+            var totalCalories = activities.Where(a => a.Calories.HasValue).Sum(a => a.Calories.Value);
+
             return new
             {
                 TotalActivities = activities.Count(),
+                TotalCalories = totalCalories, 
                 ActivityTypes = activityTypes,
                 MostPopularActivity = activityTypes.OrderByDescending(a => a.Count).FirstOrDefault()?.Type ?? "None",
                 LastActivity = activities.OrderByDescending(a => a.CreatedAt).FirstOrDefault()?.CreatedAt
             };
         }
+
     }
 }

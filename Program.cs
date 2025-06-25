@@ -18,8 +18,8 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Fitness Tracker API",
-        Version = "v2.0.0",
-        Description = "API for fitness tracking with LW Coin system"
+        Version = "v2.1.0",
+        Description = "API for fitness tracking with LW Coin system and referrals"
     });
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -66,7 +66,7 @@ builder.Services.AddScoped<IReferralService, ReferralService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 builder.Services.AddScoped<IMissionService, MissionService>();
 builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
-builder.Services.AddScoped<ILwCoinService, LwCoinService>(); // Новый сервис
+builder.Services.AddScoped<ILwCoinService, LwCoinService>();
 
 // Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -76,7 +76,7 @@ builder.Services.AddScoped<ICoinRepository, CoinRepository>();
 builder.Services.AddScoped<ISkinRepository, SkinRepository>();
 builder.Services.AddScoped<IReferralRepository, ReferralRepository>();
 builder.Services.AddScoped<IMissionRepository, MissionRepository>();
-builder.Services.AddScoped<ILwCoinRepository, LwCoinRepository>(); // Новый репозиторий
+builder.Services.AddScoped<ILwCoinRepository, LwCoinRepository>();
 
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "your-super-secret-key-that-is-at-least-32-characters-long";
@@ -125,7 +125,7 @@ using (var scope = app.Services.CreateScope())
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Fitness Tracker API v2.0.0");
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Fitness Tracker API v2.1.0");
     c.DefaultModelsExpandDepth(-1);
     c.DisplayRequestDuration();
     c.EnableFilter();
@@ -138,12 +138,13 @@ app.MapControllers();
 
 // ✨ ДОБАВЛЯЕМ КОРНЕВЫЕ ENDPOINTS
 app.MapGet("/", () => new {
-    message = "🪙 Fitness Tracker API with LW Coin System!",
-    version = "2.0.0",
+    message = "🪙 Fitness Tracker API with LW Coin System & Referrals!",
+    version = "2.1.0",
     timestamp = DateTime.UtcNow,
     features = new
     {
         lwCoins = "LW Coin payment system",
+        referrals = "Advanced referral system with leaderboard",
         premiumSubscription = "Unlimited usage for $8.99/month",
         freeFeatures = new[] { "Exercise tracking", "Progress archive" },
         paidFeatures = new[] { "Photo scanning", "Voice input", "Text analysis" }
@@ -153,6 +154,7 @@ app.MapGet("/", () => new {
         swagger = "/swagger",
         health = "/health",
         lwCoinBalance = "/api/lw-coin/balance",
+        referralStats = "/api/referral/stats",
         pricing = "/api/lw-coin/pricing"
     }
 });
@@ -165,18 +167,21 @@ app.MapGet("/health", () => new {
     features = new
     {
         lwCoinSystem = "active",
+        referralSystem = "active",
         premiumSubscriptions = "active",
-        referralProgram = "active"
+        leaderboard = "active"
     }
 });
 
-Console.WriteLine("🚀 Fitness Tracker API with LW Coin System starting...");
+Console.WriteLine("🚀 Fitness Tracker API with LW Coin System & Referrals starting...");
 Console.WriteLine($"🪙 LW Coin System: ACTIVE");
+Console.WriteLine($"🎯 Referral System: ACTIVE with Leaderboard");
 Console.WriteLine($"💎 Premium Subscriptions: $8.99/month");
 Console.WriteLine($"🎁 Referral Rewards: 150 LW Coins");
-Console.WriteLine($"📊 Swagger: https://f333-2a03-6f02-00-a7ab.ngrok-free.app/swagger");
-Console.WriteLine($"🌐 API: https://f333-2a03-6f02-00-a7ab.ngrok-free.app");
-Console.WriteLine($"❤️ Health: https://f333-2a03-6f02-00-a7ab.ngrok-free.app/health");
-Console.WriteLine($"📱 Local: http://localhost:5000/swagger");
+Console.WriteLine($"📊 Swagger HTTP: http://localhost:60170/swagger");
+Console.WriteLine($"📊 Swagger HTTPS: https://localhost:60169/swagger");
+Console.WriteLine($"🌐 API HTTP: http://localhost:60170");
+Console.WriteLine($"🌐 API HTTPS: https://localhost:60169");
+Console.WriteLine($"❤️ Health: http://localhost:60170/health");
 
 app.Run();
