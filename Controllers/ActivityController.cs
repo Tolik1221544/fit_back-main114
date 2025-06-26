@@ -1,14 +1,19 @@
-using FitnessTracker.API.DTOs;
+﻿using FitnessTracker.API.DTOs;
 using FitnessTracker.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
 namespace FitnessTracker.API.Controllers
 {
+    /// <summary>
+    /// 🏃‍♂️ Управление активностями и тренировками
+    /// </summary>
     [ApiController]
     [Route("api/activity")]
     [Authorize]
+    [Produces("application/json")]
     public class ActivityController : ControllerBase
     {
         private readonly IActivityService _activityService;
@@ -20,7 +25,18 @@ namespace FitnessTracker.API.Controllers
             _missionService = missionService;
         }
 
+        /// <summary>
+        /// 📋 Получить список активностей с фильтрами
+        /// </summary>
+        /// <param name="type">Тип тренировки: "strength" (силовая) или "cardio" (кардио)</param>
+        /// <param name="startDate">Дата начала периода (YYYY-MM-DD)</param>
+        /// <param name="endDate">Дата окончания периода (YYYY-MM-DD)</param>
+        /// <returns>Список активностей пользователя</returns>
+        /// <response code="200">Список активностей успешно получен</response>
+        /// <response code="401">Требуется авторизация</response>
         [HttpGet]
+        [ProducesResponseType(typeof(IEnumerable<ActivityDto>), 200)]
+        [ProducesResponseType(401)]
         public async Task<IActionResult> GetActivities(
             [FromQuery] string? type = null,
             [FromQuery] DateTime? startDate = null,
@@ -41,28 +57,56 @@ namespace FitnessTracker.API.Controllers
             }
         }
 
-        [HttpGet("{activityId}")]
-        public async Task<IActionResult> GetActivity(string activityId)
-        {
-            try
-            {
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(userId))
-                    return Unauthorized();
-
-                var activity = await _activityService.GetActivityByIdAsync(userId, activityId);
-                if (activity == null)
-                    return NotFound();
-
-                return Ok(activity);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { error = ex.Message });
-            }
-        }
-
+        /// <summary>
+        /// ➕ Добавить новую тренировку
+        /// </summary>
+        /// <param name="request">
+        /// Данные тренировки. ВАЖНО: 
+        /// - Для силовой тренировки заполните strengthData
+        /// - Для кардио тренировки заполните cardioData
+        /// - Нельзя заполнять оба поля одновременно
+        /// </param>
+        /// <returns>Созданная активность</returns>
+        /// <response code="200">Тренировка успешно добавлена</response>
+        /// <response code="400">Неверные данные запроса</response>
+        /// <response code="401">Требуется авторизация</response>
+        /// <example>
+        /// Пример для силовой тренировки:
+        /// {
+        ///   "type": "strength",
+        ///   "startDate": "2025-06-26T10:00:00Z",
+        ///   "startTime": "2025-06-26T10:00:00Z",
+        ///   "endDate": "2025-06-26T11:00:00Z",
+        ///   "endTime": "2025-06-26T11:00:00Z",
+        ///   "calories": 300,
+        ///   "strengthData": {
+        ///     "name": "Жим лежа",
+        ///     "muscleGroup": "Грудь",
+        ///     "equipment": "Штанга",
+        ///     "workingWeight": 80,
+        ///     "restTimeSeconds": 120
+        ///   }
+        /// }
+        /// 
+        /// Пример для кардио тренировки:
+        /// {
+        ///   "type": "cardio",
+        ///   "startDate": "2025-06-26T18:00:00Z",
+        ///   "startTime": "2025-06-26T18:00:00Z",
+        ///   "calories": 400,
+        ///   "cardioData": {
+        ///     "cardioType": "Бег",
+        ///     "distanceKm": 5.0,
+        ///     "avgPulse": 150,
+        ///     "maxPulse": 170,
+        ///     "avgPace": "5:30"
+        ///   }
+        /// }
+        /// </example>
         [HttpPost]
+        [ProducesResponseType(typeof(ActivityDto), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
         public async Task<IActionResult> AddActivity([FromBody] AddActivityRequest request)
         {
             try
@@ -84,61 +128,25 @@ namespace FitnessTracker.API.Controllers
             }
         }
 
-        [HttpPut("{activityId}")]
-        public async Task<IActionResult> UpdateActivity(string activityId, [FromBody] UpdateActivityRequest request)
-        {
-            try
-            {
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(userId))
-                    return Unauthorized();
-
-                var updatedActivity = await _activityService.UpdateActivityAsync(userId, activityId, request);
-                return Ok(updatedActivity);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { error = ex.Message });
-            }
-        }
-
-        [HttpDelete("{activityId}")]
-        public async Task<IActionResult> DeleteActivity(string activityId)
-        {
-            try
-            {
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(userId))
-                    return Unauthorized();
-
-                await _activityService.DeleteActivityAsync(userId, activityId);
-                return Ok(new { success = true });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { error = ex.Message });
-            }
-        }
-
-        [HttpGet("stats")]
-        public async Task<IActionResult> GetActivityStats([FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
-        {
-            try
-            {
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(userId))
-                    return Unauthorized();
-
-                var stats = await _activityService.GetActivityStatsAsync(userId, startDate, endDate);
-                return Ok(stats);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { error = ex.Message });
-            }
-        }
-
+        /// <summary>
+        /// 👣 Добавить количество шагов за день
+        /// </summary>
+        /// <param name="request">Данные о шагах</param>
+        /// <returns>Информация о добавленных шагах</returns>
+        /// <response code="200">Шаги успешно добавлены</response>
+        /// <response code="400">Неверные данные</response>
+        /// <response code="401">Требуется авторизация</response>
+        /// <example>
+        /// {
+        ///   "steps": 10000,
+        ///   "calories": 500,
+        ///   "date": "2025-06-26T00:00:00Z"
+        /// }
+        /// </example>
         [HttpPost("steps")]
+        [ProducesResponseType(typeof(StepsDto), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
         public async Task<IActionResult> AddSteps([FromBody] AddStepsRequest request)
         {
             try
@@ -156,7 +164,125 @@ namespace FitnessTracker.API.Controllers
             }
         }
 
+        /// <summary>
+        /// 📊 Получить статистику активностей с общим количеством калорий
+        /// </summary>
+        /// <param name="startDate">Дата начала периода (опционально)</param>
+        /// <param name="endDate">Дата окончания периода (опционально)</param>
+        /// <returns>Статистика активностей включая общие калории</returns>
+        /// <response code="200">Статистика успешно получена</response>
+        /// <response code="401">Требуется авторизация</response>
+        [HttpGet("stats")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> GetActivityStats([FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                var stats = await _activityService.GetActivityStatsAsync(userId, startDate, endDate);
+                return Ok(stats);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 🔍 Получить конкретную активность по ID
+        /// </summary>
+        /// <param name="activityId">ID активности</param>
+        /// <returns>Данные активности</returns>
+        [HttpGet("{activityId}")]
+        [ProducesResponseType(typeof(ActivityDto), 200)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> GetActivity(string activityId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                var activity = await _activityService.GetActivityByIdAsync(userId, activityId);
+                if (activity == null)
+                    return NotFound();
+
+                return Ok(activity);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// ✏️ Обновить активность
+        /// </summary>
+        /// <param name="activityId">ID активности</param>
+        /// <param name="request">Обновленные данные</param>
+        /// <returns>Обновленная активность</returns>
+        [HttpPut("{activityId}")]
+        [ProducesResponseType(typeof(ActivityDto), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> UpdateActivity(string activityId, [FromBody] UpdateActivityRequest request)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                var updatedActivity = await _activityService.UpdateActivityAsync(userId, activityId, request);
+                return Ok(updatedActivity);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 🗑️ Удалить активность
+        /// </summary>
+        /// <param name="activityId">ID активности</param>
+        /// <returns>Результат удаления</returns>
+        [HttpDelete("{activityId}")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> DeleteActivity(string activityId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                await _activityService.DeleteActivityAsync(userId, activityId);
+                return Ok(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 📈 Получить шаги за определенную дату
+        /// </summary>
+        /// <param name="date">Дата для получения шагов (опционально, по умолчанию - все)</param>
+        /// <returns>Список записей о шагах</returns>
         [HttpGet("steps")]
+        [ProducesResponseType(typeof(IEnumerable<StepsDto>), 200)]
+        [ProducesResponseType(401)]
         public async Task<IActionResult> GetSteps([FromQuery] DateTime? date = null)
         {
             try

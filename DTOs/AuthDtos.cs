@@ -31,9 +31,10 @@ namespace FitnessTracker.API.DTOs
     {
         public string Id { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
         public string RegisteredVia { get; set; } = string.Empty;
         public int Level { get; set; }
-        public int Coins { get; set; }
+        public int Experience { get; set; } 
         public int LwCoins { get; set; } 
         public int Age { get; set; }
         public string Gender { get; set; } = string.Empty;
@@ -45,6 +46,7 @@ namespace FitnessTracker.API.DTOs
 
     public class UpdateUserProfileRequest
     {
+        public string Name { get; set; } = string.Empty;
         public int Age { get; set; }
         public string Gender { get; set; } = string.Empty;
         public decimal Weight { get; set; }

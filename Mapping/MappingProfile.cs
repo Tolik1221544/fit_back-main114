@@ -1,4 +1,4 @@
-using AutoMapper;
+﻿using AutoMapper;
 using FitnessTracker.API.Models;
 using FitnessTracker.API.DTOs;
 
@@ -28,11 +28,22 @@ namespace FitnessTracker.API.Mapping
             CreateMap<CardioData, CardioDataDto>();
             CreateMap<CardioDataDto, CardioData>();
 
+            // Steps mappings ✅ ДОБАВЛЯЕМ
+            CreateMap<Steps, StepsDto>();
+            CreateMap<StepsDto, Steps>();
+
             // Coin transaction mappings
             CreateMap<CoinTransaction, CoinTransactionDto>();
 
             // LW Coin transaction mappings
             CreateMap<LwCoinTransaction, LwCoinTransactionDto>();
+
+            // Experience transaction mappings ✅ ДОБАВЛЯЕМ
+            CreateMap<ExperienceTransaction, ExperienceTransactionDto>();
+
+            // Body scan mappings ✅ ДОБАВЛЯЕМ
+            CreateMap<BodyScan, BodyScanDto>();
+            CreateMap<BodyScanDto, BodyScan>();
 
             // Skin mappings
             CreateMap<Skin, SkinDto>();

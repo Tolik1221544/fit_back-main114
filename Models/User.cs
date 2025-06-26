@@ -4,12 +4,11 @@ namespace FitnessTracker.API.Models
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
         public string Email { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty; 
+        public string Name { get; set; } = string.Empty;
         public string RegisteredVia { get; set; } = string.Empty; // "email", "google"
         public int Level { get; set; } = 1;
         public int Experience { get; set; } = 0; 
-        public int Coins { get; set; } = 100; // Regular coins for skins, etc.
-        public int LwCoins { get; set; } = 300; // LW Coins for features
+        public int LwCoins { get; set; } = 300; 
         public int Age { get; set; }
         public string Gender { get; set; } = string.Empty;
         public decimal Weight { get; set; }
@@ -25,8 +24,8 @@ namespace FitnessTracker.API.Models
         // Navigation properties
         public ICollection<FoodIntake> FoodIntakes { get; set; } = new List<FoodIntake>();
         public ICollection<Activity> Activities { get; set; } = new List<Activity>();
-        public ICollection<CoinTransaction> CoinTransactions { get; set; } = new List<CoinTransaction>();
-        public ICollection<LwCoinTransaction> LwCoinTransactions { get; set; } = new List<LwCoinTransaction>();
+        // public ICollection<CoinTransaction> CoinTransactions { get; set; } = new List<CoinTransaction>(); 
+        public ICollection<LwCoinTransaction> LwCoinTransactions { get; set; } = new List<LwCoinTransaction>(); 
         public ICollection<UserSkin> UserSkins { get; set; } = new List<UserSkin>();
         public ICollection<UserMission> UserMissions { get; set; } = new List<UserMission>();
         public ICollection<Subscription> Subscriptions { get; set; } = new List<Subscription>();

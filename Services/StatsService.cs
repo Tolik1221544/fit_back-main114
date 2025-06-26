@@ -24,7 +24,8 @@ namespace FitnessTracker.API.Services
             return new
             {
                 Level = user?.Level ?? 1,
-                Coins = user?.Coins ?? 0,
+                Experience = user?.Experience ?? 0, 
+                LwCoins = user?.LwCoins ?? 300,     
                 TotalFoodIntakes = totalFoodIntakes,
                 TotalActivities = totalActivities,
                 JoinedDays = user != null ? (DateTime.UtcNow - user.JoinedAt).Days : 0
@@ -34,10 +35,10 @@ namespace FitnessTracker.API.Services
         public async Task<object> GetNutritionStatsAsync(string userId, DateTime? startDate = null, DateTime? endDate = null)
         {
             var foodIntakes = await _foodIntakeRepository.GetByUserIdAsync(userId);
-            
+
             if (startDate.HasValue)
                 foodIntakes = foodIntakes.Where(f => f.DateTime >= startDate.Value);
-            
+
             if (endDate.HasValue)
                 foodIntakes = foodIntakes.Where(f => f.DateTime <= endDate.Value);
 
@@ -46,34 +47,58 @@ namespace FitnessTracker.API.Services
             var totalFats = foodIntakes.Sum(f => (f.NutritionPer100g.Fats * f.Weight) / 100);
             var totalCarbs = foodIntakes.Sum(f => (f.NutritionPer100g.Carbs * f.Weight) / 100);
 
+            var dayCount = startDate.HasValue && endDate.HasValue
+                ? Math.Max(1, (endDate.Value - startDate.Value).Days + 1)
+                : Math.Max(1, foodIntakes.GroupBy(f => f.DateTime.Date).Count());
+
             return new
             {
-                TotalCalories = totalCalories,
-                TotalProteins = totalProteins,
-                TotalFats = totalFats,
-                TotalCarbs = totalCarbs,
-                AverageCaloriesPerDay = foodIntakes.Any() ? totalCalories / Math.Max(1, (endDate?.Subtract(startDate ?? DateTime.UtcNow).Days ?? 1)) : 0
+                TotalCalories = Math.Round(totalCalories, 2),
+                TotalProteins = Math.Round(totalProteins, 2),
+                TotalFats = Math.Round(totalFats, 2),
+                TotalCarbs = Math.Round(totalCarbs, 2),
+                AverageCaloriesPerDay = Math.Round(totalCalories / dayCount, 2),
+                AverageProteinsPerDay = Math.Round(totalProteins / dayCount, 2),
+                AverageFatsPerDay = Math.Round(totalFats / dayCount, 2),
+                AverageCarbsPerDay = Math.Round(totalCarbs / dayCount, 2),
+                TotalMeals = foodIntakes.Count(),
+                DaysTracked = dayCount
             };
         }
 
         public async Task<object> GetActivityStatsAsync(string userId, DateTime? startDate = null, DateTime? endDate = null)
         {
             var activities = await _activityRepository.GetByUserIdAsync(userId);
-            
+
             if (startDate.HasValue)
                 activities = activities.Where(a => a.CreatedAt >= startDate.Value);
-            
+
             if (endDate.HasValue)
                 activities = activities.Where(a => a.CreatedAt <= endDate.Value);
 
             var activityTypes = activities.GroupBy(a => a.Type)
                 .Select(g => new { Type = g.Key, Count = g.Count() });
 
+            var totalCalories = activities.Where(a => a.Calories.HasValue).Sum(a => a.Calories.Value);
+            var strengthActivities = activities.Where(a => a.Type == "strength").Count();
+            var cardioActivities = activities.Where(a => a.Type == "cardio").Count();
+
+            var dayCount = startDate.HasValue && endDate.HasValue
+                ? Math.Max(1, (endDate.Value - startDate.Value).Days + 1)
+                : Math.Max(1, activities.GroupBy(a => a.CreatedAt.Date).Count());
+
             return new
             {
                 TotalActivities = activities.Count(),
+                TotalCalories = totalCalories,
+                StrengthWorkouts = strengthActivities,
+                CardioWorkouts = cardioActivities,
                 ActivityTypes = activityTypes,
-                MostPopularActivity = activityTypes.OrderByDescending(a => a.Count).FirstOrDefault()?.Type ?? "None"
+                MostPopularActivity = activityTypes.OrderByDescending(a => a.Count).FirstOrDefault()?.Type ?? "None",
+                LastActivity = activities.OrderByDescending(a => a.CreatedAt).FirstOrDefault()?.CreatedAt,
+                AverageActivitiesPerDay = Math.Round((double)activities.Count() / dayCount, 2),
+                AverageCaloriesPerDay = Math.Round((double)totalCalories / dayCount, 2),
+                DaysActive = activities.GroupBy(a => a.CreatedAt.Date).Count()
             };
         }
     }

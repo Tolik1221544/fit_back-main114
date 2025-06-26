@@ -25,8 +25,7 @@ namespace FitnessTracker.API.Controllers
 
                 endpoints = new
                 {
-                    // 🔐 АУТЕНТИФИКАЦИЯ
-                    auth = new[]
+                    auth = new object[]
                     {
                         new {
                             method = "POST",
@@ -44,8 +43,7 @@ namespace FitnessTracker.API.Controllers
                         }
                     },
 
-                    // 👤 ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ  
-                    profile = new[]
+                    profile = new object[]
                     {
                         new {
                             method = "GET",
@@ -63,8 +61,7 @@ namespace FitnessTracker.API.Controllers
                         }
                     },
 
-                    // 💰 LW COINS
-                    lwCoins = new[]
+                    lwCoins = new object[]
                     {
                         new {
                             method = "GET",
@@ -85,12 +82,11 @@ namespace FitnessTracker.API.Controllers
                             path = "/api/lw-coin/transactions",
                             description = "📊 История транзакций",
                             auth = "required",
-                            response = new[] { new { amount = -1, type = "spent", spentOn = "food_scan", createdAt = "2025-06-24T..." } }
+                            response = new object[] { new { amount = -1, type = "spent", spentOn = "food_scan", createdAt = "2025-06-24T..." } }
                         }
                     },
 
-                    // 🏃‍♂️ АКТИВНОСТИ
-                    activities = new[]
+                    activities = new object[]
                     {
                         new {
                             method = "GET",
@@ -144,12 +140,11 @@ namespace FitnessTracker.API.Controllers
                             path = "/api/activity/stats",
                             description = "📊 Статистика активностей",
                             auth = "required",
-                            response = new { totalActivities = 15, totalCalories = 3500, activityTypes = new[] { new { type = "strength", count = 10 } } }
+                            response = new { totalActivities = 15, totalCalories = 3500, activityTypes = new object[] { new { type = "strength", count = 10 } } }
                         }
                     },
 
-                    // 🍎 ПИТАНИЕ
-                    nutrition = new[]
+                    nutrition = new object[]
                     {
                         new {
                             method = "GET",
@@ -164,7 +159,7 @@ namespace FitnessTracker.API.Controllers
                             description = "➕ Добавить прием пищи",
                             auth = "required",
                             body = new {
-                                items = new[] {
+                                items = new object[] {
                                     new {
                                         tempItemId = "temp1", // опционально
                                         name = "Овсянка",
@@ -184,15 +179,14 @@ namespace FitnessTracker.API.Controllers
                         }
                     },
 
-                    // 🎯 МИССИИ
-                    missions = new[]
+                    missions = new object[]
                     {
                         new {
                             method = "GET",
                             path = "/api/mission",
                             description = "🎯 Получить активные миссии",
                             auth = "required",
-                            response = new[] {
+                            response = new object[] {
                                 new {
                                     id = "mission1",
                                     title = "Первая тренировка",
@@ -209,7 +203,7 @@ namespace FitnessTracker.API.Controllers
                             path = "/api/mission/achievements",
                             description = "🏆 Получить достижения",
                             auth = "required",
-                            response = new[] {
+                            response = new object[] {
                                 new {
                                     id = "achievement1",
                                     title = "Первые шаги",
@@ -221,8 +215,7 @@ namespace FitnessTracker.API.Controllers
                         }
                     },
 
-                    // 👥 РЕФЕРАЛЫ
-                    referrals = new[]
+                    referrals = new object[]
                     {
                         new {
                             method = "GET",
@@ -239,18 +232,17 @@ namespace FitnessTracker.API.Controllers
                             response = new {
                                 totalReferrals = 5,
                                 monthlyReferrals = 2,
-                                firstLevelReferrals = new[] {
+                                firstLevelReferrals = new object[] {
                                     new { name = "John Doe", email = "j***@mail.com", level = 2, rewardCoins = 150 }
                                 },
-                                secondLevelReferrals = new[] {
+                                secondLevelReferrals = new object[] {
                                     new { name = "Jane Smith", email = "j***@mail.com", level = 1, rewardCoins = 75 }
                                 }
                             }
                         }
                     },
 
-                    // 📸 СКАН ТЕЛА  
-                    bodyScan = new[]
+                    bodyScan = new object[]
                     {
                         new {
                             method = "POST",
@@ -285,7 +277,7 @@ namespace FitnessTracker.API.Controllers
 
                 examples = new
                 {
-                    completeWorkflow = new[]
+                    completeWorkflow = new string[]
                     {
                         "1. POST /api/auth/send-code → Отправить код",
                         "2. POST /api/auth/confirm-email → Получить токен",
@@ -299,10 +291,10 @@ namespace FitnessTracker.API.Controllers
 
                 errorCodes = new
                 {
-                    "400" = "Bad Request - Неверные данные",
-                    "401" = "Unauthorized - Требуется авторизация",
-                    "404" = "Not Found - Ресурс не найден",
-                    "500" = "Internal Server Error - Ошибка сервера"
+                    BadRequest = "400 - Неверные данные",
+                    Unauthorized = "401 - Требуется авторизация",
+                    NotFound = "404 - Ресурс не найден",
+                    InternalServerError = "500 - Ошибка сервера"
                 }
             };
 

@@ -7,19 +7,24 @@ namespace FitnessTracker.API.Services
 {
     public class ExperienceService : IExperienceService
     {
-        private readonly IUserRepository _userRepository;
         private readonly IExperienceRepository _experienceRepository;
+        private readonly IUserRepository _userRepository;
         private readonly IMapper _mapper;
         private readonly ILogger<ExperienceService> _logger;
 
+        private static readonly int[] LevelExperienceRequirements = {
+            0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250,
+            3850, 4500, 5200, 5950, 6750, 7600, 8500, 9450, 10450, 11500
+        };
+
         public ExperienceService(
-            IUserRepository userRepository,
             IExperienceRepository experienceRepository,
+            IUserRepository userRepository,
             IMapper mapper,
             ILogger<ExperienceService> logger)
         {
-            _userRepository = userRepository;
             _experienceRepository = experienceRepository;
+            _userRepository = userRepository;
             _mapper = mapper;
             _logger = logger;
         }
@@ -31,8 +36,6 @@ namespace FitnessTracker.API.Services
 
             var levelBefore = user.Level;
             user.Experience += experience;
-
-            // Вычисляем новый уровень
             var levelAfter = await CalculateLevelFromExperience(user.Experience);
             var leveledUp = levelAfter > levelBefore;
 
@@ -44,7 +47,6 @@ namespace FitnessTracker.API.Services
 
             await _userRepository.UpdateAsync(user);
 
-            // Создаем запись транзакции опыта
             var transaction = new ExperienceTransaction
             {
                 UserId = userId,
@@ -56,29 +58,37 @@ namespace FitnessTracker.API.Services
                 LeveledUp = leveledUp
             };
 
-            await _experienceRepository.CreateAsync(transaction);
+            await _experienceRepository.CreateTransactionAsync(transaction);
 
-            _logger.LogInformation($"Added {experience} XP to user {userId}: {description}");
+            _logger.LogInformation($"Added {experience} XP to user {userId} from {source}");
             return true;
         }
 
         public async Task<IEnumerable<ExperienceTransactionDto>> GetUserExperienceTransactionsAsync(string userId)
         {
-            var transactions = await _experienceRepository.GetByUserIdAsync(userId);
+            var transactions = await _experienceRepository.GetUserTransactionsAsync(userId);
             return _mapper.Map<IEnumerable<ExperienceTransactionDto>>(transactions);
         }
 
         public async Task<int> CalculateLevelFromExperience(int experience)
         {
-            // floor(sqrt(experience / 100)) + 1
-            if (experience < 100) return 1;
-
-            return (int)Math.Floor(Math.Sqrt(experience / 100.0)) + 1;
+            for (int level = LevelExperienceRequirements.Length - 1; level >= 1; level--)
+            {
+                if (experience >= LevelExperienceRequirements[level])
+                {
+                    return level;
+                }
+            }
+            return 1;
         }
 
         public async Task<int> GetExperienceForNextLevel(int currentLevel)
         {
-            return currentLevel * currentLevel * 100;
+            if (currentLevel >= LevelExperienceRequirements.Length - 1)
+            {
+                return LevelExperienceRequirements[^1]; // Max level
+            }
+            return LevelExperienceRequirements[currentLevel + 1];
         }
     }
 }

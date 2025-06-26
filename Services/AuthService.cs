@@ -67,14 +67,15 @@ namespace FitnessTracker.API.Services
             User user;
             if (existingUser == null)
             {
-                // Create new user
+                // ✅ ИСПРАВЛЯЕМ: Создаем пользователя с именем по умолчанию
                 user = new User
                 {
                     Email = email,
+                    Name = "Пользователь", 
                     RegisteredVia = "email",
                     Level = 1,
-                    Coins = 100,
-                    LwCoins = 300, // Initial LW Coins allowance
+                    Experience = 0,
+                    LwCoins = 300, 
                     JoinedAt = DateTime.UtcNow,
                     LastMonthlyRefill = DateTime.UtcNow
                 };
@@ -83,6 +84,12 @@ namespace FitnessTracker.API.Services
             else
             {
                 user = existingUser;
+                // ✅ ИСПРАВЛЯЕМ: Если у существующего пользователя нет имени
+                if (string.IsNullOrEmpty(user.Name))
+                {
+                    user.Name = "Пользователь";
+                    await _userRepository.UpdateAsync(user);
+                }
             }
 
             // Generate JWT token

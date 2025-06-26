@@ -6,25 +6,55 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
-// Swagger configuration
+// Swagger configuration with XML comments
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "Fitness Tracker API",
+        Title = "🏃‍♂️ Fitness Tracker API",
         Version = "v2.1.0",
-        Description = "API for fitness tracking with LW Coin system and referrals"
+        Description = @"
+## 📱 Полнофункциональный API для фитнес-трекера
+
+### 🔥 Основные возможности:
+- **🔐 Аутентификация** - Email + код подтверждения или Google OAuth
+- **👤 Профиль** - Управление данными пользователя (имя, возраст, вес, рост)
+- **🏃‍♂️ Активности** - Силовые и кардио тренировки с детальной статистикой
+- **👣 Шаги** - Отслеживание ежедневной активности
+- **🍎 Питание** - Запись приемов пищи с подсчетом калорий и БЖУ
+- **💰 LW Coins** - Система внутренней валюты с лимитами и премиум подпиской
+- **👥 Рефералы** - Двухуровневая реферальная программа
+- **🎯 Миссии** - Система заданий и достижений
+- **📸 Скан тела** - Отслеживание физических изменений
+
+### 🔑 Аутентификация:
+Используйте Bearer токен в заголовке: `Authorization: Bearer YOUR_TOKEN`
+
+### 💡 Важные моменты для фронтенда:
+- Все даты в формате ISO 8601 (UTC)
+- Для активностей: заполняйте либо strengthData, либо cardioData
+- Калории всегда опциональны, но рекомендуются
+- LW Coins тратятся на premium функции (сканирование фото, голос)
+",
+        Contact = new OpenApiContact
+        {
+            Name = "Fitness Tracker API",
+            Url = new Uri("https://github.com/fitness-tracker")
+        }
     });
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme",
+        Description = @"JWT Authorization header. 
+                      Введите 'Bearer' [пробел] и затем ваш токен.
+                      Пример: 'Bearer 12345abcdef'",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,
@@ -45,6 +75,14 @@ builder.Services.AddSwaggerGen(c =>
             new string[] { }
         }
     });
+
+    // Включаем XML комментарии
+    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    c.IncludeXmlComments(xmlPath);
+
+    // Показываем примеры в Swagger UI
+    c.EnableAnnotations();
 });
 
 // Database
@@ -67,6 +105,9 @@ builder.Services.AddScoped<IStatsService, StatsService>();
 builder.Services.AddScoped<IMissionService, MissionService>();
 builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
 builder.Services.AddScoped<ILwCoinService, LwCoinService>();
+builder.Services.AddScoped<IBodyScanService, BodyScanService>();
+builder.Services.AddScoped<IAchievementService, AchievementService>();
+builder.Services.AddScoped<IExperienceService, ExperienceService>();
 
 // Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -77,6 +118,10 @@ builder.Services.AddScoped<ISkinRepository, SkinRepository>();
 builder.Services.AddScoped<IReferralRepository, ReferralRepository>();
 builder.Services.AddScoped<IMissionRepository, MissionRepository>();
 builder.Services.AddScoped<ILwCoinRepository, LwCoinRepository>();
+builder.Services.AddScoped<IBodyScanRepository, BodyScanRepository>();
+builder.Services.AddScoped<IAchievementRepository, AchievementRepository>();
+builder.Services.AddScoped<IExperienceRepository, ExperienceRepository>();
+builder.Services.AddScoped<IStepsRepository, StepsRepository>();
 
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "your-super-secret-key-that-is-at-least-32-characters-long";
@@ -125,10 +170,14 @@ using (var scope = app.Services.CreateScope())
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Fitness Tracker API v2.1.0");
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "🏃‍♂️ Fitness Tracker API v2.1.0");
     c.DefaultModelsExpandDepth(-1);
     c.DisplayRequestDuration();
     c.EnableFilter();
+    c.DefaultModelRendering(Swashbuckle.AspNetCore.SwaggerUI.ModelRendering.Example);
+    c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
+    c.EnableDeepLinking();
+    c.ShowExtensions();
 });
 
 app.UseCors("AllowAll");
@@ -136,52 +185,9 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-// ✨ ДОБАВЛЯЕМ КОРНЕВЫЕ ENDPOINTS
-app.MapGet("/", () => new {
-    message = "🪙 Fitness Tracker API with LW Coin System & Referrals!",
-    version = "2.1.0",
-    timestamp = DateTime.UtcNow,
-    features = new
-    {
-        lwCoins = "LW Coin payment system",
-        referrals = "Advanced referral system with leaderboard",
-        premiumSubscription = "Unlimited usage for $8.99/month",
-        freeFeatures = new[] { "Exercise tracking", "Progress archive" },
-        paidFeatures = new[] { "Photo scanning", "Voice input", "Text analysis" }
-    },
-    endpoints = new
-    {
-        swagger = "/swagger",
-        health = "/health",
-        lwCoinBalance = "/api/lw-coin/balance",
-        referralStats = "/api/referral/stats",
-        pricing = "/api/lw-coin/pricing"
-    }
-});
-
-app.MapGet("/health", () => new {
-    status = "healthy",
-    timestamp = DateTime.UtcNow,
-    uptime = Environment.TickCount64,
-    environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Development",
-    features = new
-    {
-        lwCoinSystem = "active",
-        referralSystem = "active",
-        premiumSubscriptions = "active",
-        leaderboard = "active"
-    }
-});
-
-Console.WriteLine("🚀 Fitness Tracker API with LW Coin System & Referrals starting...");
-Console.WriteLine($"🪙 LW Coin System: ACTIVE");
-Console.WriteLine($"🎯 Referral System: ACTIVE with Leaderboard");
-Console.WriteLine($"💎 Premium Subscriptions: $8.99/month");
-Console.WriteLine($"🎁 Referral Rewards: 150 LW Coins");
-Console.WriteLine($"📊 Swagger HTTP: http://localhost:60170/swagger");
-Console.WriteLine($"📊 Swagger HTTPS: https://localhost:60169/swagger");
-Console.WriteLine($"🌐 API HTTP: http://localhost:60170");
-Console.WriteLine($"🌐 API HTTPS: https://localhost:60169");
-Console.WriteLine($"❤️ Health: http://localhost:60170/health");
+Console.WriteLine("🚀 Fitness Tracker API starting...");
+Console.WriteLine($"📊 Swagger: http://localhost:60170/swagger");
+Console.WriteLine($"🌐 API: http://localhost:60170");
+Console.WriteLine($"📚 Docs: http://localhost:60170/api/docs");
 
 app.Run();

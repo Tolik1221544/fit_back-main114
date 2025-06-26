@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using FitnessTracker.API.Models;
 
 namespace FitnessTracker.API.Data
 {
@@ -9,17 +10,16 @@ namespace FitnessTracker.API.Data
         public DbSet<User> Users { get; set; }
         public DbSet<FoodIntake> FoodIntakes { get; set; }
         public DbSet<Activity> Activities { get; set; }
-        public DbSet<Steps> Steps { get; set; } 
-        public DbSet<CoinTransaction> CoinTransactions { get; set; }
+        public DbSet<Steps> Steps { get; set; }
         public DbSet<LwCoinTransaction> LwCoinTransactions { get; set; }
-        public DbSet<ExperienceTransaction> ExperienceTransactions { get; set; } 
-        public DbSet<BodyScan> BodyScans { get; set; } 
+        public DbSet<ExperienceTransaction> ExperienceTransactions { get; set; }
+        public DbSet<BodyScan> BodyScans { get; set; }
         public DbSet<Skin> Skins { get; set; }
         public DbSet<UserSkin> UserSkins { get; set; }
         public DbSet<Mission> Missions { get; set; }
         public DbSet<UserMission> UserMissions { get; set; }
         public DbSet<Achievement> Achievements { get; set; }
-        public DbSet<UserAchievement> UserAchievements { get; set; } 
+        public DbSet<UserAchievement> UserAchievements { get; set; }
         public DbSet<Referral> Referrals { get; set; }
         public DbSet<Subscription> Subscriptions { get; set; }
 
@@ -57,7 +57,6 @@ namespace FitnessTracker.API.Data
                 entity.Property(e => e.Weight).HasPrecision(8, 2);
             });
 
-            // Activity entity configuration
             modelBuilder.Entity<Activity>(entity =>
             {
                 entity.HasKey(e => e.Id);
@@ -66,16 +65,21 @@ namespace FitnessTracker.API.Data
                     .HasForeignKey(e => e.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
 
+                // ✅ ДОБАВЛЯЕМ: Настройка JSON полей
+                entity.Property(e => e.StrengthDataJson).HasColumnName("StrengthData");
+                entity.Property(e => e.CardioDataJson).HasColumnName("CardioData");
+
+                // ✅ ИГНОРИРУЕМ computed properties
                 entity.Ignore(e => e.StrengthData);
                 entity.Ignore(e => e.CardioData);
             });
 
-            // CoinTransaction entity configuration
-            modelBuilder.Entity<CoinTransaction>(entity =>
+            // Steps entity configuration
+            modelBuilder.Entity<Steps>(entity =>
             {
                 entity.HasKey(e => e.Id);
                 entity.HasOne(e => e.User)
-                    .WithMany(u => u.CoinTransactions)
+                    .WithMany()
                     .HasForeignKey(e => e.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
@@ -86,6 +90,26 @@ namespace FitnessTracker.API.Data
                 entity.HasKey(e => e.Id);
                 entity.HasOne(e => e.User)
                     .WithMany(u => u.LwCoinTransactions)
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ExperienceTransaction entity configuration
+            modelBuilder.Entity<ExperienceTransaction>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // BodyScan entity configuration
+            modelBuilder.Entity<BodyScan>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasOne(e => e.User)
+                    .WithMany()
                     .HasForeignKey(e => e.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
@@ -134,6 +158,20 @@ namespace FitnessTracker.API.Data
             modelBuilder.Entity<Achievement>(entity =>
             {
                 entity.HasKey(e => e.Id);
+            });
+
+            // UserAchievement entity configuration
+            modelBuilder.Entity<UserAchievement>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(e => e.Achievement)
+                    .WithMany(a => a.UserAchievements)
+                    .HasForeignKey(e => e.AchievementId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             // Referral entity configuration
@@ -220,64 +258,6 @@ namespace FitnessTracker.API.Data
                     Type = "food_count",
                     RequiredValue = 50,
                     RewardExperience = 300
-                },
-                new Achievement
-                {
-                    Id = "achievement4",
-                    Title = "Опытный атлет",
-                    Icon = "💪",
-                    ImageUrl = "https://example.com/achievements/experienced-athlete.png",
-                    Type = "activity_count",
-                    RequiredValue = 100,
-                    RewardExperience = 500
-                },
-                new Achievement
-                {
-                    Id = "achievement5",
-                    Title = "Достиг 5-го уровня",
-                    Icon = "🎖️",
-                    ImageUrl = "https://example.com/achievements/level-5.png",
-                    Type = "level",
-                    RequiredValue = 5,
-                    RewardExperience = 250
-                },
-                new Achievement
-                {
-                    Id = "achievement6",
-                    Title = "Амбассадор",
-                    Icon = "👥",
-                    ImageUrl = "https://example.com/achievements/ambassador.png",
-                    Type = "referral_count",
-                    RequiredValue = 5,
-                    RewardExperience = 400
-                }
-            );
-
-            // Seed default skins
-            modelBuilder.Entity<Skin>().HasData(
-                new Skin
-                {
-                    Id = "skin1",
-                    Name = "Classic Blue",
-                    Cost = 50,
-                    ImageUrl = "https://example.com/skins/classic-blue.png",
-                    Description = "Classic blue theme for your tracker"
-                },
-                new Skin
-                {
-                    Id = "skin2",
-                    Name = "Forest Green",
-                    Cost = 75,
-                    ImageUrl = "https://example.com/skins/forest-green.png",
-                    Description = "Nature-inspired green theme"
-                },
-                new Skin
-                {
-                    Id = "skin3",
-                    Name = "Premium Gold",
-                    Cost = 150,
-                    ImageUrl = "https://example.com/skins/premium-gold.png",
-                    Description = "Luxury gold theme for premium users"
                 }
             );
         }

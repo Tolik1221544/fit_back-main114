@@ -75,14 +75,34 @@ namespace FitnessTracker.API.Services
 
             await _referralRepository.CreateAsync(newReferral);
 
-            // Update referrer stats
+            // Update referrer stats (1-й уровень)
             referrer.TotalReferrals++;
             referrer.TotalReferralRewards += REFERRAL_REWARD;
             await _userRepository.UpdateAsync(referrer);
 
-            // Give LW Coins to referrer
+            // Give LW Coins to 1-го уровня referrer
             await _lwCoinService.AddLwCoinsAsync(referrer.Id, REFERRAL_REWARD, "referral",
-                $"Referral bonus for inviting {user.Email}");
+                $"Referral bonus for inviting {user.Name ?? user.Email}");
+
+            // 🎯 ПРОВЕРЯЕМ 2-Й УРОВЕНЬ: если у referrer есть свой referrer
+            if (!string.IsNullOrEmpty(referrer.ReferredByUserId))
+            {
+                var secondLevelReferrer = await _userRepository.GetByIdAsync(referrer.ReferredByUserId);
+                if (secondLevelReferrer != null)
+                {
+                    var secondLevelReward = REFERRAL_REWARD / 2; // 50% от основной награды
+
+                    // Обновляем статистику 2-го уровня
+                    secondLevelReferrer.TotalReferralRewards += secondLevelReward;
+                    await _userRepository.UpdateAsync(secondLevelReferrer);
+
+                    // Начисляем LW Coins 2-го уровня
+                    await _lwCoinService.AddLwCoinsAsync(secondLevelReferrer.Id, secondLevelReward, "referral_level2",
+                        $"Level 2 referral bonus for {user.Name ?? user.Email} (via {referrer.Name ?? referrer.Email})");
+
+                    _logger.LogInformation($"Level 2 referral reward: {secondLevelReferrer.Id} got {secondLevelReward} LW Coins");
+                }
+            }
 
             // Give trial bonus to new user
             await _lwCoinService.AddLwCoinsAsync(userId, REFERRAL_REWARD, "trial_bonus",
@@ -219,180 +239,6 @@ namespace FitnessTracker.API.Services
             };
         }
 
-        // Обновляем SetReferralAsync для поддержки 2-го уровня
-        public async Task<bool> SetReferralAsync(string userId, SetReferralRequest request)
-        {
-            var user = await _userRepository.GetByIdAsync(userId);
-            if (user == null)
-            {
-                _logger.LogWarning($"User {userId} not found");
-                return false;
-            }
-
-            // Check if user already has a referrer
-            if (!string.IsNullOrEmpty(user.ReferredByUserId))
-            {
-                _logger.LogWarning($"User {userId} already has a referrer");
-                return false;
-            }
-
-            // Find referrer by their referral code
-            var referrer = await _userRepository.GetByReferralCodeAsync(request.ReferralCode);
-            if (referrer == null)
-            {
-                _logger.LogWarning($"Invalid referral code: {request.ReferralCode}");
-                return false;
-            }
-
-            // Can't refer yourself
-            if (referrer.Id == userId)
-            {
-                _logger.LogWarning($"User {userId} tried to use their own referral code");
-                return false;
-            }
-
-            // Set referrer
-            user.ReferredByUserId = referrer.Id;
-            await _userRepository.UpdateAsync(user);
-
-            // Create referral record
-            var newReferral = new Referral
-            {
-                ReferrerId = referrer.Id,
-                ReferredUserId = userId,
-                ReferralCode = request.ReferralCode,
-                RewardCoins = REFERRAL_REWARD
-            };
-
-            await _referralRepository.CreateAsync(newReferral);
-
-            // Update referrer stats (1-й уровень)
-            referrer.TotalReferrals++;
-            referrer.TotalReferralRewards += REFERRAL_REWARD;
-            await _userRepository.UpdateAsync(referrer);
-
-            // Give LW Coins to 1-го уровня referrer
-            await _lwCoinService.AddLwCoinsAsync(referrer.Id, REFERRAL_REWARD, "referral",
-                $"Referral bonus for inviting {user.Name ?? user.Email}");
-
-            // 🎯 ПРОВЕРЯЕМ 2-Й УРОВЕНЬ: если у referrer есть свой referrer
-            if (!string.IsNullOrEmpty(referrer.ReferredByUserId))
-            {
-                var secondLevelReferrer = await _userRepository.GetByIdAsync(referrer.ReferredByUserId);
-                if (secondLevelReferrer != null)
-                {
-                    var secondLevelReward = REFERRAL_REWARD / 2; // 50% от основной награды
-
-                    // Обновляем статистику 2-го уровня
-                    secondLevelReferrer.TotalReferralRewards += secondLevelReward;
-                    await _userRepository.UpdateAsync(secondLevelReferrer);
-
-                    // Начисляем LW Coins 2-го уровня
-                    await _lwCoinService.AddLwCoinsAsync(secondLevelReferrer.Id, secondLevelReward, "referral_level2",
-                        $"Level 2 referral bonus for {user.Name ?? user.Email} (via {referrer.Name ?? referrer.Email})");
-
-                    _logger.LogInformation($"Level 2 referral reward: {secondLevelReferrer.Id} got {secondLevelReward} LW Coins");
-                }
-            }
-
-            // Give trial bonus to new user
-            await _lwCoinService.AddLwCoinsAsync(userId, REFERRAL_REWARD, "trial_bonus",
-                "Welcome bonus for joining via referral");
-
-            _logger.LogInformation($"Referral set successfully: {referrer.Id} -> {userId}");
-            return true;
-        }
-
-        // Новый helper метод для маскировки имени
-        private string MaskName(string name)
-        {
-            if (string.IsNullOrEmpty(name))
-                return "Аноним";
-
-            if (name.Length <= 2)
-                return name;
-
-            return name[0] + new string('*', Math.Max(0, name.Length - 2)) + name[^1];
-        }
-
-        // Обновляем метод расчета ранга с учетом 2-го уровня
-        private async Task<ReferralRankDto> CalculateUserRankAsync(string userId)
-        {
-            var allUsers = await GetAllUsersAsync();
-
-            // Подсчитываем общее количество рефералов (1-й + 2-й уровень) для каждого пользователя
-            var userReferralCounts = new Dictionary<string, int>();
-
-            foreach (var user in allUsers)
-            {
-                var firstLevel = await _referralRepository.GetUserReferralsAsync(user.Id);
-                var secondLevelCount = 0;
-
-                foreach (var firstRef in firstLevel)
-                {
-                    var secondLevel = await _referralRepository.GetUserReferralsAsync(firstRef.ReferredUserId);
-                    secondLevelCount += secondLevel.Count();
-                }
-
-                userReferralCounts[user.Id] = firstLevel.Count() + secondLevelCount;
-            }
-
-            var sortedUsers = userReferralCounts.OrderByDescending(kvp => kvp.Value).ToList();
-            var userPosition = sortedUsers.FindIndex(kvp => kvp.Key == userId) + 1;
-            var currentReferrals = userReferralCounts.GetValueOrDefault(userId, 0);
-
-            // Define rank tiers (обновленные пороги)
-            string title;
-            string badge;
-            int nextLevelRequirement;
-
-            if (currentReferrals == 0)
-            {
-                title = "Новичок";
-                badge = "🌱";
-                nextLevelRequirement = 1;
-            }
-            else if (currentReferrals < 3)
-            {
-                title = "Начинающий";
-                badge = "⭐";
-                nextLevelRequirement = 3;
-            }
-            else if (currentReferrals < 10)
-            {
-                title = "Активный";
-                badge = "🌟";
-                nextLevelRequirement = 10;
-            }
-            else if (currentReferrals < 25)
-            {
-                title = "Чемпион";
-                badge = "🏆";
-                nextLevelRequirement = 25;
-            }
-            else if (currentReferrals < 50)
-            {
-                title = "Легенда";
-                badge = "👑";
-                nextLevelRequirement = 50;
-            }
-            else
-            {
-                title = "Мастер";
-                badge = "💎";
-                nextLevelRequirement = 100;
-            }
-
-            return new ReferralRankDto
-            {
-                Position = userPosition,
-                Title = title,
-                Badge = badge,
-                NextLevelRequirement = nextLevelRequirement,
-                Progress = currentReferrals
-            };
-        }
-
         public async Task<GenerateReferralResponse> GenerateReferralLinkAsync(string userId)
         {
             var referralCode = await GenerateReferralCodeAsync(userId);
@@ -461,6 +307,17 @@ namespace FitnessTracker.API.Services
             return $"{maskedUsername}@{domain}";
         }
 
+        private string MaskName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return "Аноним";
+
+            if (name.Length <= 2)
+                return name;
+
+            return name[0] + new string('*', Math.Max(0, name.Length - 2)) + name[^1];
+        }
+
         private async Task<bool> IsUserPremiumAsync(string userId)
         {
             // This should check if user has active premium subscription
@@ -477,50 +334,66 @@ namespace FitnessTracker.API.Services
         private async Task<ReferralRankDto> CalculateUserRankAsync(string userId)
         {
             var allUsers = await GetAllUsersAsync();
-            var sortedUsers = allUsers.OrderByDescending(u => u.TotalReferrals).ToList();
-            var userPosition = sortedUsers.FindIndex(u => u.Id == userId) + 1;
 
-            var user = sortedUsers.FirstOrDefault(u => u.Id == userId);
-            var currentReferrals = user?.TotalReferrals ?? 0;
+            // Подсчитываем общее количество рефералов (1-й + 2-й уровень) для каждого пользователя
+            var userReferralCounts = new Dictionary<string, int>();
 
-            // Define rank tiers
+            foreach (var user in allUsers)
+            {
+                var firstLevel = await _referralRepository.GetUserReferralsAsync(user.Id);
+                var secondLevelCount = 0;
+
+                foreach (var firstRef in firstLevel)
+                {
+                    var secondLevel = await _referralRepository.GetUserReferralsAsync(firstRef.ReferredUserId);
+                    secondLevelCount += secondLevel.Count();
+                }
+
+                userReferralCounts[user.Id] = firstLevel.Count() + secondLevelCount;
+            }
+
+            var sortedUsers = userReferralCounts.OrderByDescending(kvp => kvp.Value).ToList();
+            var userPosition = sortedUsers.FindIndex(kvp => kvp.Key == userId) + 1;
+            var currentReferrals = userReferralCounts.GetValueOrDefault(userId, 0);
+
+            // Define rank tiers (обновленные пороги)
             string title;
             string badge;
             int nextLevelRequirement;
 
             if (currentReferrals == 0)
             {
-                title = "Newcomer";
+                title = "Новичок";
                 badge = "🌱";
                 nextLevelRequirement = 1;
             }
-            else if (currentReferrals < 5)
+            else if (currentReferrals < 3)
             {
-                title = "Beginner";
+                title = "Начинающий";
                 badge = "⭐";
-                nextLevelRequirement = 5;
+                nextLevelRequirement = 3;
             }
             else if (currentReferrals < 10)
             {
-                title = "Rising Star";
+                title = "Активный";
                 badge = "🌟";
                 nextLevelRequirement = 10;
             }
             else if (currentReferrals < 25)
             {
-                title = "Champion";
+                title = "Чемпион";
                 badge = "🏆";
                 nextLevelRequirement = 25;
             }
             else if (currentReferrals < 50)
             {
-                title = "Legend";
+                title = "Легенда";
                 badge = "👑";
                 nextLevelRequirement = 50;
             }
             else
             {
-                title = "Master";
+                title = "Мастер";
                 badge = "💎";
                 nextLevelRequirement = 100;
             }
