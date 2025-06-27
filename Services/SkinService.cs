@@ -8,13 +8,13 @@ namespace FitnessTracker.API.Services
     public class SkinService : ISkinService
     {
         private readonly ISkinRepository _skinRepository;
-        private readonly ICoinService _coinService;
+        private readonly ILwCoinService _lwCoinService; 
         private readonly IMapper _mapper;
 
-        public SkinService(ISkinRepository skinRepository, ICoinService coinService, IMapper mapper)
+        public SkinService(ISkinRepository skinRepository, ILwCoinService lwCoinService, IMapper mapper)
         {
             _skinRepository = skinRepository;
-            _coinService = coinService;
+            _lwCoinService = lwCoinService; 
             _mapper = mapper;
         }
 
@@ -42,7 +42,8 @@ namespace FitnessTracker.API.Services
             if (await _skinRepository.UserOwnsSkinAsync(userId, request.SkinId))
                 return false;
 
-            if (!await _coinService.SpendCoinsAsync(userId, skin.Cost, $"Purchased skin: {skin.Name}"))
+            if (!await _lwCoinService.SpendLwCoinsAsync(userId, skin.Cost, "purchase",
+                $"Purchased skin: {skin.Name}", "skin"))
                 return false;
 
             var userSkin = new UserSkin
@@ -59,7 +60,7 @@ namespace FitnessTracker.API.Services
         {
             var userSkins = await _skinRepository.GetUserSkinsAsync(userId);
             var skinDtos = userSkins.Select(us => _mapper.Map<SkinDto>(us.Skin));
-            
+
             foreach (var skinDto in skinDtos)
             {
                 skinDto.IsOwned = true;

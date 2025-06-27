@@ -7,10 +7,14 @@ namespace FitnessTracker.API.Models
         public string Id { get; set; } = Guid.NewGuid().ToString();
         public string UserId { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty; // "strength", "cardio"
-        public DateTime StartDate { get; set; }
+        public DateTime StartDate { get; set; } 
+
+        [Obsolete("Use StartDate instead")]
         public DateTime StartTime { get; set; }
-        public DateTime? EndDate { get; set; }
+        public DateTime? EndDate { get; set; } 
+        [Obsolete("Use EndDate instead")]
         public DateTime? EndTime { get; set; }
+
         public int? Calories { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

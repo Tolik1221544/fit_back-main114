@@ -34,8 +34,11 @@ namespace FitnessTracker.API.DTOs
         public string Name { get; set; } = string.Empty;
         public string RegisteredVia { get; set; } = string.Empty;
         public int Level { get; set; }
-        public int Experience { get; set; } 
-        public int LwCoins { get; set; } 
+        public int Experience { get; set; }
+        public int MaxExperience { get; set; } 
+        public int ExperienceToNextLevel { get; set; } 
+        public decimal ExperienceProgress { get; set; } 
+        public int LwCoins { get; set; }
         public int Age { get; set; }
         public string Gender { get; set; } = string.Empty;
         public decimal Weight { get; set; }

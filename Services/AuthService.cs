@@ -33,6 +33,9 @@ namespace FitnessTracker.API.Services
         {
             try
             {
+              
+                email = email.Trim().ToLowerInvariant();
+
                 // Generate 6-digit code
                 var code = new Random().Next(100000, 999999).ToString();
 
@@ -50,6 +53,9 @@ namespace FitnessTracker.API.Services
 
         public async Task<AuthResponseDto> ConfirmEmailAsync(string email, string code)
         {
+            
+            email = email.Trim().ToLowerInvariant();
+
             // Check if code exists and is valid
             if (!_verificationCodes.TryGetValue(email, out var storedData) ||
                 storedData.Code != code ||
@@ -61,21 +67,20 @@ namespace FitnessTracker.API.Services
             // Remove used code
             _verificationCodes.Remove(email);
 
-            // Check if user exists
             var existingUser = await _userRepository.GetByEmailAsync(email);
 
             User user;
             if (existingUser == null)
             {
-                // ✅ ИСПРАВЛЯЕМ: Создаем пользователя с именем по умолчанию
+                
                 user = new User
                 {
                     Email = email,
-                    Name = "Пользователь", 
+                    Name = "Пользователь",
                     RegisteredVia = "email",
                     Level = 1,
                     Experience = 0,
-                    LwCoins = 300, 
+                    LwCoins = 300,
                     JoinedAt = DateTime.UtcNow,
                     LastMonthlyRefill = DateTime.UtcNow
                 };
@@ -84,7 +89,7 @@ namespace FitnessTracker.API.Services
             else
             {
                 user = existingUser;
-                // ✅ ИСПРАВЛЯЕМ: Если у существующего пользователя нет имени
+
                 if (string.IsNullOrEmpty(user.Name))
                 {
                     user.Name = "Пользователь";
@@ -92,7 +97,6 @@ namespace FitnessTracker.API.Services
                 }
             }
 
-            // Generate JWT token
             var token = await GenerateJwtTokenAsync(user.Id);
 
             return new AuthResponseDto
@@ -104,15 +108,11 @@ namespace FitnessTracker.API.Services
 
         public async Task<AuthResponseDto> GoogleAuthAsync(string googleToken)
         {
-            // TODO: Implement Google token validation
-            // For now, return mock response
             throw new NotImplementedException("Google authentication not implemented yet");
         }
 
         public async Task<bool> LogoutAsync(string accessToken)
         {
-            // In a real application, you might want to blacklist the token
-            // For now, just return true
             return true;
         }
 
@@ -125,9 +125,10 @@ namespace FitnessTracker.API.Services
             {
                 Subject = new ClaimsIdentity(new[]
                 {
-                    new Claim(ClaimTypes.NameIdentifier, userId)
+                    new Claim(ClaimTypes.NameIdentifier, userId),
+                    new Claim("user_id", userId) 
                 }),
-                Expires = DateTime.UtcNow.AddDays(30),
+                Expires = DateTime.UtcNow.AddDays(30), 
                 SigningCredentials = new SigningCredentials(
                     new SymmetricSecurityKey(key),
                     SecurityAlgorithms.HmacSha256Signature)

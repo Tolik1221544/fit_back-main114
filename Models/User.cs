@@ -7,7 +7,7 @@ namespace FitnessTracker.API.Models
         public string Name { get; set; } = string.Empty;
         public string RegisteredVia { get; set; } = string.Empty; // "email", "google"
         public int Level { get; set; } = 1;
-        public int Experience { get; set; } = 0; 
+        public int Experience { get; set; } = 0;
         public int LwCoins { get; set; } = 300; 
         public int Age { get; set; }
         public string Gender { get; set; } = string.Empty;
@@ -24,8 +24,7 @@ namespace FitnessTracker.API.Models
         // Navigation properties
         public ICollection<FoodIntake> FoodIntakes { get; set; } = new List<FoodIntake>();
         public ICollection<Activity> Activities { get; set; } = new List<Activity>();
-        // public ICollection<CoinTransaction> CoinTransactions { get; set; } = new List<CoinTransaction>(); 
-        public ICollection<LwCoinTransaction> LwCoinTransactions { get; set; } = new List<LwCoinTransaction>(); 
+        public ICollection<LwCoinTransaction> LwCoinTransactions { get; set; } = new List<LwCoinTransaction>();
         public ICollection<UserSkin> UserSkins { get; set; } = new List<UserSkin>();
         public ICollection<UserMission> UserMissions { get; set; } = new List<UserMission>();
         public ICollection<Subscription> Subscriptions { get; set; } = new List<Subscription>();

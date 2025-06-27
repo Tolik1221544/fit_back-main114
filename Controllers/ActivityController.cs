@@ -65,6 +65,7 @@ namespace FitnessTracker.API.Controllers
         /// - Для силовой тренировки заполните strengthData
         /// - Для кардио тренировки заполните cardioData
         /// - Нельзя заполнять оба поля одновременно
+        /// - ✅ ОБНОВЛЕНО: Используется только startDate и endDate (без времени)
         /// </param>
         /// <returns>Созданная активность</returns>
         /// <response code="200">Тренировка успешно добавлена</response>
@@ -74,10 +75,8 @@ namespace FitnessTracker.API.Controllers
         /// Пример для силовой тренировки:
         /// {
         ///   "type": "strength",
-        ///   "startDate": "2025-06-26T10:00:00Z",
-        ///   "startTime": "2025-06-26T10:00:00Z",
-        ///   "endDate": "2025-06-26T11:00:00Z",
-        ///   "endTime": "2025-06-26T11:00:00Z",
+        ///   "startDate": "2025-06-26T00:00:00Z",
+        ///   "endDate": "2025-06-26T00:00:00Z",
         ///   "calories": 300,
         ///   "strengthData": {
         ///     "name": "Жим лежа",
@@ -91,8 +90,7 @@ namespace FitnessTracker.API.Controllers
         /// Пример для кардио тренировки:
         /// {
         ///   "type": "cardio",
-        ///   "startDate": "2025-06-26T18:00:00Z",
-        ///   "startTime": "2025-06-26T18:00:00Z",
+        ///   "startDate": "2025-06-26T00:00:00Z",
         ///   "calories": 400,
         ///   "cardioData": {
         ///     "cardioType": "Бег",
@@ -114,6 +112,13 @@ namespace FitnessTracker.API.Controllers
                 var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
+
+                // ✅ ВАЛИДАЦИЯ: Проверяем обязательные поля
+                if (string.IsNullOrEmpty(request.Type))
+                    return BadRequest(new { error = "Type is required" });
+
+                if (request.StartDate == default)
+                    return BadRequest(new { error = "StartDate is required" });
 
                 var activity = await _activityService.AddActivityAsync(userId, request);
 

@@ -92,13 +92,12 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // AutoMapper
 builder.Services.AddAutoMapper(typeof(Program));
 
-// Services
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IFoodIntakeService, FoodIntakeService>();
 builder.Services.AddScoped<IActivityService, ActivityService>();
-builder.Services.AddScoped<ICoinService, CoinService>();
+// builder.Services.AddScoped<ICoinService, CoinService>(); 
 builder.Services.AddScoped<ISkinService, SkinService>();
 builder.Services.AddScoped<IReferralService, ReferralService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
@@ -109,11 +108,11 @@ builder.Services.AddScoped<IBodyScanService, BodyScanService>();
 builder.Services.AddScoped<IAchievementService, AchievementService>();
 builder.Services.AddScoped<IExperienceService, ExperienceService>();
 
-// Repositories
+// Repositories (✅ УБРАЛИ ICoinRepository и CoinRepository)
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IFoodIntakeRepository, FoodIntakeRepository>();
 builder.Services.AddScoped<IActivityRepository, ActivityRepository>();
-builder.Services.AddScoped<ICoinRepository, CoinRepository>();
+// builder.Services.AddScoped<ICoinRepository, CoinRepository>(); 
 builder.Services.AddScoped<ISkinRepository, SkinRepository>();
 builder.Services.AddScoped<IReferralRepository, ReferralRepository>();
 builder.Services.AddScoped<IMissionRepository, MissionRepository>();

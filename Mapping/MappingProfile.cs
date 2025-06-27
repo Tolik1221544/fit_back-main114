@@ -8,8 +8,11 @@ namespace FitnessTracker.API.Mapping
     {
         public MappingProfile()
         {
-            // User mappings
-            CreateMap<User, UserDto>();
+            CreateMap<User, UserDto>()
+                .ForMember(dest => dest.MaxExperience, opt => opt.Ignore())
+                .ForMember(dest => dest.ExperienceToNextLevel, opt => opt.Ignore())
+                .ForMember(dest => dest.ExperienceProgress, opt => opt.Ignore());
+
             CreateMap<UpdateUserProfileRequest, User>();
 
             // Food intake mappings
@@ -28,20 +31,17 @@ namespace FitnessTracker.API.Mapping
             CreateMap<CardioData, CardioDataDto>();
             CreateMap<CardioDataDto, CardioData>();
 
-            // Steps mappings ✅ ДОБАВЛЯЕМ
+            // Steps mappings
             CreateMap<Steps, StepsDto>();
             CreateMap<StepsDto, Steps>();
-
-            // Coin transaction mappings
-            CreateMap<CoinTransaction, CoinTransactionDto>();
 
             // LW Coin transaction mappings
             CreateMap<LwCoinTransaction, LwCoinTransactionDto>();
 
-            // Experience transaction mappings ✅ ДОБАВЛЯЕМ
+            // Experience transaction mappings
             CreateMap<ExperienceTransaction, ExperienceTransactionDto>();
 
-            // Body scan mappings ✅ ДОБАВЛЯЕМ
+            // Body scan mappings
             CreateMap<BodyScan, BodyScanDto>();
             CreateMap<BodyScanDto, BodyScan>();
 

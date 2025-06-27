@@ -1,4 +1,4 @@
-using FitnessTracker.API.DTOs;
+﻿using FitnessTracker.API.DTOs;
 using FitnessTracker.API.Models;
 using FitnessTracker.API.Repositories;
 using Google.Apis.Auth;
@@ -46,6 +46,8 @@ namespace FitnessTracker.API.Services
                     throw new UnauthorizedAccessException("Unable to get email from Google token");
                 }
 
+                email = email.Trim().ToLowerInvariant();
+
                 // Check if user exists
                 var existingUser = await _userRepository.GetByEmailAsync(email);
 
@@ -56,10 +58,11 @@ namespace FitnessTracker.API.Services
                     user = new User
                     {
                         Email = email,
+                        Name = payload.Name ?? "Пользователь",
                         RegisteredVia = "google",
                         Level = 1,
-                        Coins = 100,
-                        LwCoins = 300, // Initial LW Coins
+                        Experience = 0,
+                        LwCoins = 300,
                         JoinedAt = DateTime.UtcNow,
                         LastMonthlyRefill = DateTime.UtcNow
                     };
@@ -70,10 +73,15 @@ namespace FitnessTracker.API.Services
                 else
                 {
                     user = existingUser;
+
+                    if (string.IsNullOrEmpty(user.Name) && !string.IsNullOrEmpty(payload.Name))
+                    {
+                        user.Name = payload.Name;
+                        await _userRepository.UpdateAsync(user);
+                    }
                     _logger.LogInformation($"Existing user logged in via Google: {email}");
                 }
 
-                // Generate JWT token
                 var token = await _authService.GenerateJwtTokenAsync(user.Id);
 
                 return new AuthResponseDto
