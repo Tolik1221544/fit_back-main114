@@ -76,7 +76,8 @@ namespace FitnessTracker.API.Services
             await _foodIntakeRepository.DeleteAsync(foodIntakeId);
         }
 
-        public async Task<ScanFoodResponse> ScanFoodAsync(string userId, byte[] imageData)
+        
+        public Task<ScanFoodResponse> ScanFoodAsync(string userId, byte[] imageData)
         {
             // In a real application, you would use AI/ML services to analyze the image
             // For now, we'll return mock data
@@ -99,10 +100,10 @@ namespace FitnessTracker.API.Services
                 }
             };
 
-            return new ScanFoodResponse
+            return Task.FromResult(new ScanFoodResponse
             {
                 Items = mockFoodItems
-            };
+            });
         }
     }
 }

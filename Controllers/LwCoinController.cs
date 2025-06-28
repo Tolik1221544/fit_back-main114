@@ -1,4 +1,4 @@
-using FitnessTracker.API.DTOs;
+﻿using FitnessTracker.API.DTOs;
 using FitnessTracker.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -133,7 +133,7 @@ namespace FitnessTracker.API.Controllers
 
         [HttpGet("pricing")]
         [AllowAnonymous]
-        public async Task<IActionResult> GetPricing()
+        public IActionResult GetPricing() // ✅ УБРАНО: async Task<IActionResult>
         {
             return Ok(new
             {
@@ -147,16 +147,16 @@ namespace FitnessTracker.API.Controllers
                 },
                 subscriptions = new[]
                 {
-                new { type = "premium", price = 8.99m, currency = "USD", description = "Unlimited usage", period = "monthly" },
-                new { type = "pack_50", price = 0.50m, currency = "USD", description = "50 LW Coins", period = "one-time" },
-                new { type = "pack_100", price = 1.00m, currency = "USD", description = "100 LW Coins", period = "one-time" }
-            },
+            new { type = "premium", price = 8.99m, currency = "USD", description = "Unlimited usage", period = "monthly" },
+            new { type = "pack_50", price = 0.50m, currency = "USD", description = "50 LW Coins", period = "one-time" },
+            new { type = "pack_100", price = 1.00m, currency = "USD", description = "100 LW Coins", period = "one-time" }
+        },
                 freeFeatures = new[]
                 {
-                "Exercise tracking",
-                "Progress archive",
-                "Basic statistics"
-            },
+            "Exercise tracking",
+            "Progress archive",
+            "Basic statistics"
+        },
                 monthlyAllowance = new
                 {
                     freeUsers = 300,

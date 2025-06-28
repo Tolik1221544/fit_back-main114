@@ -79,7 +79,7 @@ namespace FitnessTracker.API.Services
             var activityTypes = activities.GroupBy(a => a.Type)
                 .Select(g => new { Type = g.Key, Count = g.Count() });
 
-            var totalCalories = activities.Where(a => a.Calories.HasValue).Sum(a => a.Calories.Value);
+            var totalCalories = activities.Where(a => a.Calories.HasValue).Sum(a => a.Calories!.Value);
             var strengthActivities = activities.Where(a => a.Type == "strength").Count();
             var cardioActivities = activities.Where(a => a.Type == "cardio").Count();
 

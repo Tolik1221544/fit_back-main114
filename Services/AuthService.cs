@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Collections.Concurrent; 
 using AutoMapper;
 
 namespace FitnessTracker.API.Services
@@ -15,128 +16,256 @@ namespace FitnessTracker.API.Services
         private readonly IEmailService _emailService;
         private readonly IConfiguration _configuration;
         private readonly IMapper _mapper;
-        private static readonly Dictionary<string, (string Code, DateTime Expiry)> _verificationCodes = new();
+        private readonly ILogger<AuthService> _logger;
+
+        private static readonly ConcurrentDictionary<string, (string Code, DateTime Expiry)> _verificationCodes = new();
 
         public AuthService(
             IUserRepository userRepository,
             IEmailService emailService,
             IConfiguration configuration,
-            IMapper mapper)
+            IMapper mapper,
+            ILogger<AuthService> logger)
         {
             _userRepository = userRepository;
             _emailService = emailService;
             _configuration = configuration;
             _mapper = mapper;
+            _logger = logger;
         }
 
         public async Task<bool> SendVerificationCodeAsync(string email)
         {
             try
             {
-              
                 email = email.Trim().ToLowerInvariant();
+                _logger.LogInformation($"Sending verification code to {email}");
 
                 // Generate 6-digit code
                 var code = new Random().Next(100000, 999999).ToString();
 
-                // Store code with expiry (5 minutes)
-                _verificationCodes[email] = (code, DateTime.UtcNow.AddMinutes(5));
+               
+                _verificationCodes.AddOrUpdate(email,
+                    (code, DateTime.UtcNow.AddMinutes(5)),
+                    (key, oldValue) => (code, DateTime.UtcNow.AddMinutes(5)));
 
                 // Send email
-                return await _emailService.SendVerificationEmailAsync(email, code);
+                var result = await _emailService.SendVerificationEmailAsync(email, code);
+
+                _logger.LogInformation($"Verification code sent to {email}: {(result ? "success" : "failed")}");
+                return result;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.LogError($"Error sending verification code to {email}: {ex.Message}");
                 return false;
             }
         }
 
         public async Task<AuthResponseDto> ConfirmEmailAsync(string email, string code)
         {
-            
-            email = email.Trim().ToLowerInvariant();
-
-            // Check if code exists and is valid
-            if (!_verificationCodes.TryGetValue(email, out var storedData) ||
-                storedData.Code != code ||
-                DateTime.UtcNow > storedData.Expiry)
+            try
             {
-                throw new UnauthorizedAccessException("Invalid or expired verification code");
-            }
+                email = email.Trim().ToLowerInvariant();
+                _logger.LogInformation($"Confirming email for {email}");
 
-            // Remove used code
-            _verificationCodes.Remove(email);
-
-            var existingUser = await _userRepository.GetByEmailAsync(email);
-
-            User user;
-            if (existingUser == null)
-            {
-                
-                user = new User
+               
+                if (!_verificationCodes.TryGetValue(email, out var storedData))
                 {
-                    Email = email,
-                    Name = "Пользователь",
-                    RegisteredVia = "email",
-                    Level = 1,
-                    Experience = 0,
-                    LwCoins = 300,
-                    JoinedAt = DateTime.UtcNow,
-                    LastMonthlyRefill = DateTime.UtcNow
-                };
-                user = await _userRepository.CreateAsync(user);
-            }
-            else
-            {
-                user = existingUser;
-
-                if (string.IsNullOrEmpty(user.Name))
-                {
-                    user.Name = "Пользователь";
-                    await _userRepository.UpdateAsync(user);
+                    _logger.LogWarning($"No verification code found for {email}");
+                    throw new UnauthorizedAccessException("No verification code found for this email");
                 }
+
+                if (storedData.Code != code)
+                {
+                    _logger.LogWarning($"Invalid verification code for {email}");
+                    throw new UnauthorizedAccessException("Invalid verification code");
+                }
+
+                if (DateTime.UtcNow > storedData.Expiry)
+                {
+                    _logger.LogWarning($"Expired verification code for {email}");
+                    _verificationCodes.TryRemove(email, out _); // Удаляем просроченный код
+                    throw new UnauthorizedAccessException("Verification code has expired");
+                }
+
+               
+                _verificationCodes.TryRemove(email, out _);
+
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+                var existingUser = await _userRepository.GetByEmailAsync(email);
+
+                User user;
+                if (existingUser == null)
+                {
+                    _logger.LogInformation($"Creating new user for {email}");
+
+                    user = new User
+                    {
+                        Email = email,
+                        Name = "Пользователь",
+                        RegisteredVia = "email",
+                        Level = 1,
+                        Experience = 0,
+                        LwCoins = 300,
+                        JoinedAt = DateTime.UtcNow,
+                        LastMonthlyRefill = DateTime.UtcNow
+                    };
+
+                   
+                    try
+                    {
+                        user = await _userRepository.CreateAsync(user);
+                        _logger.LogInformation($"User created successfully: {user.Id}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Error creating user: {ex.Message}");
+                        throw new InvalidOperationException("Failed to create user account");
+                    }
+                }
+                else
+                {
+                    user = existingUser;
+                    _logger.LogInformation($"Existing user found: {user.Id}");
+
+                   
+                    bool needsUpdate = false;
+
+                    if (string.IsNullOrEmpty(user.Name))
+                    {
+                        user.Name = "Пользователь";
+                        needsUpdate = true;
+                    }
+
+                    if (needsUpdate)
+                    {
+                        try
+                        {
+                            await _userRepository.UpdateAsync(user);
+                            _logger.LogInformation($"User updated: {user.Id}");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError($"Error updating user: {ex.Message}");
+                            
+                        }
+                    }
+                }
+
+                
+                string token;
+                try
+                {
+                    token = await GenerateJwtTokenAsync(user.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Error generating JWT token: {ex.Message}");
+                    throw new InvalidOperationException("Failed to generate authentication token");
+                }
+
+                var userDto = _mapper.Map<UserDto>(user);
+
+               
+                var experienceData = CalculateExperienceData(user.Level, user.Experience);
+                userDto.MaxExperience = experienceData.MaxExperience;
+                userDto.ExperienceToNextLevel = experienceData.ExperienceToNextLevel;
+                userDto.ExperienceProgress = experienceData.ExperienceProgress;
+
+                _logger.LogInformation($"Authentication successful for {email}");
+
+                return new AuthResponseDto
+                {
+                    AccessToken = token,
+                    User = userDto
+                };
             }
-
-            var token = await GenerateJwtTokenAsync(user.Id);
-
-            return new AuthResponseDto
+            catch (UnauthorizedAccessException)
             {
-                AccessToken = token,
-                User = _mapper.Map<UserDto>(user)
-            };
+                throw; // Пропускаем дальше
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Unexpected error during email confirmation for {email}: {ex.Message}");
+                throw new InvalidOperationException("Authentication failed due to server error");
+            }
         }
 
-        public async Task<AuthResponseDto> GoogleAuthAsync(string googleToken)
+        
+        public Task<AuthResponseDto> GoogleAuthAsync(string googleToken)
         {
             throw new NotImplementedException("Google authentication not implemented yet");
         }
 
-        public async Task<bool> LogoutAsync(string accessToken)
+      
+        public Task<bool> LogoutAsync(string accessToken)
         {
-            return true;
+            return Task.FromResult(true);
         }
 
         public async Task<string> GenerateJwtTokenAsync(string userId)
         {
-            var jwtKey = _configuration["Jwt:Key"] ?? "your-super-secret-key-that-is-at-least-32-characters-long";
-            var key = Encoding.ASCII.GetBytes(jwtKey);
-
-            var tokenDescriptor = new SecurityTokenDescriptor
+            try
             {
-                Subject = new ClaimsIdentity(new[]
-                {
-                    new Claim(ClaimTypes.NameIdentifier, userId),
-                    new Claim("user_id", userId) 
-                }),
-                Expires = DateTime.UtcNow.AddDays(30), 
-                SigningCredentials = new SigningCredentials(
-                    new SymmetricSecurityKey(key),
-                    SecurityAlgorithms.HmacSha256Signature)
-            };
+                var jwtKey = _configuration["Jwt:Key"] ?? "your-super-secret-key-that-is-at-least-32-characters-long";
+                var key = Encoding.ASCII.GetBytes(jwtKey);
 
-            var tokenHandler = new JwtSecurityTokenHandler();
-            var token = tokenHandler.CreateToken(tokenDescriptor);
-            return tokenHandler.WriteToken(token);
+                var tokenDescriptor = new SecurityTokenDescriptor
+                {
+                    Subject = new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.NameIdentifier, userId),
+                        new Claim("user_id", userId),
+                        new Claim("iat", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64)
+                    }),
+                    Expires = DateTime.UtcNow.AddDays(30),
+                    SigningCredentials = new SigningCredentials(
+                        new SymmetricSecurityKey(key),
+                        SecurityAlgorithms.HmacSha256Signature)
+                };
+
+                var tokenHandler = new JwtSecurityTokenHandler();
+                var token = tokenHandler.CreateToken(tokenDescriptor);
+                var tokenString = tokenHandler.WriteToken(token);
+
+                _logger.LogInformation($"JWT token generated for user {userId}");
+                return tokenString;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error generating JWT token for user {userId}: {ex.Message}");
+                throw;
+            }
+        }
+
+       
+        private (int MaxExperience, int ExperienceToNextLevel, decimal ExperienceProgress) CalculateExperienceData(int level, int currentExperience)
+        {
+            var levelRequirements = new[] { 0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250 };
+
+            int currentLevelMinExperience = level > 1 && level - 1 < levelRequirements.Length
+                ? levelRequirements[level - 1]
+                : 0;
+
+            int nextLevelMaxExperience = level < levelRequirements.Length
+                ? levelRequirements[level]
+                : levelRequirements[^1];
+
+            int experienceInCurrentLevel = currentExperience - currentLevelMinExperience;
+            int experienceNeededForLevel = nextLevelMaxExperience - currentLevelMinExperience;
+            int experienceToNextLevel = Math.Max(0, nextLevelMaxExperience - currentExperience);
+
+            decimal progress = experienceNeededForLevel > 0
+                ? Math.Min(100, (decimal)experienceInCurrentLevel / experienceNeededForLevel * 100)
+                : 100;
+
+            return (
+                MaxExperience: nextLevelMaxExperience,
+                ExperienceToNextLevel: experienceToNextLevel,
+                ExperienceProgress: Math.Round(progress, 1)
+            );
         }
     }
 }

@@ -60,20 +60,25 @@ namespace FitnessTracker.API.Services
                 if (string.IsNullOrEmpty(request.Type))
                     throw new ArgumentException("Activity type is required");
 
-                // ✅ ФИКС: Убираем startTime и endTime, используем только Date
+                // ✅ ИСПРАВЛЕНО: Умная обработка дат с fallback на старые поля
+                var startDate = request.StartDate != default ? request.StartDate :
+                               (request.StartTime ?? DateTime.UtcNow);
+
+                var endDate = request.EndDate ?? request.EndTime;
+
                 var activity = new Activity
                 {
                     UserId = userId,
-                    Type = request.Type.ToLowerInvariant(), // Нормализация типа
-                    StartDate = request.StartDate,
-                    StartTime = request.StartDate, // Используем StartDate для времени
-                    EndDate = request.EndDate,
-                    EndTime = request.EndDate, // Используем EndDate для времени окончания
-                    Calories = request.Calories ?? 0, // Значение по умолчанию
+                    Type = request.Type.ToLowerInvariant(),
+                    StartDate = startDate,
+                    StartTime = request.StartTime ?? startDate, // Поддержка старого поля
+                    EndDate = endDate,
+                    EndTime = request.EndTime ?? endDate, // Поддержка старого поля
+                    Calories = request.Calories ?? 0,
                     CreatedAt = DateTime.UtcNow
                 };
 
-                // ✅ ФИКС: Более надежная обработка данных силовой тренировки
+              
                 if (request.Type.Equals("strength", StringComparison.OrdinalIgnoreCase) && request.StrengthData != null)
                 {
                     try
@@ -90,7 +95,6 @@ namespace FitnessTracker.API.Services
                     catch (Exception ex)
                     {
                         _logger.LogError($"Error setting strength data: {ex.Message}");
-                        // Продолжаем без strength data если есть ошибка
                     }
                 }
 
@@ -111,11 +115,11 @@ namespace FitnessTracker.API.Services
                     catch (Exception ex)
                     {
                         _logger.LogError($"Error setting cardio data: {ex.Message}");
-                        // Продолжаем без cardio data если есть ошибка
                     }
                 }
 
-                // ✅ ФИКС: Проверяем что активность создалась
+                _logger.LogInformation($"Creating activity for user {userId}: {activity.Type}");
+
                 var createdActivity = await _activityRepository.CreateAsync(activity);
                 if (createdActivity == null)
                 {
@@ -134,6 +138,14 @@ namespace FitnessTracker.API.Services
             catch (Exception ex)
             {
                 _logger.LogError($"Error creating activity for user {userId}: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
+
+            
+                if (ex.InnerException != null)
+                {
+                    _logger.LogError($"Inner exception: {ex.InnerException.Message}");
+                }
+
                 throw new InvalidOperationException($"Failed to create activity: {ex.Message}");
             }
         }
@@ -144,12 +156,13 @@ namespace FitnessTracker.API.Services
             if (activity == null || activity.UserId != userId)
                 throw new ArgumentException("Activity not found");
 
-            // ✅ ФИКС: Убираем startTime и endTime
+            // ✅ ИСПРАВЛЕНО: Умная обработка дат с fallback
             activity.Type = request.Type?.ToLowerInvariant() ?? activity.Type;
-            activity.StartDate = request.StartDate;
-            activity.StartTime = request.StartDate; // Используем StartDate
-            activity.EndDate = request.EndDate;
-            activity.EndTime = request.EndDate; // Используем EndDate
+            activity.StartDate = request.StartDate != default ? request.StartDate :
+                                (request.StartTime ?? activity.StartDate);
+            activity.StartTime = request.StartTime ?? request.StartDate;
+            activity.EndDate = request.EndDate ?? request.EndTime ?? activity.EndDate;
+            activity.EndTime = request.EndTime ?? request.EndDate ?? activity.EndTime;
             activity.Calories = request.Calories ?? activity.Calories;
 
             // Обновляем данные в зависимости от типа
@@ -163,7 +176,7 @@ namespace FitnessTracker.API.Services
                     WorkingWeight = request.StrengthData.WorkingWeight,
                     RestTimeSeconds = request.StrengthData.RestTimeSeconds
                 };
-                activity.CardioData = null; // Очищаем кардио данные
+                activity.CardioData = null;
             }
 
             if (request.Type?.Equals("cardio", StringComparison.OrdinalIgnoreCase) == true && request.CardioData != null)
@@ -176,7 +189,7 @@ namespace FitnessTracker.API.Services
                     MaxPulse = request.CardioData.MaxPulse,
                     AvgPace = request.CardioData.AvgPace ?? ""
                 };
-                activity.StrengthData = null; // Очищаем силовые данные
+                activity.StrengthData = null;
             }
 
             var updatedActivity = await _activityRepository.UpdateAsync(activity);
@@ -261,9 +274,13 @@ namespace FitnessTracker.API.Services
 
             // Бонус за продолжительность
             int durationBonus = 0;
-            if (activity.EndDate.HasValue)
+            var endTime = activity.EndDate ?? activity.EndTime;
+            var startTime = activity.StartDate != default ? activity.StartDate :
+                           (activity.StartTime ?? DateTime.UtcNow);
+
+            if (endTime.HasValue)
             {
-                var duration = activity.EndDate.Value - activity.StartDate;
+                var duration = endTime.Value - startTime;
                 durationBonus = Math.Min((int)duration.TotalMinutes / 10, 15);
             }
 

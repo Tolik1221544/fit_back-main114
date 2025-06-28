@@ -1,11 +1,15 @@
-namespace FitnessTracker.API.DTOs
+﻿namespace FitnessTracker.API.DTOs
 {
     public class ActivityDto
     {
         public string Id { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty; // "strength", "cardio"
-        public DateTime StartDate { get; set; } 
-        public DateTime? EndDate { get; set; } 
+        public DateTime StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+
+        public DateTime? StartTime { get; set; }
+        public DateTime? EndTime { get; set; }
+
         public int? Calories { get; set; }
         public DateTime CreatedAt { get; set; }
         public StrengthDataDto? StrengthData { get; set; }
@@ -15,8 +19,12 @@ namespace FitnessTracker.API.DTOs
     public class AddActivityRequest
     {
         public string Type { get; set; } = string.Empty; // "strength", "cardio"
-        public DateTime StartDate { get; set; } 
-        public DateTime? EndDate { get; set; } 
+        public DateTime StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+
+        public DateTime? StartTime { get; set; }
+        public DateTime? EndTime { get; set; }
+
         public int? Calories { get; set; }
         public StrengthDataDto? StrengthData { get; set; }
         public CardioDataDto? CardioData { get; set; }
@@ -25,8 +33,13 @@ namespace FitnessTracker.API.DTOs
     public class UpdateActivityRequest
     {
         public string Type { get; set; } = string.Empty;
-        public DateTime StartDate { get; set; } // 
-        public DateTime? EndDate { get; set; } // 
+        public DateTime StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+
+        // ✅ ДОБАВЛЕНО: Поддержка старых полей (для совместимости)
+        public DateTime? StartTime { get; set; }
+        public DateTime? EndTime { get; set; }
+
         public int? Calories { get; set; }
         public StrengthDataDto? StrengthData { get; set; }
         public CardioDataDto? CardioData { get; set; }
@@ -55,7 +68,7 @@ namespace FitnessTracker.API.DTOs
         public string Id { get; set; } = string.Empty;
         public int StepsCount { get; set; }
         public int? Calories { get; set; }
-        public DateTime Date { get; set; } 
+        public DateTime Date { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 
@@ -63,6 +76,6 @@ namespace FitnessTracker.API.DTOs
     {
         public int Steps { get; set; }
         public int? Calories { get; set; }
-        public DateTime Date { get; set; } = DateTime.UtcNow; 
+        public DateTime Date { get; set; } = DateTime.UtcNow;
     }
 }

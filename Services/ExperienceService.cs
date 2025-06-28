@@ -70,25 +70,27 @@ namespace FitnessTracker.API.Services
             return _mapper.Map<IEnumerable<ExperienceTransactionDto>>(transactions);
         }
 
-        public async Task<int> CalculateLevelFromExperience(int experience)
+       
+        public Task<int> CalculateLevelFromExperience(int experience)
         {
             for (int level = LevelExperienceRequirements.Length - 1; level >= 1; level--)
             {
                 if (experience >= LevelExperienceRequirements[level])
                 {
-                    return level;
+                    return Task.FromResult(level);
                 }
             }
-            return 1;
+            return Task.FromResult(1);
         }
 
-        public async Task<int> GetExperienceForNextLevel(int currentLevel)
+       
+        public Task<int> GetExperienceForNextLevel(int currentLevel)
         {
             if (currentLevel >= LevelExperienceRequirements.Length - 1)
             {
-                return LevelExperienceRequirements[^1]; // Max level
+                return Task.FromResult(LevelExperienceRequirements[^1]); // Max level
             }
-            return LevelExperienceRequirements[currentLevel + 1];
+            return Task.FromResult(LevelExperienceRequirements[currentLevel + 1]);
         }
     }
 }

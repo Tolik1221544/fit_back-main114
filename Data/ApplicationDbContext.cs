@@ -65,15 +65,19 @@ namespace FitnessTracker.API.Data
                     .HasForeignKey(e => e.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
 
-                // ✅ ДОБАВЛЯЕМ: Настройка JSON полей
+                
                 entity.Property(e => e.StrengthDataJson).HasColumnName("StrengthData");
                 entity.Property(e => e.CardioDataJson).HasColumnName("CardioData");
 
-                // ✅ ИГНОРИРУЕМ computed properties
+               
                 entity.Ignore(e => e.StrengthData);
                 entity.Ignore(e => e.CardioData);
-            });
 
+                entity.Property(e => e.StartTime).IsRequired();
+                entity.Property(e => e.EndTime).IsRequired(false);
+                entity.Property(e => e.StartDate).IsRequired();
+                entity.Property(e => e.EndDate).IsRequired(false);
+            });
             // Steps entity configuration
             modelBuilder.Entity<Steps>(entity =>
             {
