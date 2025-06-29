@@ -48,7 +48,6 @@ namespace FitnessTracker.API.Services
             {
                 var userMission = userMissionDict.GetValueOrDefault(mission.Id);
 
-                // ✅ РАССЧИТЫВАЕМ АКТУАЛЬНЫЙ ПРОГРЕСС для каждого типа миссии
                 var currentProgress = await CalculateMissionProgressAsync(userId, mission.Type, mission.TargetValue);
 
                 var missionDto = new MissionDto
@@ -132,7 +131,7 @@ namespace FitnessTracker.API.Services
                 // 🔥 Миссия "Съешь 500ккал на завтрак"
                 "breakfast_calories" => await CalculateBreakfastCaloriesAsync(userId, today),
 
-                // 🚶‍♂️ Миссия "Пройди 5000 шагов"
+                // 🚶‍♂️ Миссия "Пройди 5000 шагов" - ИСПРАВЛЕНО
                 "daily_steps" => await CalculateDailyStepsAsync(userId, today),
 
                 // 💪 Миссия "Скан тела каждую неделю"
@@ -170,14 +169,15 @@ namespace FitnessTracker.API.Services
         }
 
         /// <summary>
-        /// 🚶‍♂️ Подсчет шагов за сегодня
+        /// 🚶‍♂️ Подсчет шагов за сегодня - ИСПРАВЛЕНО
         /// </summary>
         private async Task<int> CalculateDailyStepsAsync(string userId, DateTime date)
         {
             try
             {
-                var todaySteps = await _stepsRepository.GetByUserIdAsync(userId, date);
-                return todaySteps.Where(s => s.Date.Date == date).Sum(s => s.StepsCount);
+                // ✅ ИСПРАВЛЕНО: Используем новый метод для получения записи за конкретный день
+                var todaySteps = await _stepsRepository.GetByUserIdAndDateAsync(userId, date);
+                return todaySteps?.StepsCount ?? 0;
             }
             catch (Exception ex)
             {

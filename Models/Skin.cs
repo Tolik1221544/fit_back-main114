@@ -8,6 +8,10 @@ namespace FitnessTracker.API.Models
         public string ImageUrl { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
 
+        
+        public decimal ExperienceBoost { get; set; } = 1.0m; // Множитель опыта (1.0 = без бонуса)
+        public int Tier { get; set; } = 1; // Уровень скина (1, 2, 3)
+
         // Navigation properties
         public ICollection<UserSkin> UserSkins { get; set; } = new List<UserSkin>();
     }
@@ -18,6 +22,8 @@ namespace FitnessTracker.API.Models
         public string UserId { get; set; } = string.Empty;
         public string SkinId { get; set; } = string.Empty;
         public DateTime PurchasedAt { get; set; } = DateTime.UtcNow;
+
+        public bool IsActive { get; set; } = false;
 
         // Navigation properties
         public User User { get; set; } = null!;

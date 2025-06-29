@@ -45,8 +45,9 @@ namespace FitnessTracker.API.Mapping
             CreateMap<BodyScan, BodyScanDto>();
             CreateMap<BodyScanDto, BodyScan>();
 
-            // Skin mappings
-            CreateMap<Skin, SkinDto>();
+            CreateMap<Skin, SkinDto>()
+                .ForMember(dest => dest.IsOwned, opt => opt.Ignore())
+                .ForMember(dest => dest.IsActive, opt => opt.Ignore());
 
             // Mission mappings
             CreateMap<Mission, MissionDto>();
@@ -55,6 +56,7 @@ namespace FitnessTracker.API.Mapping
             // Referral mappings
             CreateMap<Referral, ReferredUserDto>()
                 .ForMember(dest => dest.Email, opt => opt.Ignore()) // Will be set manually
+                .ForMember(dest => dest.Name, opt => opt.Ignore()) // Will be set manually
                 .ForMember(dest => dest.Level, opt => opt.Ignore()) // Will be set manually
                 .ForMember(dest => dest.JoinedAt, opt => opt.MapFrom(src => src.CreatedAt))
                 .ForMember(dest => dest.RewardCoins, opt => opt.MapFrom(src => src.RewardCoins))

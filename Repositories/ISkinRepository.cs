@@ -9,5 +9,9 @@ namespace FitnessTracker.API.Repositories
         Task<IEnumerable<UserSkin>> GetUserSkinsAsync(string userId);
         Task<UserSkin> PurchaseSkinAsync(UserSkin userSkin);
         Task<bool> UserOwnsSkinAsync(string userId, string skinId);
+
+        Task<bool> DeactivateAllUserSkinsAsync(string userId);
+        Task<bool> ActivateUserSkinAsync(string userId, string skinId);
+        Task<UserSkin?> GetActiveUserSkinAsync(string userId);
     }
 }

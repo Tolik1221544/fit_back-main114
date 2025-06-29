@@ -1,6 +1,7 @@
 using FitnessTracker.API.DTOs;
 using FitnessTracker.API.Models;
 using FitnessTracker.API.Repositories;
+using FitnessTracker.API.Services;
 using AutoMapper;
 
 namespace FitnessTracker.API.Services
@@ -9,6 +10,7 @@ namespace FitnessTracker.API.Services
     {
         private readonly IExperienceRepository _experienceRepository;
         private readonly IUserRepository _userRepository;
+        private readonly ISkinService _skinService;
         private readonly IMapper _mapper;
         private readonly ILogger<ExperienceService> _logger;
 
@@ -20,22 +22,27 @@ namespace FitnessTracker.API.Services
         public ExperienceService(
             IExperienceRepository experienceRepository,
             IUserRepository userRepository,
+            ISkinService skinService,
             IMapper mapper,
             ILogger<ExperienceService> logger)
         {
             _experienceRepository = experienceRepository;
             _userRepository = userRepository;
+            _skinService = skinService;
             _mapper = mapper;
             _logger = logger;
         }
 
-        public async Task<bool> AddExperienceAsync(string userId, int experience, string source, string description)
+        public async Task<bool> AddExperienceAsync(string userId, int baseExperience, string source, string description)
         {
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) return false;
 
+            var experienceBoost = await _skinService.GetUserExperienceBoostAsync(userId);
+            var finalExperience = (int)Math.Round(baseExperience * experienceBoost);
+
             var levelBefore = user.Level;
-            user.Experience += experience;
+            user.Experience += finalExperience;
             var levelAfter = await CalculateLevelFromExperience(user.Experience);
             var leveledUp = levelAfter > levelBefore;
 
@@ -47,12 +54,16 @@ namespace FitnessTracker.API.Services
 
             await _userRepository.UpdateAsync(user);
 
+            // Записываем транзакцию с информацией о бусте
+            var boostInfo = experienceBoost > 1.0m ? $" (x{experienceBoost} boost)" : "";
+            var finalDescription = $"{description}{boostInfo}";
+
             var transaction = new ExperienceTransaction
             {
                 UserId = userId,
-                Experience = experience,
+                Experience = finalExperience,
                 Source = source,
-                Description = description,
+                Description = finalDescription,
                 LevelBefore = levelBefore,
                 LevelAfter = levelAfter,
                 LeveledUp = leveledUp
@@ -60,7 +71,15 @@ namespace FitnessTracker.API.Services
 
             await _experienceRepository.CreateTransactionAsync(transaction);
 
-            _logger.LogInformation($"Added {experience} XP to user {userId} from {source}");
+            if (experienceBoost > 1.0m)
+            {
+                _logger.LogInformation($"Added {baseExperience} base XP (boosted to {finalExperience} with {experienceBoost}x multiplier) to user {userId} from {source}");
+            }
+            else
+            {
+                _logger.LogInformation($"Added {finalExperience} XP to user {userId} from {source}");
+            }
+
             return true;
         }
 
@@ -70,7 +89,6 @@ namespace FitnessTracker.API.Services
             return _mapper.Map<IEnumerable<ExperienceTransactionDto>>(transactions);
         }
 
-       
         public Task<int> CalculateLevelFromExperience(int experience)
         {
             for (int level = LevelExperienceRequirements.Length - 1; level >= 1; level--)
@@ -83,7 +101,6 @@ namespace FitnessTracker.API.Services
             return Task.FromResult(1);
         }
 
-       
         public Task<int> GetExperienceForNextLevel(int currentLevel)
         {
             if (currentLevel >= LevelExperienceRequirements.Length - 1)

@@ -15,7 +15,7 @@ namespace FitnessTracker.API.Repositories
 
         public async Task<IEnumerable<Skin>> GetAllSkinsAsync()
         {
-            return await _context.Skins.ToListAsync();
+            return await _context.Skins.OrderBy(s => s.Tier).ThenBy(s => s.Cost).ToListAsync();
         }
 
         public async Task<Skin?> GetSkinByIdAsync(string id)
@@ -28,6 +28,8 @@ namespace FitnessTracker.API.Repositories
             return await _context.UserSkins
                 .Include(us => us.Skin)
                 .Where(us => us.UserId == userId)
+                .OrderBy(us => us.Skin.Tier)
+                .ThenBy(us => us.Skin.Cost)
                 .ToListAsync();
         }
 
@@ -42,6 +44,40 @@ namespace FitnessTracker.API.Repositories
         {
             return await _context.UserSkins
                 .AnyAsync(us => us.UserId == userId && us.SkinId == skinId);
+        }
+
+        public async Task<bool> DeactivateAllUserSkinsAsync(string userId)
+        {
+            var userSkins = await _context.UserSkins
+                .Where(us => us.UserId == userId && us.IsActive)
+                .ToListAsync();
+
+            foreach (var userSkin in userSkins)
+            {
+                userSkin.IsActive = false;
+            }
+
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<bool> ActivateUserSkinAsync(string userId, string skinId)
+        {
+            var userSkin = await _context.UserSkins
+                .FirstOrDefaultAsync(us => us.UserId == userId && us.SkinId == skinId);
+
+            if (userSkin == null) return false;
+
+            userSkin.IsActive = true;
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<UserSkin?> GetActiveUserSkinAsync(string userId)
+        {
+            return await _context.UserSkins
+                .Include(us => us.Skin)
+                .FirstOrDefaultAsync(us => us.UserId == userId && us.IsActive);
         }
     }
 }

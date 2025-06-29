@@ -131,16 +131,32 @@ namespace FitnessTracker.API.Controllers
                         new {
                             method = "POST",
                             path = "/api/activity/steps",
-                            description = "👣 Добавить шаги",
+                            description = "👣 Добавить/обновить шаги за день",
                             auth = "required",
-                            body = new { steps = 10000, calories = 500, date = "2025-06-24T00:00:00Z" }
+                            body = new { steps = 10000, calories = 500, date = "2025-06-24T00:00:00Z" },
+                            note = "✅ ОБНОВЛЕНО: Один объект на день. При повторном вызове обновляет существующую запись."
+                        },
+                        new {
+                            method = "GET",
+                            path = "/api/activity/steps?date=2025-06-24",
+                            description = "📈 Получить шаги за дату",
+                            auth = "required",
+                            response = new object[] { new { id = "...", stepsCount = 10000, calories = 500, date = "2025-06-24T00:00:00Z" } },
+                            note = "✅ ОБНОВЛЕНО: Возвращает одну запись на день"
                         },
                         new {
                             method = "GET",
                             path = "/api/activity/stats",
                             description = "📊 Статистика активностей",
                             auth = "required",
-                            response = new { totalActivities = 15, totalCalories = 3500, activityTypes = new object[] { new { type = "strength", count = 10 } } }
+                            response = new {
+                                totalActivities = 15,
+                                totalCalories = 3500,
+                                activityCalories = 2000,
+                                stepsCalories = 1500,
+                                activityTypes = new object[] { new { type = "strength", count = 10 } }
+                            },
+                            note = "✅ ИСПРАВЛЕНО: Теперь включает калории от шагов и тренировок отдельно"
                         }
                     },
 
@@ -283,9 +299,18 @@ namespace FitnessTracker.API.Controllers
                         "2. POST /api/auth/confirm-email → Получить токен",
                         "3. PUT /api/user/profile → Заполнить профиль",
                         "4. POST /api/activity → Добавить тренировку",
-                        "5. POST /api/food-intake → Записать питание",
-                        "6. GET /api/mission → Проверить прогресс миссий",
-                        "7. GET /api/lw-coin/balance → Проверить баланс"
+                        "5. POST /api/activity/steps → Записать шаги",
+                        "6. POST /api/food-intake → Записать питание",
+                        "7. GET /api/mission → Проверить прогресс миссий",
+                        "8. GET /api/lw-coin/balance → Проверить баланс"
+                    },
+                    stepsWorkflow = new string[]
+                    {
+                        "✅ НОВОЕ: Работа с шагами",
+                        "1. POST /api/activity/steps → Добавить шаги за день",
+                        "2. POST /api/activity/steps (повторно) → Обновить шаги за тот же день",
+                        "3. GET /api/activity/steps?date=2025-06-24 → Получить шаги за день",
+                        "4. GET /api/activity/stats → Получить статистику с калориями от шагов"
                     }
                 },
 

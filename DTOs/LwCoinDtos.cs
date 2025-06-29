@@ -9,6 +9,8 @@ namespace FitnessTracker.API.DTOs
         public bool IsPremium { get; set; }
         public DateTime? PremiumExpiresAt { get; set; }
         public DateTime NextRefillDate { get; set; }
+
+        public PremiumNotificationDto? PremiumNotification { get; set; }
     }
 
     public class SpendLwCoinsRequest
@@ -17,6 +19,9 @@ namespace FitnessTracker.API.DTOs
         public string Type { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public string FeatureUsed { get; set; } = string.Empty;
+
+        public decimal? Price { get; set; }
+        public string? Period { get; set; } // "monthly", "one-time", etc.
     }
 
     public class LwCoinTransactionDto
@@ -27,17 +32,24 @@ namespace FitnessTracker.API.DTOs
         public string Description { get; set; } = string.Empty;
         public string FeatureUsed { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
+
+        public decimal? Price { get; set; }
+        public string? Period { get; set; }
     }
 
     public class PurchasePremiumRequest
     {
         public string PaymentTransactionId { get; set; } = string.Empty;
+        public decimal Price { get; set; } = 8.99m;
+        public string Period { get; set; } = "monthly";
     }
 
     public class PurchaseCoinPackRequest
     {
         public string PackType { get; set; } = string.Empty; // "pack_50", "pack_100"
         public string PaymentTransactionId { get; set; } = string.Empty;
+        public decimal Price { get; set; }
+        public string Period { get; set; } = "one-time";
     }
 
     public class LwCoinLimitsDto
@@ -47,5 +59,14 @@ namespace FitnessTracker.API.DTOs
         public int RemainingThisMonth { get; set; }
         public bool IsPremium { get; set; }
         public Dictionary<string, int> FeatureUsage { get; set; } = new Dictionary<string, int>();
+    }
+
+    public class PremiumNotificationDto
+    {
+        public string Type { get; set; } = string.Empty; // "expiring_soon", "expired", "downgraded"
+        public string Message { get; set; } = string.Empty;
+        public DateTime? ExpiresAt { get; set; }
+        public int DaysRemaining { get; set; }
+        public bool IsUrgent { get; set; }
     }
 }

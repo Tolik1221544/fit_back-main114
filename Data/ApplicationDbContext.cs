@@ -242,7 +242,9 @@ namespace FitnessTracker.API.Data
                     Name = "Атлет",
                     Cost = 200,
                     ImageUrl = "https://example.com/skins/athlete.png",
-                    Description = "Скин для настоящих спортсменов"
+                    Description = "Скин для настоящих спортсменов",
+                    ExperienceBoost = 1.1m,
+                    Tier = 1
                 },
                 new Skin
                 {
@@ -250,7 +252,9 @@ namespace FitnessTracker.API.Data
                     Name = "Машина",
                     Cost = 500,
                     ImageUrl = "https://example.com/skins/machine.png",
-                    Description = "Скин для тех, кто работает как машина"
+                    Description = "Скин для тех, кто работает как машина",
+                    ExperienceBoost = 1.5m,
+                    Tier = 2
                 },
                 new Skin
                 {
@@ -258,7 +262,9 @@ namespace FitnessTracker.API.Data
                     Name = "Сверхчеловек",
                     Cost = 2000,
                     ImageUrl = "https://example.com/skins/superhuman.png",
-                    Description = "Скин для сверхлюдей"
+                    Description = "Скин для сверхлюдей",
+                    ExperienceBoost = 2.0m,
+                    Tier = 3
                 }
             );
 

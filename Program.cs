@@ -228,7 +228,31 @@ using (var scope = app.Services.CreateScope())
     {
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        await context.Database.EnsureCreatedAsync();
+        Console.WriteLine("🗄️ Initializing database...");
+
+        // Применяем миграции (если есть)
+        var pendingMigrations = await context.Database.GetPendingMigrationsAsync();
+        if (pendingMigrations.Any())
+        {
+            Console.WriteLine($"📦 Applying {pendingMigrations.Count()} pending migrations...");
+            await context.Database.MigrateAsync();
+            Console.WriteLine("✅ Migrations applied successfully!");
+        }
+        else
+        {
+            // Создаем БД только если её нет (первый запуск)
+            var created = await context.Database.EnsureCreatedAsync();
+            if (created)
+            {
+                Console.WriteLine("🆕 Database created for the first time!");
+            }
+            else
+            {
+                Console.WriteLine("✅ Database already exists, checking connection...");
+            }
+        }
+
+        // Проверяем подключение
         await context.Database.CanConnectAsync();
 
         Console.WriteLine("✅ Database initialized successfully!");
