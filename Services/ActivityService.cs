@@ -10,6 +10,7 @@ namespace FitnessTracker.API.Services
         private readonly IActivityRepository _activityRepository;
         private readonly IStepsRepository _stepsRepository;
         private readonly IExperienceService _experienceService;
+        private readonly IMissionService _missionService; 
         private readonly IMapper _mapper;
         private readonly ILogger<ActivityService> _logger;
 
@@ -17,12 +18,14 @@ namespace FitnessTracker.API.Services
             IActivityRepository activityRepository,
             IStepsRepository stepsRepository,
             IExperienceService experienceService,
+            IMissionService missionService, 
             IMapper mapper,
             ILogger<ActivityService> logger)
         {
             _activityRepository = activityRepository;
             _stepsRepository = stepsRepository;
             _experienceService = experienceService;
+            _missionService = missionService; 
             _mapper = mapper;
             _logger = logger;
         }
@@ -56,144 +59,252 @@ namespace FitnessTracker.API.Services
         {
             try
             {
-                // ✅ ФИКС: Валидация обязательных полей
-                if (string.IsNullOrEmpty(request.Type))
+                
+                if (string.IsNullOrWhiteSpace(userId))
+                    throw new ArgumentException("User ID is required");
+
+                if (string.IsNullOrWhiteSpace(request.Type))
                     throw new ArgumentException("Activity type is required");
 
-                // ✅ ИСПРАВЛЕНО: Умная обработка дат с fallback на старые поля
-                var startDate = request.StartDate != default ? request.StartDate :
-                               (request.StartTime ?? DateTime.UtcNow);
+                if (request.StartDate == default(DateTime))
+                    throw new ArgumentException("Start date is required");
 
-                var endDate = request.EndDate ?? request.EndTime;
+                _logger.LogInformation($"Creating activity for user {userId}: type={request.Type}, startDate={request.StartDate}");
+
+                
+                var activityType = request.Type.Trim().ToLowerInvariant();
+                if (activityType != "strength" && activityType != "cardio")
+                    throw new ArgumentException("Activity type must be 'strength' or 'cardio'");
+
+               
+                var startDate = request.StartDate;
+                var startTime = request.StartTime ?? request.StartDate;
+                var endDate = request.EndDate ?? request.StartDate;
+                var endTime = request.EndTime ?? request.EndDate ?? request.StartDate;
 
                 var activity = new Activity
                 {
+                    Id = Guid.NewGuid().ToString(),
                     UserId = userId,
-                    Type = request.Type.ToLowerInvariant(),
+                    Type = activityType,
                     StartDate = startDate,
-                    StartTime = request.StartTime ?? startDate, // Поддержка старого поля
+                    StartTime = startTime,
                     EndDate = endDate,
-                    EndTime = request.EndTime ?? endDate, // Поддержка старого поля
+                    EndTime = endTime,
                     Calories = request.Calories ?? 0,
                     CreatedAt = DateTime.UtcNow
                 };
 
-              
-                if (request.Type.Equals("strength", StringComparison.OrdinalIgnoreCase) && request.StrengthData != null)
+                
+                if (activityType == "strength" && request.StrengthData != null)
                 {
                     try
                     {
+                        // Валидируем обязательные поля
+                        if (string.IsNullOrWhiteSpace(request.StrengthData.Name))
+                            throw new ArgumentException("Strength exercise name is required");
+
                         activity.StrengthData = new StrengthData
                         {
-                            Name = request.StrengthData.Name ?? "Неизвестное упражнение",
-                            MuscleGroup = request.StrengthData.MuscleGroup ?? "Неизвестная группа мышц",
-                            Equipment = request.StrengthData.Equipment ?? "Неизвестное оборудование",
-                            WorkingWeight = request.StrengthData.WorkingWeight,
-                            RestTimeSeconds = request.StrengthData.RestTimeSeconds
+                            Name = request.StrengthData.Name.Trim(),
+                            MuscleGroup = request.StrengthData.MuscleGroup?.Trim() ?? "Не указано",
+                            Equipment = request.StrengthData.Equipment?.Trim() ?? "Не указано",
+                            WorkingWeight = Math.Max(0, request.StrengthData.WorkingWeight),
+                            RestTimeSeconds = Math.Max(0, request.StrengthData.RestTimeSeconds)
                         };
+
+                        _logger.LogInformation($"Strength data set: {activity.StrengthData.Name}, {activity.StrengthData.WorkingWeight}kg");
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError($"Error setting strength data: {ex.Message}");
+                        throw new ArgumentException($"Invalid strength data: {ex.Message}");
                     }
                 }
 
-                // ✅ ФИКС: Более надежная обработка данных кардио тренировки
-                if (request.Type.Equals("cardio", StringComparison.OrdinalIgnoreCase) && request.CardioData != null)
+               
+                if (activityType == "cardio" && request.CardioData != null)
                 {
                     try
                     {
+                        // Валидируем обязательные поля
+                        if (string.IsNullOrWhiteSpace(request.CardioData.CardioType))
+                            throw new ArgumentException("Cardio type is required");
+
                         activity.CardioData = new CardioData
                         {
-                            CardioType = request.CardioData.CardioType ?? "Неизвестный тип кардио",
-                            DistanceKm = request.CardioData.DistanceKm,
-                            AvgPulse = request.CardioData.AvgPulse,
-                            MaxPulse = request.CardioData.MaxPulse,
-                            AvgPace = request.CardioData.AvgPace ?? ""
+                            CardioType = request.CardioData.CardioType.Trim(),
+                            DistanceKm = request.CardioData.DistanceKm.HasValue ? Math.Max(0, request.CardioData.DistanceKm.Value) : null,
+                            AvgPulse = request.CardioData.AvgPulse.HasValue ? Math.Max(0, request.CardioData.AvgPulse.Value) : null,
+                            MaxPulse = request.CardioData.MaxPulse.HasValue ? Math.Max(0, request.CardioData.MaxPulse.Value) : null,
+                            AvgPace = request.CardioData.AvgPace?.Trim() ?? ""
                         };
+
+                        _logger.LogInformation($"Cardio data set: {activity.CardioData.CardioType}, {activity.CardioData.DistanceKm}km");
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError($"Error setting cardio data: {ex.Message}");
+                        throw new ArgumentException($"Invalid cardio data: {ex.Message}");
                     }
                 }
 
-                _logger.LogInformation($"Creating activity for user {userId}: {activity.Type}");
-
-                var createdActivity = await _activityRepository.CreateAsync(activity);
-                if (createdActivity == null)
+                
+                if (activityType == "strength" && activity.StrengthData == null)
                 {
-                    throw new InvalidOperationException("Failed to create activity");
+                    _logger.LogWarning($"Strength activity without strength data for user {userId}");
+                    // Создаем минимальные данные
+                    activity.StrengthData = new StrengthData
+                    {
+                        Name = "Упражнение не указано",
+                        MuscleGroup = "Не указано",
+                        Equipment = "Не указано",
+                        WorkingWeight = 0,
+                        RestTimeSeconds = 0
+                    };
                 }
 
-                _logger.LogInformation($"Activity created successfully for user {userId}: {createdActivity.Id}");
+                if (activityType == "cardio" && activity.CardioData == null)
+                {
+                    _logger.LogWarning($"Cardio activity without cardio data for user {userId}");
+                    // Создаем минимальные данные
+                    activity.CardioData = new CardioData
+                    {
+                        CardioType = "Кардио не указано",
+                        DistanceKm = null,
+                        AvgPulse = null,
+                        MaxPulse = null,
+                        AvgPace = ""
+                    };
+                }
 
-                // Добавляем опыт за тренировку
-                var experienceAmount = CalculateExperienceForActivity(request);
-                await _experienceService.AddExperienceAsync(userId, experienceAmount, "activity",
-                    $"Тренировка: {request.Type} ({experienceAmount} опыта)");
+                _logger.LogInformation($"About to create activity in database for user {userId}");
+
+               
+                Activity createdActivity;
+                try
+                {
+                    createdActivity = await _activityRepository.CreateAsync(activity);
+                    if (createdActivity == null)
+                    {
+                        throw new InvalidOperationException("Repository returned null after creation");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Database error creating activity: {ex.Message}");
+                    _logger.LogError($"Inner exception: {ex.InnerException?.Message}");
+                    throw new InvalidOperationException($"Failed to save activity to database: {ex.Message}");
+                }
+
+                _logger.LogInformation($"Activity created successfully: {createdActivity.Id} for user {userId}");
+
+            
+                try
+                {
+                    var experienceAmount = CalculateExperienceForActivity(request);
+                    await _experienceService.AddExperienceAsync(userId, experienceAmount, "activity",
+                        $"Тренировка: {request.Type} ({experienceAmount} опыта)");
+
+                    _logger.LogInformation($"Experience added: {experienceAmount} for user {userId}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Error adding experience: {ex.Message}");
+                    // Не прерываем выполнение, если не удалось добавить опыт
+                }
 
                 return _mapper.Map<ActivityDto>(createdActivity);
             }
+            catch (ArgumentException)
+            {
+                throw; // Пропускаем ошибки валидации как есть
+            }
             catch (Exception ex)
             {
-                _logger.LogError($"Error creating activity for user {userId}: {ex.Message}");
+                _logger.LogError($"Unexpected error creating activity for user {userId}: {ex.Message}");
                 _logger.LogError($"Stack trace: {ex.StackTrace}");
-
-            
-                if (ex.InnerException != null)
-                {
-                    _logger.LogError($"Inner exception: {ex.InnerException.Message}");
-                }
-
                 throw new InvalidOperationException($"Failed to create activity: {ex.Message}");
             }
         }
 
         public async Task<ActivityDto> UpdateActivityAsync(string userId, string activityId, UpdateActivityRequest request)
         {
-            var activity = await _activityRepository.GetByIdAsync(activityId);
-            if (activity == null || activity.UserId != userId)
-                throw new ArgumentException("Activity not found");
-
-            // ✅ ИСПРАВЛЕНО: Умная обработка дат с fallback
-            activity.Type = request.Type?.ToLowerInvariant() ?? activity.Type;
-            activity.StartDate = request.StartDate != default ? request.StartDate :
-                                (request.StartTime ?? activity.StartDate);
-            activity.StartTime = request.StartTime ?? request.StartDate;
-            activity.EndDate = request.EndDate ?? request.EndTime ?? activity.EndDate;
-            activity.EndTime = request.EndTime ?? request.EndDate ?? activity.EndTime;
-            activity.Calories = request.Calories ?? activity.Calories;
-
-            // Обновляем данные в зависимости от типа
-            if (request.Type?.Equals("strength", StringComparison.OrdinalIgnoreCase) == true && request.StrengthData != null)
+            try
             {
-                activity.StrengthData = new StrengthData
-                {
-                    Name = request.StrengthData.Name ?? "Неизвестное упражнение",
-                    MuscleGroup = request.StrengthData.MuscleGroup ?? "Неизвестная группа мышц",
-                    Equipment = request.StrengthData.Equipment ?? "Неизвестное оборудование",
-                    WorkingWeight = request.StrengthData.WorkingWeight,
-                    RestTimeSeconds = request.StrengthData.RestTimeSeconds
-                };
-                activity.CardioData = null;
-            }
+                var activity = await _activityRepository.GetByIdAsync(activityId);
+                if (activity == null || activity.UserId != userId)
+                    throw new ArgumentException("Activity not found");
 
-            if (request.Type?.Equals("cardio", StringComparison.OrdinalIgnoreCase) == true && request.CardioData != null)
+                _logger.LogInformation($"Updating activity {activityId} for user {userId}");
+
+                
+                if (!string.IsNullOrWhiteSpace(request.Type))
+                {
+                    var activityType = request.Type.Trim().ToLowerInvariant();
+                    if (activityType != "strength" && activityType != "cardio")
+                        throw new ArgumentException("Activity type must be 'strength' or 'cardio'");
+                    activity.Type = activityType;
+                }
+
+                if (request.StartDate != default(DateTime))
+                {
+                    activity.StartDate = request.StartDate;
+                    activity.StartTime = request.StartTime ?? request.StartDate;
+                }
+
+                if (request.EndDate.HasValue)
+                {
+                    activity.EndDate = request.EndDate;
+                    activity.EndTime = request.EndTime ?? request.EndDate;
+                }
+
+                if (request.Calories.HasValue)
+                {
+                    activity.Calories = Math.Max(0, request.Calories.Value);
+                }
+
+               
+                if (activity.Type == "strength" && request.StrengthData != null)
+                {
+                    activity.StrengthData = new StrengthData
+                    {
+                        Name = !string.IsNullOrWhiteSpace(request.StrengthData.Name)
+                            ? request.StrengthData.Name.Trim()
+                            : activity.StrengthData?.Name ?? "Упражнение не указано",
+                        MuscleGroup = request.StrengthData.MuscleGroup?.Trim() ?? activity.StrengthData?.MuscleGroup ?? "Не указано",
+                        Equipment = request.StrengthData.Equipment?.Trim() ?? activity.StrengthData?.Equipment ?? "Не указано",
+                        WorkingWeight = Math.Max(0, request.StrengthData.WorkingWeight),
+                        RestTimeSeconds = Math.Max(0, request.StrengthData.RestTimeSeconds)
+                    };
+                    activity.CardioData = null; // Очищаем данные другого типа
+                }
+
+                if (activity.Type == "cardio" && request.CardioData != null)
+                {
+                    activity.CardioData = new CardioData
+                    {
+                        CardioType = !string.IsNullOrWhiteSpace(request.CardioData.CardioType)
+                            ? request.CardioData.CardioType.Trim()
+                            : activity.CardioData?.CardioType ?? "Кардио не указано",
+                        DistanceKm = request.CardioData.DistanceKm.HasValue ? Math.Max(0, request.CardioData.DistanceKm.Value) : activity.CardioData?.DistanceKm,
+                        AvgPulse = request.CardioData.AvgPulse.HasValue ? Math.Max(0, request.CardioData.AvgPulse.Value) : activity.CardioData?.AvgPulse,
+                        MaxPulse = request.CardioData.MaxPulse.HasValue ? Math.Max(0, request.CardioData.MaxPulse.Value) : activity.CardioData?.MaxPulse,
+                        AvgPace = request.CardioData.AvgPace?.Trim() ?? activity.CardioData?.AvgPace ?? ""
+                    };
+                    activity.StrengthData = null; // Очищаем данные другого типа
+                }
+
+                var updatedActivity = await _activityRepository.UpdateAsync(activity);
+                _logger.LogInformation($"Activity {activityId} updated successfully");
+
+                return _mapper.Map<ActivityDto>(updatedActivity);
+            }
+            catch (Exception ex)
             {
-                activity.CardioData = new CardioData
-                {
-                    CardioType = request.CardioData.CardioType ?? "Неизвестный тип кардио",
-                    DistanceKm = request.CardioData.DistanceKm,
-                    AvgPulse = request.CardioData.AvgPulse,
-                    MaxPulse = request.CardioData.MaxPulse,
-                    AvgPace = request.CardioData.AvgPace ?? ""
-                };
-                activity.StrengthData = null;
+                _logger.LogError($"Error updating activity {activityId}: {ex.Message}");
+                throw;
             }
-
-            var updatedActivity = await _activityRepository.UpdateAsync(activity);
-            return _mapper.Map<ActivityDto>(updatedActivity);
         }
 
         public async Task DeleteActivityAsync(string userId, string activityId)
@@ -203,6 +314,7 @@ namespace FitnessTracker.API.Services
                 throw new ArgumentException("Activity not found");
 
             await _activityRepository.DeleteAsync(activityId);
+            _logger.LogInformation($"Activity {activityId} deleted for user {userId}");
         }
 
         public async Task<object> GetActivityStatsAsync(string userId, DateTime? startDate = null, DateTime? endDate = null)
@@ -232,12 +344,18 @@ namespace FitnessTracker.API.Services
 
         public async Task<StepsDto> AddStepsAsync(string userId, AddStepsRequest request)
         {
+            // ✅ ФИКС: Валидация данных о шагах
+            if (request.Steps < 0)
+                throw new ArgumentException("Steps count cannot be negative");
+
             var steps = new Steps
             {
+                Id = Guid.NewGuid().ToString(),
                 UserId = userId,
                 StepsCount = request.Steps,
-                Calories = request.Calories,
-                Date = request.Date
+                Calories = request.Calories.HasValue ? Math.Max(0, request.Calories.Value) : null,
+                Date = request.Date,
+                CreatedAt = DateTime.UtcNow
             };
 
             var createdSteps = await _stepsRepository.CreateAsync(steps);
@@ -250,6 +368,8 @@ namespace FitnessTracker.API.Services
                     $"Шаги: {request.Steps} ({experienceAmount} опыта)");
             }
 
+            await _missionService.UpdateMissionProgressAsync(userId, "daily_steps");
+
             return _mapper.Map<StepsDto>(createdSteps);
         }
 
@@ -259,7 +379,7 @@ namespace FitnessTracker.API.Services
             return _mapper.Map<IEnumerable<StepsDto>>(steps);
         }
 
-        // Методы для расчета опыта
+        // ✅ ФИКС: Улучшенные методы для расчета опыта
         private int CalculateExperienceForActivity(AddActivityRequest activity)
         {
             int baseExperience = activity.Type?.ToLowerInvariant() switch
@@ -270,18 +390,17 @@ namespace FitnessTracker.API.Services
             };
 
             // Бонус за калории
-            int calorieBonus = activity.Calories.HasValue ? (activity.Calories.Value / 100) * 5 : 0;
+            int calorieBonus = activity.Calories.HasValue ? Math.Min(20, (activity.Calories.Value / 100) * 5) : 0;
 
             // Бонус за продолжительность
             int durationBonus = 0;
             var endTime = activity.EndDate ?? activity.EndTime;
-            var startTime = activity.StartDate != default ? activity.StartDate :
-                           (activity.StartTime ?? DateTime.UtcNow);
+            var startTime = activity.StartDate != default ? activity.StartDate : (activity.StartTime ?? DateTime.UtcNow);
 
             if (endTime.HasValue)
             {
                 var duration = endTime.Value - startTime;
-                durationBonus = Math.Min((int)duration.TotalMinutes / 10, 15);
+                durationBonus = Math.Min(15, (int)duration.TotalMinutes / 10);
             }
 
             return baseExperience + calorieBonus + durationBonus;
@@ -295,7 +414,8 @@ namespace FitnessTracker.API.Services
                 >= 10000 => 20,
                 >= 7000 => 15,
                 >= 5000 => 10,
-                _ => 5
+                >= 1000 => 5,
+                _ => 0
             };
         }
     }

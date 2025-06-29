@@ -8,11 +8,13 @@ namespace FitnessTracker.API.Services
     public class BodyScanService : IBodyScanService
     {
         private readonly IBodyScanRepository _bodyScanRepository;
+        private readonly IMissionService _missionService;
         private readonly IMapper _mapper;
 
-        public BodyScanService(IBodyScanRepository bodyScanRepository, IMapper mapper)
+        public BodyScanService(IBodyScanRepository bodyScanRepository, IMissionService missionService, IMapper mapper)
         {
             _bodyScanRepository = bodyScanRepository;
+            _missionService = missionService;
             _mapper = mapper;
         }
 
@@ -57,6 +59,9 @@ namespace FitnessTracker.API.Services
             };
 
             var createdScan = await _bodyScanRepository.CreateAsync(bodyScan);
+
+            await _missionService.UpdateMissionProgressAsync(userId, "weekly_body_scan");
+
             return _mapper.Map<BodyScanDto>(createdScan);
         }
 

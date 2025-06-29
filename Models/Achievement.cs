@@ -6,9 +6,12 @@ namespace FitnessTracker.API.Models
         public string Title { get; set; } = string.Empty;
         public string Icon { get; set; } = string.Empty;
         public int RewardExperience { get; set; }
-        public string Type { get; set; } = string.Empty; // "activity", "food_intake", etc.
+        public string Type { get; set; } = string.Empty; // "activity", "food_intake", "voice_input", "food_scan", "body_scan", etc.
         public int TargetValue { get; set; }
         public bool IsActive { get; set; } = true;
+
+       
+        public string? Route { get; set; } = null;
 
         // Navigation properties
         public ICollection<UserMission> UserMissions { get; set; } = new List<UserMission>();
@@ -35,7 +38,7 @@ namespace FitnessTracker.API.Models
         public string Title { get; set; } = string.Empty;
         public string Icon { get; set; } = string.Empty;
         public string ImageUrl { get; set; } = string.Empty;
-        public string Type { get; set; } = string.Empty; // "activity_count", "food_count", "level", etc.
+        public string Type { get; set; } = string.Empty; // "activity_count", "food_count", "level", "body_scan_count", "referral_count", etc.
         public int RequiredValue { get; set; }
         public int RewardExperience { get; set; }
         public bool IsActive { get; set; } = true;

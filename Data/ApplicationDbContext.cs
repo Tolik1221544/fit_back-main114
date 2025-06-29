@@ -65,11 +65,9 @@ namespace FitnessTracker.API.Data
                     .HasForeignKey(e => e.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
 
-                
                 entity.Property(e => e.StrengthDataJson).HasColumnName("StrengthData");
                 entity.Property(e => e.CardioDataJson).HasColumnName("CardioData");
 
-               
                 entity.Ignore(e => e.StrengthData);
                 entity.Ignore(e => e.CardioData);
 
@@ -78,6 +76,7 @@ namespace FitnessTracker.API.Data
                 entity.Property(e => e.StartDate).IsRequired();
                 entity.Property(e => e.EndDate).IsRequired(false);
             });
+
             // Steps entity configuration
             modelBuilder.Entity<Steps>(entity =>
             {
@@ -200,68 +199,119 @@ namespace FitnessTracker.API.Data
                 entity.Property(e => e.Price).HasPrecision(10, 2);
             });
 
-            // Seed default missions
             modelBuilder.Entity<Mission>().HasData(
                 new Mission
                 {
-                    Id = "mission1",
-                    Title = "Первые шаги",
-                    Icon = "🏃‍♂️",
+                    Id = "mission_breakfast_500",
+                    Title = "Съешь 500ккал на завтрак",
+                    Icon = "🔥",
+                    RewardExperience = 100,
+                    Type = "breakfast_calories",
+                    TargetValue = 500,
+                    Route = null,
+                    IsActive = true
+                },
+                new Mission
+                {
+                    Id = "mission_walk_5000",
+                    Title = "Пройди 5000 шагов",
+                    Icon = "🚶‍♂️",
                     RewardExperience = 50,
-                    Type = "activity",
-                    TargetValue = 1
+                    Type = "daily_steps",
+                    TargetValue = 5000,
+                    Route = null,
+                    IsActive = true
                 },
                 new Mission
                 {
-                    Id = "mission2",
-                    Title = "Записать питание",
-                    Icon = "🍎",
-                    RewardExperience = 30,
-                    Type = "food_intake",
-                    TargetValue = 5
-                },
-                new Mission
-                {
-                    Id = "mission3",
-                    Title = "Недельный воин",
+                    Id = "mission_body_scan_weekly",
+                    Title = "Скан тела каждую неделю",
                     Icon = "💪",
                     RewardExperience = 100,
-                    Type = "activity",
-                    TargetValue = 7
+                    Type = "weekly_body_scan",
+                    TargetValue = 1,
+                    Route = "/body_analyze",
+                    IsActive = true
                 }
             );
 
-            // Seed default achievements
+            modelBuilder.Entity<Skin>().HasData(
+                new Skin
+                {
+                    Id = "skin_athlete",
+                    Name = "Атлет",
+                    Cost = 200,
+                    ImageUrl = "https://example.com/skins/athlete.png",
+                    Description = "Скин для настоящих спортсменов"
+                },
+                new Skin
+                {
+                    Id = "skin_machine",
+                    Name = "Машина",
+                    Cost = 500,
+                    ImageUrl = "https://example.com/skins/machine.png",
+                    Description = "Скин для тех, кто работает как машина"
+                },
+                new Skin
+                {
+                    Id = "skin_superhuman",
+                    Name = "Сверхчеловек",
+                    Cost = 2000,
+                    ImageUrl = "https://example.com/skins/superhuman.png",
+                    Description = "Скин для сверхлюдей"
+                }
+            );
+
             modelBuilder.Entity<Achievement>().HasData(
                 new Achievement
                 {
-                    Id = "achievement1",
-                    Title = "Первые шаги",
+                    Id = "achievement_first_workout",
+                    Title = "Первая тренировка",
                     Icon = "⭐",
-                    ImageUrl = "https://example.com/achievements/first-steps.png",
+                    ImageUrl = "https://example.com/achievements/first-workout.png",
                     Type = "activity_count",
                     RequiredValue = 1,
                     RewardExperience = 100
                 },
                 new Achievement
                 {
-                    Id = "achievement2",
-                    Title = "Активный новичок",
+                    Id = "achievement_workout_week",
+                    Title = "Неделя тренировок",
                     Icon = "🏃‍♂️",
-                    ImageUrl = "https://example.com/achievements/active-beginner.png",
+                    ImageUrl = "https://example.com/achievements/workout-week.png",
                     Type = "activity_count",
-                    RequiredValue = 10,
+                    RequiredValue = 7,
                     RewardExperience = 200
                 },
                 new Achievement
                 {
-                    Id = "achievement3",
+                    Id = "achievement_nutrition_master",
                     Title = "Мастер питания",
                     Icon = "🥗",
                     ImageUrl = "https://example.com/achievements/nutrition-master.png",
                     Type = "food_count",
                     RequiredValue = 50,
                     RewardExperience = 300
+                },
+                new Achievement
+                {
+                    Id = "achievement_body_analyzer",
+                    Title = "Аналитик тела",
+                    Icon = "📊",
+                    ImageUrl = "https://example.com/achievements/body-analyzer.png",
+                    Type = "body_scan_count",
+                    RequiredValue = 3,
+                    RewardExperience = 250
+                },
+                new Achievement
+                {
+                    Id = "achievement_referral_master",
+                    Title = "Мастер рефералов",
+                    Icon = "👑",
+                    ImageUrl = "https://example.com/achievements/referral-master.png",
+                    Type = "referral_count",
+                    RequiredValue = 10,
+                    RewardExperience = 500
                 }
             );
         }

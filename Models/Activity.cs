@@ -18,23 +18,101 @@ namespace FitnessTracker.API.Models
         // Navigation property
         public User User { get; set; } = null!;
 
+    
         public string? StrengthDataJson { get; set; }
         public string? CardioDataJson { get; set; }
 
+      
         public StrengthData? StrengthData
         {
-            get => string.IsNullOrEmpty(StrengthDataJson) ? null :
-                   JsonSerializer.Deserialize<StrengthData>(StrengthDataJson);
-            set => StrengthDataJson = value == null ? null : JsonSerializer.Serialize(value);
+            get
+            {
+                if (string.IsNullOrEmpty(StrengthDataJson))
+                    return null;
+
+                try
+                {
+                    return JsonSerializer.Deserialize<StrengthData>(StrengthDataJson, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                }
+                catch (JsonException ex)
+                {
+                    // Логируем ошибку десериализации
+                    Console.WriteLine($"Error deserializing StrengthData: {ex.Message}");
+                    return null;
+                }
+            }
+            set
+            {
+                if (value == null)
+                {
+                    StrengthDataJson = null;
+                }
+                else
+                {
+                    try
+                    {
+                        StrengthDataJson = JsonSerializer.Serialize(value, new JsonSerializerOptions
+                        {
+                            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                        });
+                    }
+                    catch (JsonException ex)
+                    {
+                        Console.WriteLine($"Error serializing StrengthData: {ex.Message}");
+                        StrengthDataJson = null;
+                    }
+                }
+            }
         }
 
         public CardioData? CardioData
         {
-            get => string.IsNullOrEmpty(CardioDataJson) ? null :
-                   JsonSerializer.Deserialize<CardioData>(CardioDataJson);
-            set => CardioDataJson = value == null ? null : JsonSerializer.Serialize(value);
+            get
+            {
+                if (string.IsNullOrEmpty(CardioDataJson))
+                    return null;
+
+                try
+                {
+                    return JsonSerializer.Deserialize<CardioData>(CardioDataJson, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                }
+                catch (JsonException ex)
+                {
+                    Console.WriteLine($"Error deserializing CardioData: {ex.Message}");
+                    return null;
+                }
+            }
+            set
+            {
+                if (value == null)
+                {
+                    CardioDataJson = null;
+                }
+                else
+                {
+                    try
+                    {
+                        CardioDataJson = JsonSerializer.Serialize(value, new JsonSerializerOptions
+                        {
+                            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                        });
+                    }
+                    catch (JsonException ex)
+                    {
+                        Console.WriteLine($"Error serializing CardioData: {ex.Message}");
+                        CardioDataJson = null;
+                    }
+                }
+            }
         }
     }
+
 
     public class StrengthData
     {
@@ -43,6 +121,14 @@ namespace FitnessTracker.API.Models
         public string Equipment { get; set; } = string.Empty;
         public decimal WorkingWeight { get; set; }
         public int RestTimeSeconds { get; set; }
+
+ 
+        public bool IsValid()
+        {
+            return !string.IsNullOrWhiteSpace(Name) &&
+                   WorkingWeight >= 0 &&
+                   RestTimeSeconds >= 0;
+        }
     }
 
     public class CardioData
@@ -52,5 +138,13 @@ namespace FitnessTracker.API.Models
         public int? AvgPulse { get; set; }
         public int? MaxPulse { get; set; }
         public string AvgPace { get; set; } = string.Empty;
+
+        public bool IsValid()
+        {
+            return !string.IsNullOrWhiteSpace(CardioType) &&
+                   (!DistanceKm.HasValue || DistanceKm >= 0) &&
+                   (!AvgPulse.HasValue || AvgPulse >= 0) &&
+                   (!MaxPulse.HasValue || MaxPulse >= 0);
+        }
     }
 }

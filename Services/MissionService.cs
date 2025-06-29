@@ -1,4 +1,4 @@
-using FitnessTracker.API.DTOs;
+﻿using FitnessTracker.API.DTOs;
 using FitnessTracker.API.Models;
 using FitnessTracker.API.Repositories;
 using AutoMapper;
@@ -10,6 +10,9 @@ namespace FitnessTracker.API.Services
         private readonly IMissionRepository _missionRepository;
         private readonly IAchievementService _achievementService;
         private readonly IExperienceService _experienceService;
+        private readonly IFoodIntakeRepository _foodIntakeRepository;
+        private readonly IStepsRepository _stepsRepository;
+        private readonly IBodyScanRepository _bodyScanRepository;
         private readonly IMapper _mapper;
         private readonly ILogger<MissionService> _logger;
 
@@ -17,12 +20,18 @@ namespace FitnessTracker.API.Services
             IMissionRepository missionRepository,
             IAchievementService achievementService,
             IExperienceService experienceService,
+            IFoodIntakeRepository foodIntakeRepository,
+            IStepsRepository stepsRepository,
+            IBodyScanRepository bodyScanRepository,
             IMapper mapper,
             ILogger<MissionService> logger)
         {
             _missionRepository = missionRepository;
             _achievementService = achievementService;
             _experienceService = experienceService;
+            _foodIntakeRepository = foodIntakeRepository;
+            _stepsRepository = stepsRepository;
+            _bodyScanRepository = bodyScanRepository;
             _mapper = mapper;
             _logger = logger;
         }
@@ -39,6 +48,9 @@ namespace FitnessTracker.API.Services
             {
                 var userMission = userMissionDict.GetValueOrDefault(mission.Id);
 
+                // ✅ РАССЧИТЫВАЕМ АКТУАЛЬНЫЙ ПРОГРЕСС для каждого типа миссии
+                var currentProgress = await CalculateMissionProgressAsync(userId, mission.Type, mission.TargetValue);
+
                 var missionDto = new MissionDto
                 {
                     Id = mission.Id,
@@ -47,9 +59,10 @@ namespace FitnessTracker.API.Services
                     RewardExperience = mission.RewardExperience,
                     Type = mission.Type,
                     TargetValue = mission.TargetValue,
-                    Progress = userMission?.Progress ?? 0,
-                    IsCompleted = userMission?.IsCompleted ?? false,
-                    CompletedAt = userMission?.CompletedAt
+                    Progress = currentProgress,
+                    IsCompleted = currentProgress >= mission.TargetValue,
+                    CompletedAt = userMission?.CompletedAt,
+                    Route = mission.Route
                 };
 
                 missionDtos.Add(missionDto);
@@ -71,34 +84,32 @@ namespace FitnessTracker.API.Services
             foreach (var mission in relevantMissions)
             {
                 var userMission = await _missionRepository.GetUserMissionAsync(userId, mission.Id);
+                var actualProgress = await CalculateMissionProgressAsync(userId, mission.Type, mission.TargetValue);
 
                 if (userMission == null)
                 {
-                    // Create new user mission
                     userMission = new UserMission
                     {
                         UserId = userId,
                         MissionId = mission.Id,
-                        Progress = incrementValue
+                        Progress = actualProgress
                     };
 
                     await _missionRepository.CreateUserMissionAsync(userMission);
                 }
                 else if (!userMission.IsCompleted)
                 {
-                    // Update existing mission progress
-                    userMission.Progress += incrementValue;
+                    userMission.Progress = actualProgress;
                     await _missionRepository.UpdateUserMissionAsync(userMission);
                 }
 
-                // Check if mission is completed
-                if (!userMission.IsCompleted && userMission.Progress >= mission.TargetValue)
+                // Проверяем завершение миссии
+                if (!userMission.IsCompleted && actualProgress >= mission.TargetValue)
                 {
                     userMission.IsCompleted = true;
                     userMission.CompletedAt = DateTime.UtcNow;
                     await _missionRepository.UpdateUserMissionAsync(userMission);
 
-                    // Award experience
                     await _experienceService.AddExperienceAsync(userId, mission.RewardExperience,
                         "mission", $"Mission completed: {mission.Title}");
 
@@ -106,8 +117,108 @@ namespace FitnessTracker.API.Services
                 }
             }
 
-            // Check for achievements
             await _achievementService.CheckAndUnlockAchievementsAsync(userId);
+        }
+
+        /// <summary>
+        /// 📊 Рассчитываем актуальный прогресс миссии на основе данных пользователя
+        /// </summary>
+        private async Task<int> CalculateMissionProgressAsync(string userId, string missionType, int targetValue)
+        {
+            var today = DateTime.UtcNow.Date;
+
+            return missionType switch
+            {
+                // 🔥 Миссия "Съешь 500ккал на завтрак"
+                "breakfast_calories" => await CalculateBreakfastCaloriesAsync(userId, today),
+
+                // 🚶‍♂️ Миссия "Пройди 5000 шагов"
+                "daily_steps" => await CalculateDailyStepsAsync(userId, today),
+
+                // 💪 Миссия "Скан тела каждую неделю"
+                "weekly_body_scan" => await CalculateWeeklyBodyScanAsync(userId),
+
+                _ => 0
+            };
+        }
+
+        /// <summary>
+        /// 🔥 Подсчет калорий на завтрак (6:00-11:00)
+        /// </summary>
+        private async Task<int> CalculateBreakfastCaloriesAsync(string userId, DateTime date)
+        {
+            try
+            {
+                var breakfastStart = date.AddHours(6); // 06:00
+                var breakfastEnd = date.AddHours(11);  // 11:00
+
+                var foodIntakes = await _foodIntakeRepository.GetByUserIdAndDateAsync(userId, date);
+
+                var breakfastIntakes = foodIntakes.Where(f =>
+                    f.DateTime >= breakfastStart && f.DateTime <= breakfastEnd);
+
+                var totalCalories = breakfastIntakes.Sum(f =>
+                    (f.NutritionPer100g.Calories * f.Weight) / 100);
+
+                return (int)Math.Round(totalCalories);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error calculating breakfast calories for user {userId}: {ex.Message}");
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// 🚶‍♂️ Подсчет шагов за сегодня
+        /// </summary>
+        private async Task<int> CalculateDailyStepsAsync(string userId, DateTime date)
+        {
+            try
+            {
+                var todaySteps = await _stepsRepository.GetByUserIdAsync(userId, date);
+                return todaySteps.Where(s => s.Date.Date == date).Sum(s => s.StepsCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error calculating daily steps for user {userId}: {ex.Message}");
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// 💪 Проверка сканирования тела на этой неделе
+        /// </summary>
+        private async Task<int> CalculateWeeklyBodyScanAsync(string userId)
+        {
+            try
+            {
+                var today = DateTime.UtcNow.Date;
+                var startOfWeek = today.AddDays(-(int)today.DayOfWeek); // Начало недели (воскресенье)
+                var endOfWeek = startOfWeek.AddDays(7); // Конец недели
+
+                var bodyScans = await _bodyScanRepository.GetByUserIdAsync(userId);
+                var weeklyScans = bodyScans.Where(bs =>
+                    bs.ScanDate.Date >= startOfWeek && bs.ScanDate.Date < endOfWeek);
+
+                return weeklyScans.Any() ? 1 : 0; // 1 если есть скан на этой неделе, иначе 0
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error calculating weekly body scan for user {userId}: {ex.Message}");
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// 🎯 Обновление прогресса для специфических миссий
+        /// </summary>
+        public async Task CheckAndUpdateAllMissionsAsync(string userId)
+        {
+            // Проверяем все типы миссий
+            await UpdateMissionProgressAsync(userId, "breakfast_calories");
+            await UpdateMissionProgressAsync(userId, "daily_steps");
+            await UpdateMissionProgressAsync(userId, "weekly_body_scan");
         }
     }
 }

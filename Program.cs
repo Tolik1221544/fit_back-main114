@@ -5,27 +5,26 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using Microsoft.AspNetCore.Mvc; 
+using Microsoft.AspNetCore.Mvc;
 using System.Text;
 using System.Reflection;
+using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers(options =>
 {
-    // Увеличиваем таймауты для контроллеров
     options.ModelValidatorProviders.Clear();
 })
 .ConfigureApiBehaviorOptions(options =>
 {
-    // Более детальная обработка ошибок валидации
     options.InvalidModelStateResponseFactory = context =>
     {
         var errors = context.ModelState
-            .Where(x => x.Value?.Errors.Count > 0) 
+            .Where(x => x.Value?.Errors.Count > 0)
             .ToDictionary(
                 kvp => kvp.Key,
-                kvp => kvp.Value?.Errors.Select(e => e.ErrorMessage).ToArray() ?? Array.Empty<string>() 
+                kvp => kvp.Value?.Errors.Select(e => e.ErrorMessage).ToArray() ?? Array.Empty<string>()
             );
 
         return new BadRequestObjectResult(new { errors });
@@ -81,10 +80,9 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
     options.UseSqlite("Data Source=fitness.db", sqliteOptions =>
     {
-        sqliteOptions.CommandTimeout(30); // Увеличиваем таймаут команд
+        sqliteOptions.CommandTimeout(30);
     });
 
-    // Включаем более детальное логирование для отладки
     if (builder.Environment.IsDevelopment())
     {
         options.EnableSensitiveDataLogging();
@@ -98,7 +96,7 @@ builder.Services.AddAutoMapper(typeof(Program));
 
 builder.Services.AddHttpClient();
 
-// Services с увеличенными таймаутами
+// Services
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
@@ -128,32 +126,62 @@ builder.Services.AddScoped<IExperienceRepository, ExperienceRepository>();
 builder.Services.AddScoped<IStepsRepository, StepsRepository>();
 
 // JWT Authentication
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "your-super-secret-key-that-is-at-least-32-characters-long";
-var key = Encoding.ASCII.GetBytes(jwtKey);
+const string JWT_SECRET_KEY = "fitness-tracker-super-secret-key-that-is-definitely-long-enough-for-security-2024";
+var key = Encoding.UTF8.GetBytes(JWT_SECRET_KEY);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        options.RequireHttpsMetadata = false;
+        options.SaveToken = true;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(key),
-            ValidateIssuer = false,
-            ValidateAudience = false,
-            ClockSkew = TimeSpan.Zero // Убираем смещение времени
+            ValidateIssuer = true,
+            ValidIssuer = "FitnessTracker",
+            ValidateAudience = true,
+            ValidAudience = "FitnessTracker",
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromMinutes(5),
+            RequireExpirationTime = true
         };
 
-        // ✅ ДОБАВЛЕНО: Улучшенная обработка событий JWT
         options.Events = new JwtBearerEvents
         {
             OnAuthenticationFailed = context =>
             {
-                Console.WriteLine($"Authentication failed: {context.Exception.Message}");
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                logger.LogError($"🔥 JWT Authentication failed: {context.Exception.Message}");
+
+                if (context.Exception.GetType() == typeof(SecurityTokenExpiredException))
+                {
+                    context.Response.Headers["Token-Expired"] = "true";
+                }
+
                 return Task.CompletedTask;
             },
             OnTokenValidated = context =>
             {
-                Console.WriteLine("Token validated successfully");
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                var userId = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                logger.LogInformation($"✅ JWT Token validated successfully for user: {userId}");
+                return Task.CompletedTask;
+            },
+            OnMessageReceived = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                var token = context.Request.Headers["Authorization"].FirstOrDefault()?.Split(" ").Last();
+                if (!string.IsNullOrEmpty(token))
+                {
+                    logger.LogDebug($"📩 JWT Token received: {token[..Math.Min(20, token.Length)]}...");
+                }
+                return Task.CompletedTask;
+            },
+            OnChallenge = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                logger.LogWarning($"🚫 JWT Challenge triggered: {context.Error} - {context.ErrorDescription}");
                 return Task.CompletedTask;
             }
         };
@@ -167,17 +195,16 @@ builder.Services.AddCors(options =>
             .AllowAnyOrigin()
             .AllowAnyMethod()
             .AllowAnyHeader()
-            .WithExposedHeaders("*"); // Разрешаем все заголовки в ответах
+            .WithExposedHeaders("*");
     });
 
-    // Дополнительная политика для локальной разработки
     options.AddPolicy("Development", policy =>
     {
         policy
-            .SetIsOriginAllowed(origin => true) // Разрешаем любые источники в разработке
+            .SetIsOriginAllowed(origin => true)
             .AllowAnyMethod()
             .AllowAnyHeader()
-            .AllowCredentials(); // Разрешаем credentials
+            .AllowCredentials();
     });
 });
 
@@ -201,10 +228,7 @@ using (var scope = app.Services.CreateScope())
     {
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        // Проверяем подключение к базе данных
         await context.Database.EnsureCreatedAsync();
-
-        // Проверяем, что база данных доступна
         await context.Database.CanConnectAsync();
 
         Console.WriteLine("✅ Database initialized successfully!");
@@ -213,8 +237,6 @@ using (var scope = app.Services.CreateScope())
     {
         Console.WriteLine($"❌ Database initialization error: {ex.Message}");
         Console.WriteLine($"Stack trace: {ex.StackTrace}");
-
-        // Не останавливаем приложение, но логируем ошибку
     }
 }
 
@@ -224,7 +246,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "🏃‍♂️ Fitness Tracker API v2.1.0");
-        c.RoutePrefix = "swagger"; // Явно указываем префикс
+        c.RoutePrefix = "swagger";
         c.DefaultModelsExpandDepth(-1);
         c.DisplayRequestDuration();
         c.EnableFilter();
@@ -234,7 +256,6 @@ if (app.Environment.IsDevelopment())
         c.ShowExtensions();
     });
 
-    // Используем более мягкую CORS политику для разработки
     app.UseCors("Development");
 }
 else
@@ -245,6 +266,13 @@ else
 app.Use(async (context, next) =>
 {
     var start = DateTime.UtcNow;
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+
+    var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
+    if (!string.IsNullOrEmpty(authHeader))
+    {
+        logger.LogDebug($"🔑 Request with auth: {context.Request.Method} {context.Request.Path}");
+    }
 
     try
     {
@@ -252,15 +280,15 @@ app.Use(async (context, next) =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Request failed: {context.Request.Method} {context.Request.Path} - {ex.Message}");
+        logger.LogError($"❌ Request failed: {context.Request.Method} {context.Request.Path} - {ex.Message}");
         throw;
     }
     finally
     {
         var elapsed = DateTime.UtcNow - start;
-        if (elapsed.TotalMilliseconds > 1000) // Логируем медленные запросы
+        if (elapsed.TotalMilliseconds > 1000)
         {
-            Console.WriteLine($"⏰ Slow request: {context.Request.Method} {context.Request.Path} took {elapsed.TotalMilliseconds}ms");
+            logger.LogWarning($"⏰ Slow request: {context.Request.Method} {context.Request.Path} took {elapsed.TotalMilliseconds}ms");
         }
     }
 });
@@ -276,6 +304,7 @@ Console.WriteLine("🚀 Fitness Tracker API starting...");
 Console.WriteLine($"📊 Swagger: {url}/swagger");
 Console.WriteLine($"🌐 API: {url}");
 Console.WriteLine($"📚 Docs: {url}/api/docs");
+Console.WriteLine($"🔑 JWT Secret: {JWT_SECRET_KEY[..20]}...");
 
 try
 {
@@ -285,7 +314,6 @@ catch (Exception ex)
 {
     Console.WriteLine($"❌ Failed to start on port {port}: {ex.Message}");
 
-    // Пробуем альтернативные порты
     var alternatePorts = new[] { "60176", "60177", "60178" };
 
     foreach (var altPort in alternatePorts)

@@ -4,21 +4,23 @@ namespace FitnessTracker.API.DTOs
     {
         public string Id { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
-        public string Icon { get; set; } = string.Empty; 
-        public int RewardExperience { get; set; } 
+        public string Icon { get; set; } = string.Empty;
+        public int RewardExperience { get; set; }
         public string Type { get; set; } = string.Empty;
         public int TargetValue { get; set; }
         public int Progress { get; set; }
         public bool IsCompleted { get; set; }
         public DateTime? CompletedAt { get; set; }
+
+        public string? Route { get; set; } = null;
     }
 
     public class AchievementDto
     {
         public string Id { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
-        public string Icon { get; set; } = string.Empty; 
-        public string ImageUrl { get; set; } = string.Empty; 
+        public string Icon { get; set; } = string.Empty;
+        public string ImageUrl { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
         public int RequiredValue { get; set; }
         public int CurrentProgress { get; set; }

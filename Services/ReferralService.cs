@@ -318,11 +318,11 @@ namespace FitnessTracker.API.Services
             return name[0] + new string('*', Math.Max(0, name.Length - 2)) + name[^1];
         }
 
-        private async Task<bool> IsUserPremiumAsync(string userId)
+        private Task<bool> IsUserPremiumAsync(string userId)
         {
             // This should check if user has active premium subscription
             // Implementation depends on your subscription logic
-            return false; // Placeholder
+            return Task.FromResult(false); // Placeholder
         }
 
         private string GetUserStatus(User user)

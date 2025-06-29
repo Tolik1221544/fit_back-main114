@@ -5,7 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using System.Collections.Concurrent; 
+using System.Collections.Concurrent;
 using AutoMapper;
 
 namespace FitnessTracker.API.Services
@@ -18,6 +18,8 @@ namespace FitnessTracker.API.Services
         private readonly IMapper _mapper;
         private readonly ILogger<AuthService> _logger;
 
+        
+        private static readonly string JWT_SECRET_KEY = "fitness-tracker-super-secret-key-that-is-definitely-long-enough-for-security-2024";
         private static readonly ConcurrentDictionary<string, (string Code, DateTime Expiry)> _verificationCodes = new();
 
         public AuthService(
@@ -45,6 +47,8 @@ namespace FitnessTracker.API.Services
                 var code = new Random().Next(100000, 999999).ToString();
 
                
+                CleanExpiredCodes();
+
                 _verificationCodes.AddOrUpdate(email,
                     (code, DateTime.UtcNow.AddMinutes(5)),
                     (key, oldValue) => (code, DateTime.UtcNow.AddMinutes(5)));
@@ -69,30 +73,28 @@ namespace FitnessTracker.API.Services
                 email = email.Trim().ToLowerInvariant();
                 _logger.LogInformation($"Confirming email for {email}");
 
-               
+                
                 if (!_verificationCodes.TryGetValue(email, out var storedData))
                 {
                     _logger.LogWarning($"No verification code found for {email}");
                     throw new UnauthorizedAccessException("No verification code found for this email");
                 }
 
-                if (storedData.Code != code)
+                if (storedData.Code != code.Trim())
                 {
-                    _logger.LogWarning($"Invalid verification code for {email}");
+                    _logger.LogWarning($"Invalid verification code for {email}. Expected: {storedData.Code}, Got: {code}");
                     throw new UnauthorizedAccessException("Invalid verification code");
                 }
 
                 if (DateTime.UtcNow > storedData.Expiry)
                 {
                     _logger.LogWarning($"Expired verification code for {email}");
-                    _verificationCodes.TryRemove(email, out _); // Удаляем просроченный код
+                    _verificationCodes.TryRemove(email, out _);
                     throw new UnauthorizedAccessException("Verification code has expired");
                 }
 
                
                 _verificationCodes.TryRemove(email, out _);
-
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
                 var existingUser = await _userRepository.GetByEmailAsync(email);
 
@@ -101,19 +103,24 @@ namespace FitnessTracker.API.Services
                 {
                     _logger.LogInformation($"Creating new user for {email}");
 
+                    
+                    var referralCode = await GenerateUniqueReferralCode();
+
                     user = new User
                     {
+                        Id = Guid.NewGuid().ToString(), 
                         Email = email,
                         Name = "Пользователь",
                         RegisteredVia = "email",
                         Level = 1,
                         Experience = 0,
                         LwCoins = 300,
+                        ReferralCode = referralCode,
                         JoinedAt = DateTime.UtcNow,
-                        LastMonthlyRefill = DateTime.UtcNow
+                        LastMonthlyRefill = DateTime.UtcNow,
+                        IsEmailConfirmed = true
                     };
 
-                   
                     try
                     {
                         user = await _userRepository.CreateAsync(user);
@@ -133,9 +140,21 @@ namespace FitnessTracker.API.Services
                    
                     bool needsUpdate = false;
 
+                    if (!user.IsEmailConfirmed)
+                    {
+                        user.IsEmailConfirmed = true;
+                        needsUpdate = true;
+                    }
+
                     if (string.IsNullOrEmpty(user.Name))
                     {
                         user.Name = "Пользователь";
+                        needsUpdate = true;
+                    }
+
+                    if (string.IsNullOrEmpty(user.ReferralCode))
+                    {
+                        user.ReferralCode = await GenerateUniqueReferralCode();
                         needsUpdate = true;
                     }
 
@@ -149,16 +168,15 @@ namespace FitnessTracker.API.Services
                         catch (Exception ex)
                         {
                             _logger.LogError($"Error updating user: {ex.Message}");
-                            
                         }
                     }
                 }
 
-                
                 string token;
                 try
                 {
-                    token = await GenerateJwtTokenAsync(user.Id);
+                    token = GenerateJwtToken(user.Id);
+                    _logger.LogInformation($"JWT token generated successfully for user {user.Id}");
                 }
                 catch (Exception ex)
                 {
@@ -168,7 +186,7 @@ namespace FitnessTracker.API.Services
 
                 var userDto = _mapper.Map<UserDto>(user);
 
-               
+              
                 var experienceData = CalculateExperienceData(user.Level, user.Experience);
                 userDto.MaxExperience = experienceData.MaxExperience;
                 userDto.ExperienceToNextLevel = experienceData.ExperienceToNextLevel;
@@ -184,7 +202,7 @@ namespace FitnessTracker.API.Services
             }
             catch (UnauthorizedAccessException)
             {
-                throw; // Пропускаем дальше
+                throw;
             }
             catch (Exception ex)
             {
@@ -193,24 +211,28 @@ namespace FitnessTracker.API.Services
             }
         }
 
-        
         public Task<AuthResponseDto> GoogleAuthAsync(string googleToken)
         {
             throw new NotImplementedException("Google authentication not implemented yet");
         }
 
-      
         public Task<bool> LogoutAsync(string accessToken)
         {
             return Task.FromResult(true);
         }
 
+
         public async Task<string> GenerateJwtTokenAsync(string userId)
+        {
+            return await Task.FromResult(GenerateJwtToken(userId));
+        }
+
+
+        private string GenerateJwtToken(string userId)
         {
             try
             {
-                var jwtKey = _configuration["Jwt:Key"] ?? "your-super-secret-key-that-is-at-least-32-characters-long";
-                var key = Encoding.ASCII.GetBytes(jwtKey);
+                var key = Encoding.UTF8.GetBytes(JWT_SECRET_KEY);
 
                 var tokenDescriptor = new SecurityTokenDescriptor
                 {
@@ -218,9 +240,12 @@ namespace FitnessTracker.API.Services
                     {
                         new Claim(ClaimTypes.NameIdentifier, userId),
                         new Claim("user_id", userId),
+                        new Claim("jti", Guid.NewGuid().ToString()), // ✅ Уникальный ID токена
                         new Claim("iat", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64)
                     }),
                     Expires = DateTime.UtcNow.AddDays(30),
+                    Issuer = "FitnessTracker",
+                    Audience = "FitnessTracker",
                     SigningCredentials = new SigningCredentials(
                         new SymmetricSecurityKey(key),
                         SecurityAlgorithms.HmacSha256Signature)
@@ -240,7 +265,39 @@ namespace FitnessTracker.API.Services
             }
         }
 
-       
+      
+        private async Task<string> GenerateUniqueReferralCode()
+        {
+            const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            var random = new Random();
+
+            string code;
+            int attempts = 0;
+            do
+            {
+                code = new string(Enumerable.Repeat(chars, 8)
+                    .Select(s => s[random.Next(s.Length)]).ToArray());
+                attempts++;
+            } while (await _userRepository.GetByReferralCodeAsync(code) != null && attempts < 10);
+
+            return code;
+        }
+
+      
+        private void CleanExpiredCodes()
+        {
+            var expiredKeys = _verificationCodes
+                .Where(kvp => DateTime.UtcNow > kvp.Value.Expiry)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in expiredKeys)
+            {
+                _verificationCodes.TryRemove(key, out _);
+            }
+        }
+
+   
         private (int MaxExperience, int ExperienceToNextLevel, decimal ExperienceProgress) CalculateExperienceData(int level, int currentExperience)
         {
             var levelRequirements = new[] { 0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250 };
