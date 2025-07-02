@@ -131,7 +131,7 @@ namespace FitnessTracker.API.Services
                 // 🔥 Миссия "Съешь 500ккал на завтрак"
                 "breakfast_calories" => await CalculateBreakfastCaloriesAsync(userId, today),
 
-                // 🚶‍♂️ Миссия "Пройди 5000 шагов" - ИСПРАВЛЕНО
+                // 🚶‍♂️ Миссия "Пройди 5000 шагов"
                 "daily_steps" => await CalculateDailyStepsAsync(userId, today),
 
                 // 💪 Миссия "Скан тела каждую неделю"
@@ -142,7 +142,7 @@ namespace FitnessTracker.API.Services
         }
 
         /// <summary>
-        /// 🔥 Подсчет калорий на завтрак (6:00-11:00)
+        /// 🔥 Подсчет калорий на завтрак (6:00-11:00) с учетом фактического веса
         /// </summary>
         private async Task<int> CalculateBreakfastCaloriesAsync(string userId, DateTime date)
         {
@@ -156,6 +156,7 @@ namespace FitnessTracker.API.Services
                 var breakfastIntakes = foodIntakes.Where(f =>
                     f.DateTime >= breakfastStart && f.DateTime <= breakfastEnd);
 
+                // Формула: (калории_на_100г * фактический_вес) / 100
                 var totalCalories = breakfastIntakes.Sum(f =>
                     (f.NutritionPer100g.Calories * f.Weight) / 100);
 
@@ -169,13 +170,12 @@ namespace FitnessTracker.API.Services
         }
 
         /// <summary>
-        /// 🚶‍♂️ Подсчет шагов за сегодня - ИСПРАВЛЕНО
+        /// 🚶‍♂️ Подсчет шагов за сегодня
         /// </summary>
         private async Task<int> CalculateDailyStepsAsync(string userId, DateTime date)
         {
             try
             {
-                // ✅ ИСПРАВЛЕНО: Используем новый метод для получения записи за конкретный день
                 var todaySteps = await _stepsRepository.GetByUserIdAndDateAsync(userId, date);
                 return todaySteps?.StepsCount ?? 0;
             }

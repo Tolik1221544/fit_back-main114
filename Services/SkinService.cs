@@ -1,4 +1,4 @@
-using FitnessTracker.API.DTOs;
+п»їusing FitnessTracker.API.DTOs;
 using FitnessTracker.API.Models;
 using FitnessTracker.API.Repositories;
 using AutoMapper;
@@ -63,7 +63,7 @@ namespace FitnessTracker.API.Services
             {
                 UserId = userId,
                 SkinId = request.SkinId,
-                IsActive = false // По умолчанию не активен
+                IsActive = false // пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
             };
 
             await _skinRepository.PurchaseSkinAsync(userSkin);
@@ -88,17 +88,17 @@ namespace FitnessTracker.API.Services
 
         public async Task<bool> ActivateSkinAsync(string userId, ActivateSkinRequest request)
         {
-            // Проверяем, что пользователь владеет скином
+            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
             if (!await _skinRepository.UserOwnsSkinAsync(userId, request.SkinId))
             {
                 _logger.LogWarning($"User {userId} doesn't own skin {request.SkinId}");
                 return false;
             }
 
-            // Деактивируем все скины пользователя
+            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
             await _skinRepository.DeactivateAllUserSkinsAsync(userId);
 
-            // Активируем выбранный скин
+            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
             var success = await _skinRepository.ActivateUserSkinAsync(userId, request.SkinId);
 
             if (success)

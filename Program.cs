@@ -230,30 +230,43 @@ using (var scope = app.Services.CreateScope())
 
         Console.WriteLine("🗄️ Initializing database...");
 
-        // Применяем миграции (если есть)
-        var pendingMigrations = await context.Database.GetPendingMigrationsAsync();
-        if (pendingMigrations.Any())
+        // Проверяем, существует ли БД
+        var databaseExists = await context.Database.CanConnectAsync();
+
+        if (!databaseExists)
         {
-            Console.WriteLine($"📦 Applying {pendingMigrations.Count()} pending migrations...");
-            await context.Database.MigrateAsync();
-            Console.WriteLine("✅ Migrations applied successfully!");
+            Console.WriteLine("🆕 Database does not exist, creating...");
+            await context.Database.EnsureCreatedAsync();
+            Console.WriteLine("✅ Database created successfully!");
         }
         else
         {
-            // Создаем БД только если её нет (первый запуск)
-            var created = await context.Database.EnsureCreatedAsync();
-            if (created)
+            Console.WriteLine("✅ Database already exists, checking connection...");
+
+            // Проверяем наличие таблицы миграций
+            var hasMigrationsTable = await context.Database.ExecuteSqlRawAsync(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='__EFMigrationsHistory';") > 0;
+
+            if (!hasMigrationsTable)
             {
-                Console.WriteLine("🆕 Database created for the first time!");
+                Console.WriteLine("📦 No migrations table found, database is up to date.");
             }
             else
             {
-                Console.WriteLine("✅ Database already exists, checking connection...");
+                // Применяем только новые миграции если есть
+                var pendingMigrations = await context.Database.GetPendingMigrationsAsync();
+                if (pendingMigrations.Any())
+                {
+                    Console.WriteLine($"📦 Applying {pendingMigrations.Count()} pending migrations...");
+                    await context.Database.MigrateAsync();
+                    Console.WriteLine("✅ Migrations applied successfully!");
+                }
+                else
+                {
+                    Console.WriteLine("✅ No pending migrations.");
+                }
             }
         }
-
-        // Проверяем подключение
-        await context.Database.CanConnectAsync();
 
         Console.WriteLine("✅ Database initialized successfully!");
     }
@@ -261,6 +274,9 @@ using (var scope = app.Services.CreateScope())
     {
         Console.WriteLine($"❌ Database initialization error: {ex.Message}");
         Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+        // Не останавливаем приложение, просто логируем ошибку
+        Console.WriteLine("⚠️ Continuing startup despite database error...");
     }
 }
 

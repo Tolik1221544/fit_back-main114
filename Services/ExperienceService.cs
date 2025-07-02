@@ -1,7 +1,6 @@
-using FitnessTracker.API.DTOs;
+﻿using FitnessTracker.API.DTOs;
 using FitnessTracker.API.Models;
 using FitnessTracker.API.Repositories;
-using FitnessTracker.API.Services;
 using AutoMapper;
 
 namespace FitnessTracker.API.Services
@@ -14,9 +13,19 @@ namespace FitnessTracker.API.Services
         private readonly IMapper _mapper;
         private readonly ILogger<ExperienceService> _logger;
 
+  
         private static readonly int[] LevelExperienceRequirements = {
-            0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250,
-            3850, 4500, 5200, 5950, 6750, 7600, 8500, 9450, 10450, 11500
+            0,     // Уровень 0 (не используется)
+            100,   // Уровень 1 -> 2 (100 опыта)
+            250,   // Уровень 2 -> 3 (250 опыта)
+            450,   // Уровень 3 -> 4 (450 опыта)
+            700,   // Уровень 4 -> 5 (700 опыта)
+            1000,  // Уровень 5 -> 6 (1000 опыта)
+            1350,  // Уровень 6 -> 7 (1350 опыта)
+            1750,  // Уровень 7 -> 8 (1750 опыта)
+            2200,  // Уровень 8 -> 9 (2200 опыта)
+            2700,  // Уровень 9 -> 10 (2700 опыта)
+            3250   // Уровень 10 -> 11 (3250 опыта)
         };
 
         public ExperienceService(
@@ -33,54 +42,84 @@ namespace FitnessTracker.API.Services
             _logger = logger;
         }
 
-        public async Task<bool> AddExperienceAsync(string userId, int baseExperience, string source, string description)
+        public async Task<bool> AddExperienceAsync(string userId, int experience, string source, string description)
         {
-            var user = await _userRepository.GetByIdAsync(userId);
-            if (user == null) return false;
-
-            var experienceBoost = await _skinService.GetUserExperienceBoostAsync(userId);
-            var finalExperience = (int)Math.Round(baseExperience * experienceBoost);
-
-            var levelBefore = user.Level;
-            user.Experience += finalExperience;
-            var levelAfter = await CalculateLevelFromExperience(user.Experience);
-            var leveledUp = levelAfter > levelBefore;
-
-            if (leveledUp)
+            try
             {
-                user.Level = levelAfter;
-                _logger.LogInformation($"User {userId} leveled up from {levelBefore} to {levelAfter}!");
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user == null)
+                {
+                    _logger.LogError($"User {userId} not found when adding experience");
+                    return false;
+                }
+
+                // Получаем буст опыта от активного скина
+                var experienceBoost = await _skinService.GetUserExperienceBoostAsync(userId);
+                var boostedExperience = (int)Math.Round(experience * experienceBoost);
+
+                _logger.LogInformation($"Adding experience to user {userId}: {experience} base, {boostedExperience} with boost {experienceBoost}x");
+
+                var levelBefore = user.Level;
+                var experienceBefore = user.Experience;
+
+ 
+                user.Experience += boostedExperience;
+                var newLevel = await CalculateLevelFromExperience(user.Experience);
+                var leveledUp = newLevel > levelBefore;
+
+                user.Level = newLevel;
+
+                // Сохраняем пользователя
+                await _userRepository.UpdateAsync(user);
+
+                // Записываем транзакцию опыта
+                var transaction = new ExperienceTransaction
+                {
+                    UserId = userId,
+                    Experience = boostedExperience,
+                    Source = source,
+                    Description = description,
+                    LevelBefore = levelBefore,
+                    LevelAfter = user.Level,
+                    LeveledUp = leveledUp
+                };
+
+                await _experienceRepository.CreateTransactionAsync(transaction);
+
+                if (leveledUp)
+                {
+                    _logger.LogInformation($"🎉 User {userId} leveled up! {levelBefore} -> {user.Level} (Experience: {experienceBefore} -> {user.Experience})");
+                }
+
+                return true;
             }
-
-            await _userRepository.UpdateAsync(user);
-
-            // ���������� ���������� � ����������� � �����
-            var boostInfo = experienceBoost > 1.0m ? $" (x{experienceBoost} boost)" : "";
-            var finalDescription = $"{description}{boostInfo}";
-
-            var transaction = new ExperienceTransaction
+            catch (Exception ex)
             {
-                UserId = userId,
-                Experience = finalExperience,
-                Source = source,
-                Description = finalDescription,
-                LevelBefore = levelBefore,
-                LevelAfter = levelAfter,
-                LeveledUp = leveledUp
-            };
-
-            await _experienceRepository.CreateTransactionAsync(transaction);
-
-            if (experienceBoost > 1.0m)
-            {
-                _logger.LogInformation($"Added {baseExperience} base XP (boosted to {finalExperience} with {experienceBoost}x multiplier) to user {userId} from {source}");
+                _logger.LogError($"Error adding experience to user {userId}: {ex.Message}");
+                return false;
             }
-            else
-            {
-                _logger.LogInformation($"Added {finalExperience} XP to user {userId} from {source}");
-            }
+        }
 
-            return true;
+   
+        public Task<int> CalculateLevelFromExperience(int experience)
+        {
+            // Находим максимальный уровень, который может достичь пользователь с данным опытом
+            for (int level = LevelExperienceRequirements.Length - 1; level >= 1; level--)
+            {
+                if (experience >= LevelExperienceRequirements[level - 1])
+                {
+                    return Task.FromResult(level);
+                }
+            }
+            return Task.FromResult(1); // Минимальный уровень
+        }
+
+        public Task<int> GetExperienceForNextLevel(int currentLevel)
+        {
+            if (currentLevel >= LevelExperienceRequirements.Length)
+                return Task.FromResult(LevelExperienceRequirements[^1]);
+
+            return Task.FromResult(LevelExperienceRequirements[currentLevel]);
         }
 
         public async Task<IEnumerable<ExperienceTransactionDto>> GetUserExperienceTransactionsAsync(string userId)
@@ -89,25 +128,33 @@ namespace FitnessTracker.API.Services
             return _mapper.Map<IEnumerable<ExperienceTransactionDto>>(transactions);
         }
 
-        public Task<int> CalculateLevelFromExperience(int experience)
+   
+        public async Task<bool> FixUserLevelAsync(string userId)
         {
-            for (int level = LevelExperienceRequirements.Length - 1; level >= 1; level--)
+            try
             {
-                if (experience >= LevelExperienceRequirements[level])
-                {
-                    return Task.FromResult(level);
-                }
-            }
-            return Task.FromResult(1);
-        }
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user == null) return false;
 
-        public Task<int> GetExperienceForNextLevel(int currentLevel)
-        {
-            if (currentLevel >= LevelExperienceRequirements.Length - 1)
-            {
-                return Task.FromResult(LevelExperienceRequirements[^1]); // Max level
+                var correctLevel = await CalculateLevelFromExperience(user.Experience);
+
+                if (user.Level != correctLevel)
+                {
+                    _logger.LogWarning($"Fixing user {userId} level: {user.Level} -> {correctLevel} (Experience: {user.Experience})");
+
+                    user.Level = correctLevel;
+                    await _userRepository.UpdateAsync(user);
+
+                    return true;
+                }
+
+                return false;
             }
-            return Task.FromResult(LevelExperienceRequirements[currentLevel + 1]);
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error fixing user level {userId}: {ex.Message}");
+                return false;
+            }
         }
     }
 }

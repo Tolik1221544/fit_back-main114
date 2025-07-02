@@ -67,4 +67,5 @@ namespace FitnessTracker.API.DTOs
         public string ReferrerEmail { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
     }
+   
 }

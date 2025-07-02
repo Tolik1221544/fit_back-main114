@@ -1,4 +1,4 @@
-namespace FitnessTracker.API.Models
+п»їnamespace FitnessTracker.API.Models
 {
     public class LwCoinTransaction
     {
@@ -11,7 +11,7 @@ namespace FitnessTracker.API.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public string? ReferralId { get; set; } // If this transaction is related to a referral
 
-        public decimal? Price { get; set; } // Цена покупки в USD
+        public decimal? Price { get; set; } // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ USD
         public string? Period { get; set; } = string.Empty; // "monthly", "one-time", "yearly"
 
         // Navigation property

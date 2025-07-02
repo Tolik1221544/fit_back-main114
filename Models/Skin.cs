@@ -1,4 +1,4 @@
-namespace FitnessTracker.API.Models
+п»їnamespace FitnessTracker.API.Models
 {
     public class Skin
     {
@@ -8,9 +8,9 @@ namespace FitnessTracker.API.Models
         public string ImageUrl { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
 
-        
-        public decimal ExperienceBoost { get; set; } = 1.0m; // Множитель опыта (1.0 = без бонуса)
-        public int Tier { get; set; } = 1; // Уровень скина (1, 2, 3)
+
+        public decimal ExperienceBoost { get; set; } = 1.0m; // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ (1.0 = пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ)
+        public int Tier { get; set; } = 1; // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ (1, 2, 3)
 
         // Navigation properties
         public ICollection<UserSkin> UserSkins { get; set; } = new List<UserSkin>();

@@ -7,12 +7,18 @@ namespace FitnessTracker.API.Services
         private readonly IFoodIntakeRepository _foodIntakeRepository;
         private readonly IActivityRepository _activityRepository;
         private readonly IUserRepository _userRepository;
+        private readonly IStepsRepository _stepsRepository;
 
-        public StatsService(IFoodIntakeRepository foodIntakeRepository, IActivityRepository activityRepository, IUserRepository userRepository)
+        public StatsService(
+            IFoodIntakeRepository foodIntakeRepository,
+            IActivityRepository activityRepository,
+            IUserRepository userRepository,
+            IStepsRepository stepsRepository)
         {
             _foodIntakeRepository = foodIntakeRepository;
             _activityRepository = activityRepository;
             _userRepository = userRepository;
+            _stepsRepository = stepsRepository;
         }
 
         public async Task<object> GetUserStatsAsync(string userId)
@@ -24,8 +30,8 @@ namespace FitnessTracker.API.Services
             return new
             {
                 Level = user?.Level ?? 1,
-                Experience = user?.Experience ?? 0, 
-                LwCoins = user?.LwCoins ?? 300,     
+                Experience = user?.Experience ?? 0,
+                LwCoins = user?.LwCoins ?? 300,
                 TotalFoodIntakes = totalFoodIntakes,
                 TotalActivities = totalActivities,
                 JoinedDays = user != null ? (DateTime.UtcNow - user.JoinedAt).Days : 0
@@ -41,6 +47,7 @@ namespace FitnessTracker.API.Services
 
             if (endDate.HasValue)
                 foodIntakes = foodIntakes.Where(f => f.DateTime <= endDate.Value);
+
 
             var totalCalories = foodIntakes.Sum(f => (f.NutritionPer100g.Calories * f.Weight) / 100);
             var totalProteins = foodIntakes.Sum(f => (f.NutritionPer100g.Proteins * f.Weight) / 100);
@@ -66,6 +73,7 @@ namespace FitnessTracker.API.Services
             };
         }
 
+    
         public async Task<object> GetActivityStatsAsync(string userId, DateTime? startDate = null, DateTime? endDate = null)
         {
             var activities = await _activityRepository.GetByUserIdAsync(userId);
@@ -79,7 +87,22 @@ namespace FitnessTracker.API.Services
             var activityTypes = activities.GroupBy(a => a.Type)
                 .Select(g => new { Type = g.Key, Count = g.Count() });
 
-            var totalCalories = activities.Where(a => a.Calories.HasValue).Sum(a => a.Calories!.Value);
+            var activityCalories = activities.Where(a => a.Calories.HasValue).Sum(a => a.Calories!.Value);
+
+   
+            var allSteps = await _stepsRepository.GetByUserIdAsync(userId);
+
+            if (startDate.HasValue)
+                allSteps = allSteps.Where(s => s.Date >= startDate.Value.Date);
+
+            if (endDate.HasValue)
+                allSteps = allSteps.Where(s => s.Date <= endDate.Value.Date);
+
+            var stepsCalories = allSteps.Where(s => s.Calories.HasValue).Sum(s => s.Calories!.Value);
+
+     
+            var totalCalories = activityCalories + stepsCalories;
+
             var strengthActivities = activities.Where(a => a.Type == "strength").Count();
             var cardioActivities = activities.Where(a => a.Type == "cardio").Count();
 
@@ -90,14 +113,14 @@ namespace FitnessTracker.API.Services
             return new
             {
                 TotalActivities = activities.Count(),
-                TotalCalories = totalCalories,
+                TotalCalories = totalCalories, 
                 StrengthWorkouts = strengthActivities,
                 CardioWorkouts = cardioActivities,
                 ActivityTypes = activityTypes,
                 MostPopularActivity = activityTypes.OrderByDescending(a => a.Count).FirstOrDefault()?.Type ?? "None",
                 LastActivity = activities.OrderByDescending(a => a.CreatedAt).FirstOrDefault()?.CreatedAt,
                 AverageActivitiesPerDay = Math.Round((double)activities.Count() / dayCount, 2),
-                AverageCaloriesPerDay = Math.Round((double)totalCalories / dayCount, 2),
+                AverageCaloriesPerDay = Math.Round((double)totalCalories / dayCount, 2), 
                 DaysActive = activities.GroupBy(a => a.CreatedAt.Date).Count()
             };
         }

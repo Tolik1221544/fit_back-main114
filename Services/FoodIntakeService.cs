@@ -41,6 +41,8 @@ namespace FitnessTracker.API.Services
                 WeightType = item.WeightType,
                 Image = item.Image,
                 DateTime = request.DateTime,
+
+                // Фактический расчет происходит при отображении/статистике
                 NutritionPer100g = new NutritionPer100g
                 {
                     Calories = item.NutritionPer100g.Calories,
@@ -55,7 +57,6 @@ namespace FitnessTracker.API.Services
             // Update mission progress
             await _missionService.UpdateMissionProgressAsync(userId, "food_intake", request.Items.Count);
 
-        
             var currentHour = request.DateTime.Hour;
             if (currentHour >= 6 && currentHour <= 11)
             {
@@ -74,6 +75,7 @@ namespace FitnessTracker.API.Services
             foodIntake.Name = request.Name;
             foodIntake.Weight = request.Weight;
             foodIntake.WeightType = request.WeightType;
+
             foodIntake.NutritionPer100g.Calories = request.NutritionPer100g.Calories;
             foodIntake.NutritionPer100g.Proteins = request.NutritionPer100g.Proteins;
             foodIntake.NutritionPer100g.Fats = request.NutritionPer100g.Fats;
@@ -81,7 +83,6 @@ namespace FitnessTracker.API.Services
 
             var updatedFoodIntake = await _foodIntakeRepository.UpdateAsync(foodIntake);
 
-        
             var currentHour = updatedFoodIntake.DateTime.Hour;
             if (currentHour >= 6 && currentHour <= 11)
             {

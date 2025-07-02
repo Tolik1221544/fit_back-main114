@@ -1,4 +1,4 @@
-using FitnessTracker.API.DTOs;
+п»їusing FitnessTracker.API.DTOs;
 using FitnessTracker.API.Models;
 using FitnessTracker.API.Repositories;
 using AutoMapper;
@@ -200,19 +200,19 @@ namespace FitnessTracker.API.Services
             };
         }
 
- 
+
         private async Task<PremiumNotificationDto?> GeneratePremiumNotificationAsync(string userId, bool isPremium, DateTime? premiumExpiresAt)
         {
             if (!isPremium || !premiumExpiresAt.HasValue)
             {
-                // Проверяем, была ли недавно отменена подписка
+                // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
                 var recentExpiredSubscription = await GetRecentExpiredSubscriptionAsync(userId);
                 if (recentExpiredSubscription != null)
                 {
                     return new PremiumNotificationDto
                     {
                         Type = "downgraded",
-                        Message = "Ваша премиум подписка истекла. Вы переведены на стандартный план.",
+                        Message = "пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ. пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ.",
                         ExpiresAt = null,
                         DaysRemaining = 0,
                         IsUrgent = true
@@ -225,13 +225,13 @@ namespace FitnessTracker.API.Services
 
             if (daysRemaining <= 0)
             {
-                // Подписка истекла - автоматически переводим на стандартный план
+                // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ - пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
                 await DowngradePremiumSubscriptionAsync(userId);
 
                 return new PremiumNotificationDto
                 {
                     Type = "expired",
-                    Message = "Ваша премиум подписка истекла. Вы переведены на стандартный план.",
+                    Message = "пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ. пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ.",
                     ExpiresAt = premiumExpiresAt,
                     DaysRemaining = 0,
                     IsUrgent = true
@@ -243,7 +243,7 @@ namespace FitnessTracker.API.Services
                 return new PremiumNotificationDto
                 {
                     Type = "expiring_soon",
-                    Message = $"Ваша премиум подписка истекает через {daysRemaining} дн. Продлите сейчас!",
+                    Message = $"пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ {daysRemaining} пїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ!",
                     ExpiresAt = premiumExpiresAt,
                     DaysRemaining = daysRemaining,
                     IsUrgent = daysRemaining <= 1
@@ -262,7 +262,7 @@ namespace FitnessTracker.API.Services
             if (expiredPremium != null)
             {
                 expiredPremium.IsActive = false;
-                // Здесь должен быть метод для обновления подписки в репозитории
+                // пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 
                 await CreateTransactionAsync(userId, 0, "downgrade", "Premium subscription expired - downgraded to standard", "premium", 0, "expired");
 

@@ -1,4 +1,4 @@
-using FitnessTracker.API.Data;
+п»їusing FitnessTracker.API.Data;
 using FitnessTracker.API.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -68,14 +68,14 @@ namespace FitnessTracker.API.Repositories
         {
             try
             {
-                // Проверяем, что пользователь существует
+                // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
                 var userExists = await _context.Users.AnyAsync(u => u.Id == steps.UserId);
                 if (!userExists)
                 {
                     throw new InvalidOperationException($"User {steps.UserId} does not exist");
                 }
 
-                // Проверяем дубликаты по дате
+                // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ
                 var existingSteps = await GetByUserIdAndDateAsync(steps.UserId, steps.Date);
                 if (existingSteps != null)
                 {
@@ -99,14 +99,14 @@ namespace FitnessTracker.API.Repositories
         {
             try
             {
-                // Проверяем, что запись существует
+                // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
                 var existingSteps = await GetByIdAsync(steps.Id);
                 if (existingSteps == null)
                 {
                     throw new InvalidOperationException($"Steps record {steps.Id} not found");
                 }
 
-                // Обновляем поля
+                // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
                 existingSteps.StepsCount = steps.StepsCount;
                 existingSteps.Calories = steps.Calories;
                 existingSteps.Date = steps.Date;

@@ -105,6 +105,8 @@ namespace FitnessTracker.API.Services
                         WorkingWeight = Math.Max(0, request.StrengthData.WorkingWeight),
                         RestTimeSeconds = Math.Max(0, request.StrengthData.RestTimeSeconds)
                     };
+                    // Явно устанавливаем CardioData в null
+                    activity.CardioData = null;
                 }
 
                 if (activityType == "cardio" && request.CardioData != null)
@@ -120,8 +122,11 @@ namespace FitnessTracker.API.Services
                         MaxPulse = request.CardioData.MaxPulse.HasValue ? Math.Max(0, request.CardioData.MaxPulse.Value) : null,
                         AvgPace = request.CardioData.AvgPace?.Trim() ?? ""
                     };
+                    // Явно устанавливаем StrengthData в null
+                    activity.StrengthData = null;
                 }
 
+                // Создаем дефолтные данные если они отсутствуют
                 if (activityType == "strength" && activity.StrengthData == null)
                 {
                     activity.StrengthData = new StrengthData
@@ -379,6 +384,7 @@ namespace FitnessTracker.API.Services
             return _mapper.Map<IEnumerable<StepsDto>>(steps);
         }
 
+
         private async Task<int> GetStepsCaloriesForPeriodAsync(string userId, DateTime? startDate, DateTime? endDate)
         {
             var allSteps = await _stepsRepository.GetByUserIdAsync(userId);
@@ -390,6 +396,91 @@ namespace FitnessTracker.API.Services
                 allSteps = allSteps.Where(s => s.Date <= endDate.Value.Date);
 
             return allSteps.Where(s => s.Calories.HasValue).Sum(s => s.Calories!.Value);
+        }
+
+        private int CalculateStepsStreak(IEnumerable<Steps> orderedSteps)
+        {
+            var steps = orderedSteps.ToList();
+            if (!steps.Any()) return 0;
+
+            int streak = 0;
+            var today = DateTime.UtcNow.Date;
+
+            foreach (var step in steps)
+            {
+                var expectedDate = today.AddDays(-streak);
+                if (step.Date.Date == expectedDate && step.StepsCount >= 1000) // Минимум 1000 шагов для streak
+                {
+                    streak++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            return streak;
+        }
+
+        private decimal GetCaloriesPerDay(IEnumerable<Activity> activities, IEnumerable<Steps> steps, DateTime? startDate, DateTime? endDate)
+        {
+            var totalDays = 1;
+
+            if (startDate.HasValue && endDate.HasValue)
+            {
+                totalDays = Math.Max(1, (endDate.Value - startDate.Value).Days + 1);
+            }
+            else
+            {
+                var activityDays = activities.Select(a => a.CreatedAt.Date).Distinct().Count();
+                var stepsDays = steps.Select(s => s.Date.Date).Distinct().Count();
+                totalDays = Math.Max(1, Math.Max(activityDays, stepsDays));
+            }
+
+            var activityCalories = activities.Where(a => a.Calories.HasValue).Sum(a => a.Calories!.Value);
+            var stepsCalories = steps.Where(s => s.Calories.HasValue).Sum(s => s.Calories!.Value);
+
+            return Math.Round((decimal)(activityCalories + stepsCalories) / totalDays, 1);
+        }
+
+        private decimal GetWorkoutsPerWeek(IEnumerable<Activity> activities, DateTime? startDate, DateTime? endDate)
+        {
+            if (!activities.Any()) return 0;
+
+            var totalWeeks = 1m;
+
+            if (startDate.HasValue && endDate.HasValue)
+            {
+                totalWeeks = Math.Max(1, (decimal)(endDate.Value - startDate.Value).TotalDays / 7);
+            }
+            else
+            {
+                var firstActivity = activities.Min(a => a.CreatedAt);
+                var lastActivity = activities.Max(a => a.CreatedAt);
+                totalWeeks = Math.Max(1, (decimal)(lastActivity - firstActivity).TotalDays / 7);
+            }
+
+            return Math.Round(activities.Count() / totalWeeks, 1);
+        }
+
+        private decimal GetStepsPerWeek(IEnumerable<Steps> steps, DateTime? startDate, DateTime? endDate)
+        {
+            if (!steps.Any()) return 0;
+
+            var totalWeeks = 1m;
+
+            if (startDate.HasValue && endDate.HasValue)
+            {
+                totalWeeks = Math.Max(1, (decimal)(endDate.Value - startDate.Value).TotalDays / 7);
+            }
+            else
+            {
+                var firstStep = steps.Min(s => s.Date);
+                var lastStep = steps.Max(s => s.Date);
+                totalWeeks = Math.Max(1, (decimal)(lastStep - firstStep).TotalDays / 7);
+            }
+
+            return Math.Round(steps.Sum(s => s.StepsCount) / totalWeeks, 0);
         }
 
         private int CalculateExperienceForActivity(AddActivityRequest activity)
