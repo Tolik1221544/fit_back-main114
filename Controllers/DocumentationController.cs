@@ -11,9 +11,9 @@ namespace FitnessTracker.API.Controllers
         {
             var documentation = new
             {
-                title = "🏃‍♂️ Fitness Tracker API Documentation",
-                version = "2.1.0",
-                description = "Complete API documentation for Fitness Tracker with LW Coin system",
+                title = "🏃‍♂️ Fitness Tracker API Documentation with Gemini AI",
+                version = "2.2.0",
+                description = "Complete API documentation for Fitness Tracker with LW Coin system and Gemini AI integration",
                 baseUrl = "https://your-api.com",
 
                 authentication = new
@@ -43,120 +43,139 @@ namespace FitnessTracker.API.Controllers
                         }
                     },
 
-                    profile = new object[]
+                    ai = new object[]
                     {
-                        new {
-                            method = "GET",
-                            path = "/api/user/profile",
-                            description = "👤 Получить профиль пользователя",
-                            auth = "required",
-                            response = new { id = "...", email = "...", name = "...", level = 1, experience = 0 }
-                        },
-                        new {
-                            method = "PUT",
-                            path = "/api/user/profile",
-                            description = "✏️ Обновить профиль",
-                            auth = "required",
-                            body = new { name = "John Doe", age = 25, gender = "male", weight = 70.5, height = 175.0 }
-                        }
-                    },
-
-                    lwCoins = new object[]
-                    {
-                        new {
-                            method = "GET",
-                            path = "/api/lw-coin/balance",
-                            description = "💰 Баланс LW Coins",
-                            auth = "required",
-                            response = new { balance = 300, monthlyAllowance = 300, usedThisMonth = 0, isPremium = false }
-                        },
                         new {
                             method = "POST",
-                            path = "/api/lw-coin/spend",
-                            description = "💸 Потратить LW Coins",
+                            path = "/api/ai/scan-food",
+                            description = "🍎 ИИ анализ еды по фото (Gemini)",
                             auth = "required",
-                            body = new { amount = 1, type = "photo", description = "Food scan", featureUsed = "photo" }
-                        },
-                        new {
-                            method = "GET",
-                            path = "/api/lw-coin/transactions",
-                            description = "📊 История транзакций",
-                            auth = "required",
-                            response = new object[] { new { amount = -1, type = "spent", spentOn = "food_scan", createdAt = "2025-06-24T..." } }
-                        }
-                    },
-
-                    activities = new object[]
-                    {
-                        new {
-                            method = "GET",
-                            path = "/api/activity?startDate=2025-06-01&endDate=2025-06-30&type=strength",
-                            description = "🏃‍♂️ Получить активности с фильтрами",
-                            auth = "required",
-                            filters = new { startDate = "YYYY-MM-DD", endDate = "YYYY-MM-DD", type = "strength|cardio" }
-                        },
-                        new {
-                            method = "POST",
-                            path = "/api/activity",
-                            description = "➕ Добавить тренировку",
-                            auth = "required",
-                            bodyStrength = new {
-                                type = "strength",
-                                startDate = "2025-06-24T10:00:00Z",
-                                startTime = "2025-06-24T10:00:00Z",
-                                endDate = "2025-06-24T11:00:00Z",
-                                endTime = "2025-06-24T11:00:00Z",
-                                calories = 300,
-                                strengthData = new {
-                                    name = "Жим лежа",
-                                    muscleGroup = "Грудь",
-                                    equipment = "Штанга",
-                                    workingWeight = 80,
-                                    restTimeSeconds = 120
-                                }
+                            cost = "1 LW Coin",
+                            body = new {
+                                image = "multipart/form-data",
+                                userPrompt = "Дополнительные инструкции (опционально)",
+                                saveResults = "true/false"
                             },
-                            bodyCardio = new {
-                                type = "cardio",
-                                startDate = "2025-06-24T18:00:00Z",
-                                calories = 400,
-                                cardioData = new {
-                                    cardioType = "Бег",
-                                    distanceKm = 5.0,
-                                    avgPulse = 150,
-                                    maxPulse = 170,
-                                    avgPace = "5:30"
+                            response = new {
+                                success = true,
+                                foodItems = new object[] {
+                                    new {
+                                        name = "Борщ",
+                                        estimatedWeight = 300,
+                                        totalCalories = 150,
+                                        nutritionPer100g = new {
+                                            calories = 50,
+                                            proteins = 2.1,
+                                            fats = 2.8,
+                                            carbs = 6.7
+                                        }
+                                    }
+                                },
+                                estimatedCalories = 150,
+                                fullDescription = "Анализ от ИИ"
+                            }
+                        },
+                        new {
+                            method = "POST",
+                            path = "/api/ai/analyze-body",
+                            description = "💪 ИИ анализ тела по фотографиям",
+                            auth = "required",
+                            cost = "Бесплатно",
+                            body = new {
+                                frontImage = "multipart/form-data",
+                                sideImage = "multipart/form-data (опционально)",
+                                backImage = "multipart/form-data (опционально)",
+                                currentWeight = 70.0,
+                                height = 175.0,
+                                age = 25,
+                                gender = "male",
+                                goals = "Набор мышечной массы"
+                            },
+                            response = new {
+                                success = true,
+                                bodyAnalysis = new {
+                                    estimatedBodyFatPercentage = 15.5,
+                                    estimatedMusclePercentage = 42.0,
+                                    bodyType = "Мезоморф",
+                                    bmi = 22.9,
+                                    exerciseRecommendations = new[] { "Силовые тренировки", "Кардио" },
+                                    nutritionRecommendations = new[] { "Увеличить белок", "Контролировать углеводы" }
                                 }
                             }
                         },
                         new {
                             method = "POST",
-                            path = "/api/activity/steps",
-                            description = "👣 Добавить/обновить шаги за день",
+                            path = "/api/ai/voice-workout",
+                            description = "🎤 Голосовой ввод тренировки",
                             auth = "required",
-                            body = new { steps = 10000, calories = 500, date = "2025-06-24T00:00:00Z" },
-                            note = "✅ ОБНОВЛЕНО: Один объект на день. При повторном вызове обновляет существующую запись."
+                            cost = "1 LW Coin",
+                            body = new {
+                                audioFile = "multipart/form-data (wav/mp3)",
+                                workoutType = "strength/cardio (опционально)",
+                                saveResults = "true/false"
+                            },
+                            response = new {
+                                success = true,
+                                transcribedText = "Сделал жим лежа 80 кг на 10 повторений",
+                                workoutData = new {
+                                    type = "strength",
+                                    strengthData = new {
+                                        name = "Жим лежа",
+                                        muscleGroup = "Грудь",
+                                        workingWeight = 80
+                                    }
+                                }
+                            }
+                        },
+                        new {
+                            method = "POST",
+                            path = "/api/ai/voice-food",
+                            description = "🗣️ Голосовой ввод питания",
+                            auth = "required",
+                            cost = "1 LW Coin",
+                            body = new {
+                                audioFile = "multipart/form-data (wav/mp3)",
+                                mealType = "breakfast/lunch/dinner/snack (опционально)",
+                                saveResults = "true/false"
+                            },
+                            response = new {
+                                success = true,
+                                transcribedText = "Съел тарелку борща и кусок хлеба",
+                                foodItems = new object[] {
+                                    new {
+                                        name = "Борщ",
+                                        estimatedWeight = 300,
+                                        totalCalories = 150
+                                    }
+                                }
+                            }
                         },
                         new {
                             method = "GET",
-                            path = "/api/activity/steps?date=2025-06-24",
-                            description = "📈 Получить шаги за дату",
-                            auth = "required",
-                            response = new object[] { new { id = "...", stepsCount = 10000, calories = 500, date = "2025-06-24T00:00:00Z" } },
-                            note = "✅ ОБНОВЛЕНО: Возвращает одну запись на день"
+                            path = "/api/ai/status",
+                            description = "🧠 Проверка статуса ИИ сервиса",
+                            auth = "не требуется",
+                            response = new {
+                                service = "Gemini AI",
+                                status = "Online",
+                                features = new[] { "Food Analysis", "Body Analysis", "Voice Recognition" }
+                            }
                         },
                         new {
                             method = "GET",
-                            path = "/api/activity/stats",
-                            description = "📊 Статистика активностей",
+                            path = "/api/ai/usage-stats",
+                            description = "📊 Статистика использования ИИ",
                             auth = "required",
                             response = new {
-                                totalActivities = 15,
-                                totalCalories = 3500,
-                                activityCalories = 2000,
-                                stepsCalories = 1500,
-                                activityTypes = new object[] { new { type = "strength", count = 10 } }
-                            },
-                            note = "✅ ИСПРАВЛЕНО: Теперь включает калории от шагов и тренировок отдельно"
+                                totalAIUsage = 45,
+                                monthlyAIUsage = 12,
+                                featureUsage = new {
+                                    foodScans = 25,
+                                    voiceWorkouts = 10,
+                                    voiceFood = 8,
+                                    bodyAnalysis = 2
+                                }
+                            }
                         }
                     },
 
@@ -177,11 +196,9 @@ namespace FitnessTracker.API.Controllers
                             body = new {
                                 items = new object[] {
                                     new {
-                                        tempItemId = "temp1", // опционально
                                         name = "Овсянка",
                                         weight = 100,
-                                        weightType = "g", // "g" или "ml"
-                                        image = "https://example.com/oats.jpg", // опционально
+                                        weightType = "g",
                                         nutritionPer100g = new {
                                             calories = 389,
                                             proteins = 16.9,
@@ -192,133 +209,163 @@ namespace FitnessTracker.API.Controllers
                                 },
                                 dateTime = "2025-06-24T08:00:00Z"
                             }
-                        }
-                    },
-
-                    missions = new object[]
-                    {
-                        new {
-                            method = "GET",
-                            path = "/api/mission",
-                            description = "🎯 Получить активные миссии",
-                            auth = "required",
-                            response = new object[] {
-                                new {
-                                    id = "mission1",
-                                    title = "Первая тренировка",
-                                    icon = "🏃‍♂️",
-                                    rewardExperience = 50,
-                                    progress = 0,
-                                    targetValue = 1,
-                                    isCompleted = false
-                                }
-                            }
                         },
                         new {
-                            method = "GET",
-                            path = "/api/mission/achievements",
-                            description = "🏆 Получить достижения",
+                            method = "POST",
+                            path = "/api/food-intake/scan",
+                            description = "📸 Сканирование еды (устаревший метод)",
                             auth = "required",
-                            response = new object[] {
-                                new {
-                                    id = "achievement1",
-                                    title = "Первые шаги",
-                                    icon = "⭐",
-                                    imageUrl = "https://example.com/achievement1.png",
-                                    unlockedAt = "2025-06-24T10:00:00Z"
-                                }
+                            cost = "1 LW Coin",
+                            note = "⚠️ Используйте /api/ai/scan-food для лучших результатов"
+                        },
+                        new {
+                            method = "POST",
+                            path = "/api/food-intake/ai-scan",
+                            description = "🤖 Новое сканирование еды с Gemini AI",
+                            auth = "required",
+                            cost = "1 LW Coin",
+                            body = new {
+                                image = "multipart/form-data",
+                                userPrompt = "Опциональные инструкции",
+                                saveResults = "true/false"
                             }
                         }
                     },
 
-                    referrals = new object[]
+                    activities = new object[]
                     {
                         new {
                             method = "GET",
-                            path = "/api/referral/generate",
-                            description = "🔗 Создать реферальный код",
+                            path = "/api/activity?startDate=2025-06-01&endDate=2025-06-30&type=strength",
+                            description = "🏃‍♂️ Получить активности с фильтрами",
+                            auth = "required"
+                        },
+                        new {
+                            method = "POST",
+                            path = "/api/activity",
+                            description = "➕ Добавить тренировку",
                             auth = "required",
-                            response = new { referralCode = "ABC12345", referralLink = "https://app.com/join?ref=ABC12345" }
+                            bodyStrength = new {
+                                type = "strength",
+                                startDate = "2025-06-24T10:00:00Z",
+                                calories = 300,
+                                strengthData = new {
+                                    name = "Жим лежа",
+                                    muscleGroup = "Грудь",
+                                    equipment = "Штанга",
+                                    workingWeight = 80
+                                }
+                            }
+                        },
+                        new {
+                            method = "POST",
+                            path = "/api/activity/steps",
+                            description = "👣 Добавить/обновить шаги",
+                            auth = "required",
+                            body = new { steps = 10000, calories = 500, date = "2025-06-24T00:00:00Z" }
+                        }
+                    },
+
+                    lwCoins = new object[]
+                    {
+                        new {
+                            method = "GET",
+                            path = "/api/lw-coin/balance",
+                            description = "💰 Баланс LW Coins",
+                            auth = "required",
+                            response = new { balance = 300, monthlyAllowance = 300, isPremium = false }
                         },
                         new {
                             method = "GET",
-                            path = "/api/referral/stats",
-                            description = "📊 Статистика рефералов",
-                            auth = "required",
+                            path = "/api/lw-coin/pricing",
+                            description = "💲 Прайс-лист",
+                            auth = "не требуется",
                             response = new {
-                                totalReferrals = 5,
-                                monthlyReferrals = 2,
-                                firstLevelReferrals = new object[] {
-                                    new { name = "John Doe", email = "j***@mail.com", level = 2, rewardCoins = 150 }
-                                },
-                                secondLevelReferrals = new object[] {
-                                    new { name = "Jane Smith", email = "j***@mail.com", level = 1, rewardCoins = 75 }
+                                lwCoinPricing = new {
+                                    photoCost = 1,
+                                    voiceCost = 1,
+                                    aiFeatures = "1 LW Coin за запрос"
                                 }
                             }
                         }
-                    },
+                    ],
 
                     bodyScan = new object[]
                     {
                         new {
                             method = "POST",
                             path = "/api/body-scan",
-                            description = "📸 Добавить скан тела",
-                            auth = "required",
-                            body = new {
-                                frontImageUrl = "https://example.com/front.jpg",
-                                sideImageUrl = "https://example.com/side.jpg",
-                                backImageUrl = "https://example.com/back.jpg", // опционально
-                                weight = 70.5,
-                                bodyFatPercentage = 15.2, // опционально
-                                musclePercentage = 42.1, // опционально
-                                waistCircumference = 80.0, // опционально
-                                notes = "Заметки", // опционально
-                                scanDate = "2025-06-24T10:00:00Z"
-                            }
-                        },
-                        new {
-                            method = "GET",
-                            path = "/api/body-scan/comparison",
-                            description = "📊 Сравнение сканов",
-                            auth = "required",
-                            response = new {
-                                previousScan = new { weight = 72.0, scanDate = "2025-05-24T..." },
-                                currentScan = new { weight = 70.5, scanDate = "2025-06-24T..." },
-                                progress = new { weightDifference = -1.5, daysBetweenScans = 31 }
-                            }
+                            description = "📸 Добавить скан тела (ручной)",
+                            auth = "required"
                         }
+                    ]
+                },
+
+                newFeatures = new
+                {
+                    geminiAI = new string[]
+                    {
+                        "🍎 Умное распознавание еды с точной калорийностью",
+                        "💪 Анализ тела и рекомендации по тренировкам",
+                        "🎤 Голосовой ввод тренировок и питания",
+                        "📊 Подробная аналитика от ИИ",
+                        "🧠 Персонализированные рекомендации"
                     }
                 },
 
                 examples = new
                 {
+                    aiWorkflow = new string[]
+                    {
+                        "✅ НОВОЕ: Работа с ИИ функциями",
+                        "1. GET /api/ai/status → Проверить статус ИИ",
+                        "2. POST /api/ai/scan-food → Сфотографировать еду",
+                        "3. POST /api/ai/analyze-body → Анализ тела",
+                        "4. POST /api/ai/voice-workout → Голосовой ввод тренировки",
+                        "5. POST /api/ai/voice-food → Голосовой ввод питания",
+                        "6. GET /api/ai/usage-stats → Статистика использования"
+                    },
                     completeWorkflow = new string[]
                     {
                         "1. POST /api/auth/send-code → Отправить код",
                         "2. POST /api/auth/confirm-email → Получить токен",
                         "3. PUT /api/user/profile → Заполнить профиль",
-                        "4. POST /api/activity → Добавить тренировку",
-                        "5. POST /api/activity/steps → Записать шаги",
-                        "6. POST /api/food-intake → Записать питание",
+                        "4. POST /api/ai/scan-food → ИИ анализ еды",
+                        "5. POST /api/ai/voice-workout → Голосовой ввод тренировки",
+                        "6. POST /api/ai/analyze-body → Анализ тела",
                         "7. GET /api/mission → Проверить прогресс миссий",
                         "8. GET /api/lw-coin/balance → Проверить баланс"
-                    },
-                    stepsWorkflow = new string[]
+                    ]
+                },
+
+                costs = new
+                {
+                    description = "Стоимость использования ИИ функций",
+                    free = new string[]
                     {
-                        "✅ НОВОЕ: Работа с шагами",
-                        "1. POST /api/activity/steps → Добавить шаги за день",
-                        "2. POST /api/activity/steps (повторно) → Обновить шаги за тот же день",
-                        "3. GET /api/activity/steps?date=2025-06-24 → Получить шаги за день",
-                        "4. GET /api/activity/stats → Получить статистику с калориями от шагов"
+                        "📸 Анализ тела (без ограничений)",
+                        "📊 Просмотр статистики",
+                        "🎯 Миссии и достижения"
+                    },
+                    paid = new string[]
+                    {
+                        "🍎 Сканирование еды: 1 LW Coin",
+                        "🎤 Голосовой ввод тренировки: 1 LW Coin",
+                        "🗣️ Голосовой ввод питания: 1 LW Coin"
+                    },
+                    premium = new string[]
+                    {
+                        "👑 Премиум подписка: безлимитное использование всех ИИ функций",
+                        "💰 Стоимость: $8.99/месяц"
                     }
                 },
 
                 errorCodes = new
                 {
-                    BadRequest = "400 - Неверные данные",
+                    BadRequest = "400 - Неверные данные или недостаточно LW Coins",
                     Unauthorized = "401 - Требуется авторизация",
                     NotFound = "404 - Ресурс не найден",
+                    ServiceUnavailable = "503 - ИИ сервис недоступен",
                     InternalServerError = "500 - Ошибка сервера"
                 }
             };

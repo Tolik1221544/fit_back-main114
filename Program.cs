@@ -37,9 +37,9 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "🏃‍♂️ Fitness Tracker API",
-        Version = "v2.1.0",
-        Description = "Полнофункциональный API для фитнес-трекера"
+        Title = "🏃‍♂️ Fitness Tracker API с Gemini AI",
+        Version = "v2.2.0",
+        Description = "Полнофункциональный API для фитнес-трекера с интеграцией Gemini AI для анализа изображений и голоса"
     });
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -94,9 +94,14 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // AutoMapper
 builder.Services.AddAutoMapper(typeof(Program));
 
-builder.Services.AddHttpClient();
+// ✅ НОВОЕ: Настройка HttpClient для Gemini API
+builder.Services.AddHttpClient<IGeminiService, GeminiService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(120); // Увеличиваем таймаут для ИИ запросов
+    client.DefaultRequestHeaders.Add("User-Agent", "FitnessTracker-API/2.2.0");
+});
 
-// Services
+// Основные сервисы
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
@@ -111,6 +116,9 @@ builder.Services.AddScoped<ILwCoinService, LwCoinService>();
 builder.Services.AddScoped<IBodyScanService, BodyScanService>();
 builder.Services.AddScoped<IAchievementService, AchievementService>();
 builder.Services.AddScoped<IExperienceService, ExperienceService>();
+
+// ✅ НОВОЕ: Регистрация Gemini AI сервиса
+builder.Services.AddScoped<IGeminiService, GeminiService>();
 
 // Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -208,20 +216,52 @@ builder.Services.AddCors(options =>
     });
 });
 
+// ✅ НОВОЕ: Увеличиваем лимиты для загрузки изображений и аудио
 builder.Services.Configure<IISServerOptions>(options =>
 {
-    options.MaxRequestBodySize = 30000000; // 30MB
+    options.MaxRequestBodySize = 50000000; // 50MB для изображений и аудио
 });
 
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.Limits.MaxRequestBodySize = 30000000; // 30MB
-    options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(30);
-    options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(30);
+    options.Limits.MaxRequestBodySize = 50000000; // 50MB
+    options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(60);
+    options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(60);
 });
 
 var app = builder.Build();
 
+// ✅ НОВОЕ: Проверка конфигурации Gemini AI при запуске
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var geminiService = scope.ServiceProvider.GetRequiredService<IGeminiService>();
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+
+        var apiKey = configuration["GeminiAI:ApiKey"];
+        var model = configuration["GeminiAI:Model"];
+
+        Console.WriteLine("🤖 Gemini AI Configuration:");
+        Console.WriteLine($"   API Key: {(!string.IsNullOrEmpty(apiKey) ? $"{apiKey[..10]}..." : "NOT SET")}");
+        Console.WriteLine($"   Model: {model ?? "NOT SET"}");
+
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            Console.WriteLine("⚠️ WARNING: Gemini API key not configured! AI features will not work.");
+        }
+        else
+        {
+            Console.WriteLine("✅ Gemini AI service configured successfully");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ Error checking Gemini configuration: {ex.Message}");
+    }
+}
+
+// Инициализация базы данных
 using (var scope = app.Services.CreateScope())
 {
     try
@@ -230,7 +270,6 @@ using (var scope = app.Services.CreateScope())
 
         Console.WriteLine("🗄️ Initializing database...");
 
-        // Проверяем, существует ли БД
         var databaseExists = await context.Database.CanConnectAsync();
 
         if (!databaseExists)
@@ -243,7 +282,6 @@ using (var scope = app.Services.CreateScope())
         {
             Console.WriteLine("✅ Database already exists, checking connection...");
 
-            // Проверяем наличие таблицы миграций
             var hasMigrationsTable = await context.Database.ExecuteSqlRawAsync(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='__EFMigrationsHistory';") > 0;
 
@@ -253,7 +291,6 @@ using (var scope = app.Services.CreateScope())
             }
             else
             {
-                // Применяем только новые миграции если есть
                 var pendingMigrations = await context.Database.GetPendingMigrationsAsync();
                 if (pendingMigrations.Any())
                 {
@@ -274,8 +311,6 @@ using (var scope = app.Services.CreateScope())
     {
         Console.WriteLine($"❌ Database initialization error: {ex.Message}");
         Console.WriteLine($"Stack trace: {ex.StackTrace}");
-
-        // Не останавливаем приложение, просто логируем ошибку
         Console.WriteLine("⚠️ Continuing startup despite database error...");
     }
 }
@@ -285,7 +320,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "🏃‍♂️ Fitness Tracker API v2.1.0");
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "🏃‍♂️ Fitness Tracker API v2.2.0 with Gemini AI");
         c.RoutePrefix = "swagger";
         c.DefaultModelsExpandDepth(-1);
         c.DisplayRequestDuration();
@@ -303,6 +338,7 @@ else
     app.UseCors("AllowAll");
 }
 
+// ✅ НОВОЕ: Middleware для логирования ИИ запросов
 app.Use(async (context, next) =>
 {
     var start = DateTime.UtcNow;
@@ -312,6 +348,12 @@ app.Use(async (context, next) =>
     if (!string.IsNullOrEmpty(authHeader))
     {
         logger.LogDebug($"🔑 Request with auth: {context.Request.Method} {context.Request.Path}");
+    }
+
+    // Логируем ИИ запросы отдельно
+    if (context.Request.Path.StartsWithSegments("/api/ai"))
+    {
+        logger.LogInformation($"🤖 AI Request: {context.Request.Method} {context.Request.Path}");
     }
 
     try
@@ -330,6 +372,12 @@ app.Use(async (context, next) =>
         {
             logger.LogWarning($"⏰ Slow request: {context.Request.Method} {context.Request.Path} took {elapsed.TotalMilliseconds}ms");
         }
+
+        // Логируем время ИИ запросов
+        if (context.Request.Path.StartsWithSegments("/api/ai"))
+        {
+            logger.LogInformation($"🤖 AI Request completed in {elapsed.TotalMilliseconds}ms");
+        }
     }
 });
 
@@ -340,10 +388,11 @@ app.MapControllers();
 var port = Environment.GetEnvironmentVariable("PORT") ?? "60170";
 var url = $"http://0.0.0.0:{port}";
 
-Console.WriteLine("🚀 Fitness Tracker API starting...");
+Console.WriteLine("🚀 Fitness Tracker API with Gemini AI starting...");
 Console.WriteLine($"📊 Swagger: {url}/swagger");
 Console.WriteLine($"🌐 API: {url}");
 Console.WriteLine($"📚 Docs: {url}/api/docs");
+Console.WriteLine($"🤖 AI Status: {url}/api/ai/status");
 Console.WriteLine($"🔑 JWT Secret: {JWT_SECRET_KEY[..20]}...");
 
 try

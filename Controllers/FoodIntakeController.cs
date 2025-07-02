@@ -18,11 +18,19 @@ namespace FitnessTracker.API.Controllers
     {
         private readonly IFoodIntakeService _foodIntakeService;
         private readonly IMissionService _missionService;
+        private readonly IGeminiService _geminiService;
+        private readonly ILwCoinService _lwCoinService;
 
-        public FoodIntakeController(IFoodIntakeService foodIntakeService, IMissionService missionService)
+        public FoodIntakeController(
+            IFoodIntakeService foodIntakeService,
+            IMissionService missionService,
+            IGeminiService geminiService,
+            ILwCoinService lwCoinService)
         {
             _foodIntakeService = foodIntakeService;
             _missionService = missionService;
+            _geminiService = geminiService;
+            _lwCoinService = lwCoinService;
         }
 
         /// <summary>
@@ -77,37 +85,6 @@ namespace FitnessTracker.API.Controllers
         /// <response code="200">Прием пищи успешно добавлен</response>
         /// <response code="400">Неверные данные запроса</response>
         /// <response code="401">Требуется авторизация</response>
-        /// <example>
-        /// {
-        ///   "items": [
-        ///     {
-        ///       "tempItemId": "temp1",
-        ///       "name": "Овсянка Геркулес",
-        ///       "weight": 100,
-        ///       "weightType": "g",
-        ///       "image": "https://example.com/oats.jpg",
-        ///       "nutritionPer100g": {
-        ///         "calories": 389,
-        ///         "proteins": 16.9,
-        ///         "fats": 6.9,
-        ///         "carbs": 66.3
-        ///       }
-        ///     },
-        ///     {
-        ///       "name": "Молоко 2.5%",
-        ///       "weight": 200,
-        ///       "weightType": "ml",
-        ///       "nutritionPer100g": {
-        ///         "calories": 52,
-        ///         "proteins": 2.8,
-        ///         "fats": 2.5,
-        ///         "carbs": 4.7
-        ///       }
-        ///     }
-        ///   ],
-        ///   "dateTime": "2025-06-26T08:00:00Z"
-        /// }
-        /// </example>
         [HttpPost]
         [ProducesResponseType(typeof(IEnumerable<FoodIntakeDto>), 200)]
         [ProducesResponseType(400)]
@@ -188,22 +165,25 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
-        /// 📸 Сканировать продукт по фото (требует LW Coins)
+        /// 📸 Сканировать продукт по фото (новая реализация с Gemini AI)
         /// </summary>
         /// <param name="image">Изображение продукта</param>
+        /// <param name="userPrompt">Дополнительные инструкции от пользователя</param>
         /// <returns>Распознанная информация о продукте</returns>
         /// <response code="200">Продукт успешно распознан</response>
         /// <response code="400">Недостаточно LW Coins или ошибка обработки</response>
         /// <response code="401">Требуется авторизация</response>
         /// <remarks>
+        /// ✅ ОБНОВЛЕНО: Теперь использует Gemini AI для более точного распознавания.
         /// Эта функция тратит 1 LW Coin за каждое сканирование.
         /// Убедитесь что у пользователя достаточно монет или активна премиум подписка.
+        /// Может распознать несколько блюд на одном изображении.
         /// </remarks>
         [HttpPost("scan")]
-        [ProducesResponseType(typeof(ScanFoodResponse), 200)]
+        [ProducesResponseType(typeof(FoodScanResponse), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]
-        public async Task<IActionResult> ScanFood(IFormFile image)
+        public async Task<IActionResult> ScanFood(IFormFile image, [FromForm] string? userPrompt = null)
         {
             try
             {
@@ -211,11 +191,126 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
+                // Проверяем и тратим LW Coins
+                var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "food_scan",
+                    "Food scan with Gemini AI", "photo");
+
+                if (!canSpend)
+                {
+                    return BadRequest(new { error = "Недостаточно LW Coins для сканирования еды" });
+                }
+
+                // Конвертируем изображение в байты
                 using var memoryStream = new MemoryStream();
                 await image.CopyToAsync(memoryStream);
                 var imageData = memoryStream.ToArray();
 
-                var result = await _foodIntakeService.ScanFoodAsync(userId, imageData);
+                // Анализируем с помощью Gemini AI
+                var result = await _geminiService.AnalyzeFoodImageAsync(imageData, userPrompt);
+
+                if (!result.Success)
+                {
+                    return BadRequest(new { error = result.ErrorMessage });
+                }
+
+                // Преобразуем ответ в старый формат для совместимости
+                var legacyResponse = new ScanFoodResponse
+                {
+                    Items = result.FoodItems?.Select(fi => new FoodIntakeDto
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        Name = fi.Name,
+                        Weight = fi.EstimatedWeight,
+                        WeightType = fi.WeightType,
+                        DateTime = DateTime.UtcNow,
+                        NutritionPer100g = fi.NutritionPer100g
+                    }).ToList() ?? new List<FoodIntakeDto>()
+                };
+
+                return Ok(legacyResponse);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 🤖 Новый метод: Сканирование с полным ответом от ИИ
+        /// </summary>
+        /// <param name="image">Изображение продукта</param>
+        /// <param name="userPrompt">Дополнительные инструкции</param>
+        /// <param name="saveResults">Автоматически сохранить результаты</param>
+        /// <returns>Полный ответ от Gemini AI</returns>
+        /// <response code="200">Анализ завершен</response>
+        /// <response code="400">Ошибка обработки</response>
+        /// <response code="401">Требуется авторизация</response>
+        [HttpPost("ai-scan")]
+        [ProducesResponseType(typeof(FoodScanResponse), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> AIScanFood(
+            IFormFile image,
+            [FromForm] string? userPrompt = null,
+            [FromForm] bool saveResults = false)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                // Проверяем и тратим LW Coins
+                var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_food_scan",
+                    "Advanced AI food scan", "photo");
+
+                if (!canSpend)
+                {
+                    return BadRequest(new { error = "Недостаточно LW Coins для ИИ сканирования еды" });
+                }
+
+                // Конвертируем изображение в байты
+                using var memoryStream = new MemoryStream();
+                await image.CopyToAsync(memoryStream);
+                var imageData = memoryStream.ToArray();
+
+                // Анализируем с помощью Gemini AI
+                var result = await _geminiService.AnalyzeFoodImageAsync(imageData, userPrompt);
+
+                if (!result.Success)
+                {
+                    return BadRequest(new { error = result.ErrorMessage });
+                }
+
+                // Если нужно сохранить результаты
+                if (saveResults && result.FoodItems?.Any() == true)
+                {
+                    try
+                    {
+                        var addFoodRequest = new AddFoodIntakeRequest
+                        {
+                            Items = result.FoodItems.Select(fi => new FoodItemRequest
+                            {
+                                Name = fi.Name,
+                                Weight = fi.EstimatedWeight,
+                                WeightType = fi.WeightType,
+                                NutritionPer100g = fi.NutritionPer100g
+                            }).ToList(),
+                            DateTime = DateTime.UtcNow
+                        };
+
+                        await _foodIntakeService.AddFoodIntakeAsync(userId, addFoodRequest);
+
+                        // Обновляем прогресс миссий
+                        await _missionService.UpdateMissionProgressAsync(userId, "food_intake", result.FoodItems.Count);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Логируем ошибку, но продолжаем выполнение
+                        Console.WriteLine($"Error saving AI food scan results: {ex.Message}");
+                    }
+                }
+
                 return Ok(result);
             }
             catch (Exception ex)
