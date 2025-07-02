@@ -288,7 +288,7 @@ namespace FitnessTracker.API.Controllers
                                 }
                             }
                         }
-                    ],
+                    },
 
                     bodyScan = new object[]
                     {
@@ -298,7 +298,7 @@ namespace FitnessTracker.API.Controllers
                             description = "📸 Добавить скан тела (ручной)",
                             auth = "required"
                         }
-                    ]
+                    }
                 },
 
                 newFeatures = new
@@ -335,7 +335,7 @@ namespace FitnessTracker.API.Controllers
                         "6. POST /api/ai/analyze-body → Анализ тела",
                         "7. GET /api/mission → Проверить прогресс миссий",
                         "8. GET /api/lw-coin/balance → Проверить баланс"
-                    ]
+                    }
                 },
 
                 costs = new

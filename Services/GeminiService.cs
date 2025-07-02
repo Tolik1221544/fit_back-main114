@@ -22,7 +22,7 @@ namespace FitnessTracker.API.Services
 
             _apiKey = _configuration["GeminiAI:ApiKey"] ?? throw new InvalidOperationException("Gemini API key not configured");
             _baseUrl = _configuration["GeminiAI:BaseUrl"] ?? "https://generativelanguage.googleapis.com/v1beta";
-            _model = _configuration["GeminiAI:Model"] ?? "gemini-1.5-pro-latest";
+            _model = _configuration["GeminiAI:Model"] ?? "gemini-1.5-flash";
 
             _logger.LogInformation($"🤖 Gemini Service initialized with model: {_model}");
         }
@@ -625,14 +625,32 @@ namespace FitnessTracker.API.Services
                 var options = new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                    NumberHandling = JsonNumberHandling.AllowReadingFromString
                 };
 
-                var response = JsonSerializer.Deserialize<FoodScanResponse>(cleanJson, options);
+                var tempResponse = JsonSerializer.Deserialize<TempFoodScanResponse>(cleanJson, options);
 
-                if (response != null)
+                if (tempResponse != null && tempResponse.Success)
                 {
-                    response.Success = true;
+                    var response = new FoodScanResponse
+                    {
+                        Success = tempResponse.Success,
+                        ErrorMessage = tempResponse.ErrorMessage,
+                        FullDescription = tempResponse.FullDescription,
+                        EstimatedCalories = (int)Math.Round(tempResponse.EstimatedCalories), 
+                        FoodItems = tempResponse.FoodItems?.Select(item => new FoodItemAnalysis
+                        {
+                            Name = item.Name,
+                            EstimatedWeight = item.EstimatedWeight,
+                            WeightType = item.WeightType,
+                            Description = item.Description,
+                            TotalCalories = (int)Math.Round(item.TotalCalories), 
+                            Confidence = item.Confidence,
+                            NutritionPer100g = item.NutritionPer100g
+                        }).ToList()
+                    };
+
                     _logger.LogInformation($"✅ Successfully parsed {response.FoodItems?.Count ?? 0} food items");
                     return response;
                 }
@@ -730,14 +748,33 @@ namespace FitnessTracker.API.Services
                 var options = new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                    NumberHandling = JsonNumberHandling.AllowReadingFromString
                 };
 
-                var response = JsonSerializer.Deserialize<VoiceFoodResponse>(cleanJson, options);
 
-                if (response != null)
+                var tempResponse = JsonSerializer.Deserialize<TempVoiceFoodResponse>(cleanJson, options);
+
+                if (tempResponse != null && tempResponse.Success)
                 {
-                    response.Success = true;
+                    var response = new VoiceFoodResponse
+                    {
+                        Success = tempResponse.Success,
+                        ErrorMessage = tempResponse.ErrorMessage,
+                        TranscribedText = tempResponse.TranscribedText,
+                        EstimatedTotalCalories = (int)Math.Round(tempResponse.EstimatedTotalCalories),
+                        FoodItems = tempResponse.FoodItems?.Select(item => new FoodItemAnalysis
+                        {
+                            Name = item.Name,
+                            EstimatedWeight = item.EstimatedWeight,
+                            WeightType = item.WeightType,
+                            Description = item.Description,
+                            TotalCalories = (int)Math.Round(item.TotalCalories),
+                            Confidence = item.Confidence,
+                            NutritionPer100g = item.NutritionPer100g
+                        }).ToList()
+                    };
+
                     _logger.LogInformation($"✅ Successfully parsed voice food with {response.FoodItems?.Count ?? 0} items");
                     return response;
                 }
@@ -766,6 +803,44 @@ namespace FitnessTracker.API.Services
 
             // Если не найден JSON, возвращаем весь ответ
             return response.Trim();
+        }
+
+        #endregion
+
+#endregion
+
+        #region Temporary Classes for Parsing Decimal Values
+
+        /// <summary>
+        /// ✅ Промежуточный класс для парсинга decimal значений из Gemini
+        /// </summary>
+        private class TempFoodScanResponse
+        {
+            public bool Success { get; set; }
+            public string? ErrorMessage { get; set; }
+            public List<TempFoodItemAnalysis>? FoodItems { get; set; }
+            public decimal EstimatedCalories { get; set; } 
+            public string? FullDescription { get; set; }
+        }
+
+        private class TempFoodItemAnalysis
+        {
+            public string Name { get; set; } = string.Empty;
+            public decimal EstimatedWeight { get; set; }
+            public string WeightType { get; set; } = "g";
+            public string? Description { get; set; }
+            public NutritionPer100gDto NutritionPer100g { get; set; } = new NutritionPer100gDto();
+            public decimal TotalCalories { get; set; } 
+            public decimal Confidence { get; set; }
+        }
+
+        private class TempVoiceFoodResponse
+        {
+            public bool Success { get; set; }
+            public string? ErrorMessage { get; set; }
+            public string? TranscribedText { get; set; }
+            public List<TempFoodItemAnalysis>? FoodItems { get; set; }
+            public decimal EstimatedTotalCalories { get; set; } 
         }
 
         #endregion
