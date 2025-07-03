@@ -16,6 +16,17 @@ namespace FitnessTracker.API.DTOs
         public NutritionPer100gDto NutritionPer100g { get; set; } = new NutritionPer100gDto();
     }
 
+    public class FoodItemAnalysis
+    {
+        public string Name { get; set; } = string.Empty;
+        public decimal EstimatedWeight { get; set; }
+        public string WeightType { get; set; } = "g";
+        public string? Description { get; set; }
+        public NutritionPer100gDto NutritionPer100g { get; set; } = new NutritionPer100gDto();
+        public int TotalCalories { get; set; }
+        public decimal Confidence { get; set; }
+    }
+
     public class UpdateFoodIntakeRequest
     {
         public string Name { get; set; } = string.Empty;

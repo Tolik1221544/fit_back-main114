@@ -1,6 +1,7 @@
 ﻿using FitnessTracker.API.DTOs;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace FitnessTracker.API.Services
@@ -392,7 +393,7 @@ namespace FitnessTracker.API.Services
             return Convert.ToBase64String(imageData);
         }
 
-        public async Task<bool> ValidateImageQualityAsync(byte[] imageData)
+        public Task<bool> ValidateImageQualityAsync(byte[] imageData)
         {
             try
             {
@@ -400,14 +401,14 @@ namespace FitnessTracker.API.Services
                 if (imageData.Length < 10 * 1024)
                 {
                     _logger.LogWarning("⚠️ Image too small (less than 10KB)");
-                    return false;
+                    return Task.FromResult(false);
                 }
 
                 // Проверяем максимальный размер (не более 20MB)
                 if (imageData.Length > 20 * 1024 * 1024)
                 {
                     _logger.LogWarning("⚠️ Image too large (more than 20MB)");
-                    return false;
+                    return Task.FromResult(false);
                 }
 
                 // Проверяем, что это действительно изображение (по заголовку)
@@ -430,15 +431,15 @@ namespace FitnessTracker.API.Services
                 if (!hasValidHeader)
                 {
                     _logger.LogWarning("⚠️ Invalid image format");
-                    return false;
+                    return Task.FromResult(false);
                 }
 
-                return true;
+                return Task.FromResult(true);
             }
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Error validating image quality: {ex.Message}");
-                return false;
+                return Task.FromResult(false);
             }
         }
 
@@ -450,9 +451,15 @@ namespace FitnessTracker.API.Services
 
 Ты - эксперт по питанию. Проанализируй изображение и определи:
 1. Все блюда/продукты на изображении
-2. Примерный вес каждого продукта в граммах
-3. Пищевую ценность на 100г для каждого продукта
-4. Общее количество калорий
+2. Примерный вес/объем каждого продукта
+3. Правильную единицу измерения (граммы для твердой еды, миллилитры для жидкостей)
+4. Пищевую ценность на 100г/100мл для каждого продукта
+5. Общее количество калорий
+
+ВАЖНО: Используй правильные единицы измерения:
+- Для жидкостей (супы, борщ, молоко, соки): ""ml"" (миллилитры)
+- Для твердой еды (хлеб, мясо, овощи): ""g"" (граммы)
+- Для порошков/специй: ""g"" (граммы)
 
 Верни результат ТОЛЬКО в формате JSON без дополнительного текста:
 
@@ -625,8 +632,7 @@ namespace FitnessTracker.API.Services
                 var options = new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                    NumberHandling = JsonNumberHandling.AllowReadingFromString
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
                 };
 
                 var tempResponse = JsonSerializer.Deserialize<TempFoodScanResponse>(cleanJson, options);
@@ -638,17 +644,17 @@ namespace FitnessTracker.API.Services
                         Success = tempResponse.Success,
                         ErrorMessage = tempResponse.ErrorMessage,
                         FullDescription = tempResponse.FullDescription,
-                        EstimatedCalories = (int)Math.Round(tempResponse.EstimatedCalories), 
-                        FoodItems = tempResponse.FoodItems?.Select(item => new FoodItemAnalysis
+                        EstimatedCalories = (int)Math.Round(tempResponse.EstimatedCalories),
+                        FoodItems = tempResponse.FoodItems?.Select(item => new FoodItemResponse
                         {
                             Name = item.Name,
                             EstimatedWeight = item.EstimatedWeight,
                             WeightType = item.WeightType,
                             Description = item.Description,
-                            TotalCalories = (int)Math.Round(item.TotalCalories), 
+                            TotalCalories = (int)Math.Round(item.TotalCalories),
                             Confidence = item.Confidence,
                             NutritionPer100g = item.NutritionPer100g
-                        }).ToList()
+                        }).ToList() ?? new List<FoodItemResponse>()
                     };
 
                     _logger.LogInformation($"✅ Successfully parsed {response.FoodItems?.Count ?? 0} food items");
@@ -748,10 +754,8 @@ namespace FitnessTracker.API.Services
                 var options = new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                    NumberHandling = JsonNumberHandling.AllowReadingFromString
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
                 };
-
 
                 var tempResponse = JsonSerializer.Deserialize<TempVoiceFoodResponse>(cleanJson, options);
 
@@ -763,7 +767,7 @@ namespace FitnessTracker.API.Services
                         ErrorMessage = tempResponse.ErrorMessage,
                         TranscribedText = tempResponse.TranscribedText,
                         EstimatedTotalCalories = (int)Math.Round(tempResponse.EstimatedTotalCalories),
-                        FoodItems = tempResponse.FoodItems?.Select(item => new FoodItemAnalysis
+                        FoodItems = tempResponse.FoodItems?.Select(item => new FoodItemResponse
                         {
                             Name = item.Name,
                             EstimatedWeight = item.EstimatedWeight,
@@ -772,7 +776,7 @@ namespace FitnessTracker.API.Services
                             TotalCalories = (int)Math.Round(item.TotalCalories),
                             Confidence = item.Confidence,
                             NutritionPer100g = item.NutritionPer100g
-                        }).ToList()
+                        }).ToList() ?? new List<FoodItemResponse>()
                     };
 
                     _logger.LogInformation($"✅ Successfully parsed voice food with {response.FoodItems?.Count ?? 0} items");
@@ -807,19 +811,17 @@ namespace FitnessTracker.API.Services
 
         #endregion
 
-#endregion
-
         #region Temporary Classes for Parsing Decimal Values
 
         /// <summary>
-        /// ✅ Промежуточный класс для парсинга decimal значений из Gemini
+        /// Промежуточный класс для парсинга decimal значений из Gemini
         /// </summary>
         private class TempFoodScanResponse
         {
             public bool Success { get; set; }
             public string? ErrorMessage { get; set; }
             public List<TempFoodItemAnalysis>? FoodItems { get; set; }
-            public decimal EstimatedCalories { get; set; } 
+            public decimal EstimatedCalories { get; set; }
             public string? FullDescription { get; set; }
         }
 
@@ -830,7 +832,7 @@ namespace FitnessTracker.API.Services
             public string WeightType { get; set; } = "g";
             public string? Description { get; set; }
             public NutritionPer100gDto NutritionPer100g { get; set; } = new NutritionPer100gDto();
-            public decimal TotalCalories { get; set; } 
+            public decimal TotalCalories { get; set; }
             public decimal Confidence { get; set; }
         }
 
@@ -840,7 +842,7 @@ namespace FitnessTracker.API.Services
             public string? ErrorMessage { get; set; }
             public string? TranscribedText { get; set; }
             public List<TempFoodItemAnalysis>? FoodItems { get; set; }
-            public decimal EstimatedTotalCalories { get; set; } 
+            public decimal EstimatedTotalCalories { get; set; }
         }
 
         #endregion
