@@ -94,7 +94,6 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // AutoMapper
 builder.Services.AddAutoMapper(typeof(Program));
 
-// ✅ НОВОЕ: Настройка HttpClient для Gemini API
 builder.Services.AddHttpClient<IGeminiService, GeminiService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(120); // Увеличиваем таймаут для ИИ запросов
@@ -116,8 +115,7 @@ builder.Services.AddScoped<ILwCoinService, LwCoinService>();
 builder.Services.AddScoped<IBodyScanService, BodyScanService>();
 builder.Services.AddScoped<IAchievementService, AchievementService>();
 builder.Services.AddScoped<IExperienceService, ExperienceService>();
-
-// ✅ НОВОЕ: Регистрация Gemini AI сервиса
+builder.Services.AddScoped<IGoalService, GoalService>();
 builder.Services.AddScoped<IGeminiService, GeminiService>();
 
 // Repositories
@@ -132,6 +130,8 @@ builder.Services.AddScoped<IBodyScanRepository, BodyScanRepository>();
 builder.Services.AddScoped<IAchievementRepository, AchievementRepository>();
 builder.Services.AddScoped<IExperienceRepository, ExperienceRepository>();
 builder.Services.AddScoped<IStepsRepository, StepsRepository>();
+
+builder.Services.AddScoped<IGoalRepository, GoalRepository>();
 
 // JWT Authentication
 const string JWT_SECRET_KEY = "fitness-tracker-super-secret-key-that-is-definitely-long-enough-for-security-2024";
@@ -216,7 +216,6 @@ builder.Services.AddCors(options =>
     });
 });
 
-// ✅ НОВОЕ: Увеличиваем лимиты для загрузки изображений и аудио
 builder.Services.Configure<IISServerOptions>(options =>
 {
     options.MaxRequestBodySize = 50000000; // 50MB для изображений и аудио
@@ -231,7 +230,6 @@ builder.WebHost.ConfigureKestrel(options =>
 
 var app = builder.Build();
 
-// ✅ НОВОЕ: Проверка конфигурации Gemini AI при запуске
 using (var scope = app.Services.CreateScope())
 {
     try
@@ -338,7 +336,6 @@ else
     app.UseCors("AllowAll");
 }
 
-// ✅ НОВОЕ: Middleware для логирования ИИ запросов
 app.Use(async (context, next) =>
 {
     var start = DateTime.UtcNow;

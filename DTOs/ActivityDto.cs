@@ -36,7 +36,6 @@
         public DateTime StartDate { get; set; }
         public DateTime? EndDate { get; set; }
 
-        // ✅ ДОБАВЛЕНО: Поддержка старых полей (для совместимости)
         public DateTime? StartTime { get; set; }
         public DateTime? EndTime { get; set; }
 
@@ -52,6 +51,19 @@
         public string Equipment { get; set; } = string.Empty;
         public decimal WorkingWeight { get; set; }
         public int RestTimeSeconds { get; set; }
+
+        public List<StrengthSetDto> Sets { get; set; } = new List<StrengthSetDto>();
+        public int TotalSets => Sets.Count;
+        public int TotalReps => Sets.Sum(s => s.Reps);
+    }
+
+    public class StrengthSetDto
+    {
+        public int SetNumber { get; set; }
+        public decimal Weight { get; set; }
+        public int Reps { get; set; }
+        public bool IsCompleted { get; set; } = true;
+        public string? Notes { get; set; }
     }
 
     public class CardioDataDto

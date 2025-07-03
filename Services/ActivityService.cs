@@ -97,14 +97,42 @@ namespace FitnessTracker.API.Services
                     if (string.IsNullOrWhiteSpace(request.StrengthData.Name))
                         throw new ArgumentException("Strength exercise name is required");
 
+                    var sets = new List<StrengthSet>();
+                    if (request.StrengthData.Sets?.Any() == true)
+                    {
+                        // Используем подходы из запроса
+                        sets = request.StrengthData.Sets.Select((setDto, index) => new StrengthSet
+                        {
+                            SetNumber = setDto.SetNumber > 0 ? setDto.SetNumber : index + 1,
+                            Weight = Math.Max(0, setDto.Weight),
+                            Reps = Math.Max(0, setDto.Reps),
+                            IsCompleted = setDto.IsCompleted,
+                            Notes = setDto.Notes?.Trim()
+                        }).ToList();
+                    }
+                    else if (request.StrengthData.WorkingWeight > 0)
+                    {
+                        // Создаем один подход на основе старых данных для совместимости
+                        sets.Add(new StrengthSet
+                        {
+                            SetNumber = 1,
+                            Weight = request.StrengthData.WorkingWeight,
+                            Reps = 10, // Дефолтное значение
+                            IsCompleted = true,
+                            Notes = "Автоматически созданный подход"
+                        });
+                    }
+
                     activity.StrengthData = new StrengthData
                     {
                         Name = request.StrengthData.Name.Trim(),
                         MuscleGroup = request.StrengthData.MuscleGroup?.Trim() ?? "Не указано",
                         Equipment = request.StrengthData.Equipment?.Trim() ?? "Не указано",
-                        WorkingWeight = Math.Max(0, request.StrengthData.WorkingWeight),
-                        RestTimeSeconds = Math.Max(0, request.StrengthData.RestTimeSeconds)
+                        WorkingWeight = sets.Any() ? sets.Average(s => s.Weight) : request.StrengthData.WorkingWeight,
+                        RestTimeSeconds = Math.Max(0, request.StrengthData.RestTimeSeconds),
+                        Sets = sets
                     };
+
                     // Явно устанавливаем CardioData в null
                     activity.CardioData = null;
                 }
@@ -135,7 +163,18 @@ namespace FitnessTracker.API.Services
                         MuscleGroup = "Не указано",
                         Equipment = "Не указано",
                         WorkingWeight = 0,
-                        RestTimeSeconds = 0
+                        RestTimeSeconds = 0,
+                        Sets = new List<StrengthSet>
+                {
+                    new StrengthSet
+                    {
+                        SetNumber = 1,
+                        Weight = 0,
+                        Reps = 0,
+                        IsCompleted = false,
+                        Notes = "Данные не указаны"
+                    }
+                }
                     };
                 }
 
@@ -210,6 +249,35 @@ namespace FitnessTracker.API.Services
 
             if (activity.Type == "strength" && request.StrengthData != null)
             {
+                var sets = new List<StrengthSet>();
+                if (request.StrengthData.Sets?.Any() == true)
+                {
+                    sets = request.StrengthData.Sets.Select((setDto, index) => new StrengthSet
+                    {
+                        SetNumber = setDto.SetNumber > 0 ? setDto.SetNumber : index + 1,
+                        Weight = Math.Max(0, setDto.Weight),
+                        Reps = Math.Max(0, setDto.Reps),
+                        IsCompleted = setDto.IsCompleted,
+                        Notes = setDto.Notes?.Trim()
+                    }).ToList();
+                }
+                else
+                {
+                    // Сохраняем существующие подходы или создаем новый
+                    sets = activity.StrengthData?.Sets ?? new List<StrengthSet>();
+                    if (!sets.Any() && request.StrengthData.WorkingWeight > 0)
+                    {
+                        sets.Add(new StrengthSet
+                        {
+                            SetNumber = 1,
+                            Weight = request.StrengthData.WorkingWeight,
+                            Reps = 10,
+                            IsCompleted = true,
+                            Notes = "Обновленный подход"
+                        });
+                    }
+                }
+
                 activity.StrengthData = new StrengthData
                 {
                     Name = !string.IsNullOrWhiteSpace(request.StrengthData.Name)
@@ -217,8 +285,9 @@ namespace FitnessTracker.API.Services
                         : activity.StrengthData?.Name ?? "Упражнение не указано",
                     MuscleGroup = request.StrengthData.MuscleGroup?.Trim() ?? activity.StrengthData?.MuscleGroup ?? "Не указано",
                     Equipment = request.StrengthData.Equipment?.Trim() ?? activity.StrengthData?.Equipment ?? "Не указано",
-                    WorkingWeight = Math.Max(0, request.StrengthData.WorkingWeight),
-                    RestTimeSeconds = Math.Max(0, request.StrengthData.RestTimeSeconds)
+                    WorkingWeight = sets.Any() ? sets.Average(s => s.Weight) : Math.Max(0, request.StrengthData.WorkingWeight),
+                    RestTimeSeconds = Math.Max(0, request.StrengthData.RestTimeSeconds),
+                    Sets = sets
                 };
                 activity.CardioData = null;
             }
@@ -504,7 +573,22 @@ namespace FitnessTracker.API.Services
                 durationBonus = Math.Min(15, (int)duration.TotalMinutes / 10);
             }
 
-            return baseExperience + calorieBonus + durationBonus;
+            int setsBonus = 0;
+            if (activity.Type?.ToLowerInvariant() == "strength" && activity.StrengthData?.Sets?.Any() == true)
+            {
+                var setsCount = activity.StrengthData.Sets.Count;
+                var totalReps = activity.StrengthData.Sets.Sum(s => s.Reps);
+
+                setsBonus = Math.Min(25, setsCount * 3); // 3 опыта за подход, максимум 25
+
+                // Дополнительный бонус за большое количество повторений
+                if (totalReps > 50)
+                    setsBonus += 10;
+                else if (totalReps > 30)
+                    setsBonus += 5;
+            }
+
+            return baseExperience + calorieBonus + durationBonus + setsBonus;
         }
 
         private int CalculateExperienceForSteps(int steps)

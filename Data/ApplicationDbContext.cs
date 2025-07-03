@@ -23,6 +23,10 @@ namespace FitnessTracker.API.Data
         public DbSet<Referral> Referrals { get; set; }
         public DbSet<Subscription> Subscriptions { get; set; }
 
+        // ✅ НОВЫЕ ТАБЛИЦЫ: Цели и прогресс
+        public DbSet<Goal> Goals { get; set; }
+        public DbSet<DailyGoalProgress> DailyGoalProgress { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -199,6 +203,53 @@ namespace FitnessTracker.API.Data
                 entity.Property(e => e.Price).HasPrecision(10, 2);
             });
 
+            // ✅ НОВЫЕ КОНФИГУРАЦИИ: Goal entity configuration
+            modelBuilder.Entity<Goal>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.Property(e => e.TargetWeight).HasPrecision(5, 2);
+                entity.Property(e => e.CurrentWeight).HasPrecision(5, 2);
+                entity.Property(e => e.ProgressPercentage).HasPrecision(5, 2);
+
+                entity.HasIndex(e => new { e.UserId, e.IsActive });
+                entity.HasIndex(e => e.GoalType);
+            });
+
+            // ✅ НОВЫЕ КОНФИГУРАЦИИ: DailyGoalProgress entity configuration
+            modelBuilder.Entity<DailyGoalProgress>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasOne(e => e.Goal)
+                    .WithMany(g => g.DailyProgress)
+                    .HasForeignKey(e => e.GoalId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.Property(e => e.ActualProtein).HasPrecision(8, 2);
+                entity.Property(e => e.ActualCarbs).HasPrecision(8, 2);
+                entity.Property(e => e.ActualFats).HasPrecision(8, 2);
+                entity.Property(e => e.ActualWeight).HasPrecision(5, 2);
+
+                entity.Property(e => e.CaloriesProgress).HasPrecision(5, 2);
+                entity.Property(e => e.ProteinProgress).HasPrecision(5, 2);
+                entity.Property(e => e.CarbsProgress).HasPrecision(5, 2);
+                entity.Property(e => e.FatsProgress).HasPrecision(5, 2);
+                entity.Property(e => e.StepsProgress).HasPrecision(5, 2);
+                entity.Property(e => e.WorkoutProgress).HasPrecision(5, 2);
+                entity.Property(e => e.OverallProgress).HasPrecision(5, 2);
+
+                entity.HasIndex(e => new { e.UserId, e.GoalId, e.Date }).IsUnique();
+                entity.HasIndex(e => e.Date);
+            });
+
             modelBuilder.Entity<Mission>().HasData(
                 new Mission
                 {
@@ -231,6 +282,29 @@ namespace FitnessTracker.API.Data
                     Type = "weekly_body_scan",
                     TargetValue = 1,
                     Route = "/body_analyze",
+                    IsActive = true
+                },
+                // ✅ НОВЫЕ МИССИИ для целей
+                new Mission
+                {
+                    Id = "mission_daily_goal_80",
+                    Title = "Выполни дневную цель на 80%",
+                    Icon = "🎯",
+                    RewardExperience = 75,
+                    Type = "daily_goal_progress",
+                    TargetValue = 80,
+                    Route = "/goals",
+                    IsActive = true
+                },
+                new Mission
+                {
+                    Id = "mission_weekly_goal_streak",
+                    Title = "Неделя выполнения целей",
+                    Icon = "🔥",
+                    RewardExperience = 200,
+                    Type = "weekly_goal_streak",
+                    TargetValue = 7,
+                    Route = "/goals",
                     IsActive = true
                 }
             );
@@ -317,6 +391,37 @@ namespace FitnessTracker.API.Data
                     ImageUrl = "https://example.com/achievements/referral-master.png",
                     Type = "referral_count",
                     RequiredValue = 10,
+                    RewardExperience = 500
+                },
+                // ✅ НОВЫЕ ДОСТИЖЕНИЯ для целей
+                new Achievement
+                {
+                    Id = "achievement_goal_setter",
+                    Title = "Постановщик целей",
+                    Icon = "🎯",
+                    ImageUrl = "https://example.com/achievements/goal-setter.png",
+                    Type = "goal_count",
+                    RequiredValue = 1,
+                    RewardExperience = 150
+                },
+                new Achievement
+                {
+                    Id = "achievement_goal_achiever",
+                    Title = "Достигатор целей",
+                    Icon = "🏆",
+                    ImageUrl = "https://example.com/achievements/goal-achiever.png",
+                    Type = "completed_goal_count",
+                    RequiredValue = 1,
+                    RewardExperience = 300
+                },
+                new Achievement
+                {
+                    Id = "achievement_consistency_master",
+                    Title = "Мастер постоянства",
+                    Icon = "🔥",
+                    ImageUrl = "https://example.com/achievements/consistency-master.png",
+                    Type = "goal_streak_days",
+                    RequiredValue = 30,
                     RewardExperience = 500
                 }
             );

@@ -42,6 +42,19 @@ namespace FitnessTracker.API.Models
         public string Equipment { get; set; } = string.Empty;
         public decimal WorkingWeight { get; set; }
         public int RestTimeSeconds { get; set; }
+
+        public List<StrengthSet> Sets { get; set; } = new List<StrengthSet>();
+        public int TotalSets => Sets.Count;
+        public int TotalReps => Sets.Sum(s => s.Reps);
+    }
+
+    public class StrengthSet
+    {
+        public int SetNumber { get; set; }
+        public decimal Weight { get; set; }
+        public int Reps { get; set; }
+        public bool IsCompleted { get; set; } = true;
+        public string? Notes { get; set; }
     }
 
     public class CardioData
