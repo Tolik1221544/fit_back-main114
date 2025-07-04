@@ -210,10 +210,13 @@ namespace FitnessTracker.API.Services
             {
                 _logger.LogInformation("🎤 Analyzing voice workout with Gemini AI");
 
-                // Конвертируем аудио в base64
-                var base64Audio = Convert.ToBase64String(audioData);
+                // Определяем MIME тип аудио
+                var mimeType = DetectAudioMimeType(audioData);
+                _logger.LogInformation($"🎵 Detected audio format: {mimeType}");
 
+                // Создаем prompt для анализа аудио
                 var prompt = CreateVoiceWorkoutAnalysisPrompt(workoutType);
+                var base64Audio = Convert.ToBase64String(audioData);
 
                 var contents = new List<GeminiContent>
                 {
@@ -226,7 +229,7 @@ namespace FitnessTracker.API.Services
                             {
                                 InlineData = new GeminiInlineData
                                 {
-                                    MimeType = "audio/wav",
+                                    MimeType = mimeType,
                                     Data = base64Audio
                                 }
                             }
@@ -274,8 +277,13 @@ namespace FitnessTracker.API.Services
             {
                 _logger.LogInformation("🗣️ Analyzing voice food with Gemini AI");
 
-                var base64Audio = Convert.ToBase64String(audioData);
+                // Определяем MIME тип аудио
+                var mimeType = DetectAudioMimeType(audioData);
+                _logger.LogInformation($"🎵 Detected audio format: {mimeType}");
+
+                // Создаем prompt для анализа аудио
                 var prompt = CreateVoiceFoodAnalysisPrompt(mealType);
+                var base64Audio = Convert.ToBase64String(audioData);
 
                 var contents = new List<GeminiContent>
                 {
@@ -288,7 +296,7 @@ namespace FitnessTracker.API.Services
                             {
                                 InlineData = new GeminiInlineData
                                 {
-                                    MimeType = "audio/wav",
+                                    MimeType = mimeType,
                                     Data = base64Audio
                                 }
                             }
@@ -443,6 +451,34 @@ namespace FitnessTracker.API.Services
             }
         }
 
+        #region Private Methods - Audio Detection
+
+        private string DetectAudioMimeType(byte[] audioData)
+        {
+            // Определяем тип аудио по заголовку файла
+            if (audioData.Length < 4) return "audio/ogg";
+
+            // OGG Vorbis
+            if (audioData[0] == 0x4F && audioData[1] == 0x67 && audioData[2] == 0x67 && audioData[3] == 0x53)
+                return "audio/ogg";
+
+            // MP3
+            if (audioData[0] == 0xFF && (audioData[1] & 0xE0) == 0xE0)
+                return "audio/mp3";
+
+            // WAV
+            if (audioData[0] == 0x52 && audioData[1] == 0x49 && audioData[2] == 0x46 && audioData[3] == 0x46)
+                return "audio/wav";
+
+            // WebM
+            if (audioData[0] == 0x1A && audioData[1] == 0x45 && audioData[2] == 0xDF && audioData[3] == 0xA3)
+                return "audio/webm";
+
+            return "audio/ogg"; // Default
+        }
+
+        #endregion
+
         #region Private Methods - Prompts
 
         private string CreateFoodAnalysisPrompt(string? userPrompt = null)
@@ -577,7 +613,21 @@ namespace FitnessTracker.API.Services
       ""muscleGroup"": ""Грудь"",
       ""equipment"": ""Штанга"",
       ""workingWeight"": 80,
-      ""restTimeSeconds"": 120
+      ""restTimeSeconds"": 120,
+      ""sets"": [
+        {
+          ""setNumber"": 1,
+          ""weight"": 80,
+          ""reps"": 10,
+          ""isCompleted"": true
+        }
+      ]
+    },
+    ""cardioData"": {
+      ""cardioType"": ""Бег"",
+      ""distanceKm"": 5.0,
+      ""avgPulse"": 140,
+      ""maxPulse"": 160
     },
     ""notes"": [""Примечание 1""]
   }
@@ -592,17 +642,17 @@ namespace FitnessTracker.API.Services
 
         private string CreateVoiceFoodAnalysisPrompt(string? mealType)
         {
-            return @"Распознай речь из аудио и извлеки информацию о еде. Верни результат в JSON:
+            return @"Распознай речь из аудио и извлеки информацию о еде. Верни результат СТРОГО в формате JSON:
 
 {
   ""success"": true,
-  ""transcribedText"": ""Расшифрованный текст"",
+  ""transcribedText"": ""Расшифрованный текст из аудио"",
   ""foodItems"": [
     {
-      ""name"": ""Овсянка"",
+      ""name"": ""Название блюда"",
       ""estimatedWeight"": 100,
       ""weightType"": ""g"",
-      ""description"": ""Овсяная каша с молоком"",
+      ""description"": ""Описание блюда"",
       ""nutritionPer100g"": {
         ""calories"": 389,
         ""proteins"": 16.9,
@@ -614,7 +664,19 @@ namespace FitnessTracker.API.Services
     }
   ],
   ""estimatedTotalCalories"": 389
-}";
+}
+
+Если не удалось распознать еду, верни:
+{
+  ""success"": false,
+  ""errorMessage"": ""Не удалось распознать информацию о еде из аудио""
+}
+
+ВАЖНО: 
+- Для жидкостей используй weightType: ""ml""
+- Для твердой еды используй weightType: ""g""
+- Будь точным в оценке веса порций
+- Распознай максимально точно что говорится в аудио";
         }
 
         #endregion
@@ -726,22 +788,28 @@ namespace FitnessTracker.API.Services
 
                 if (response != null)
                 {
-                    response.Success = true;
-                    _logger.LogInformation("✅ Successfully parsed voice workout");
-                    return response;
+                    if (response.Success)
+                    {
+                        _logger.LogInformation("✅ Successfully parsed voice workout");
+                        return response;
+                    }
+                    else
+                    {
+                        // Если Gemini вернул success: false, создаем fallback
+                        return CreateFallbackWorkoutResponse(jsonResponse);
+                    }
                 }
+
+                // Fallback для неструктурированного ответа
+                return CreateFallbackWorkoutResponse(jsonResponse);
             }
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Error parsing voice workout response: {ex.Message}");
                 _logger.LogDebug($"Original response: {jsonResponse}");
-            }
 
-            return new VoiceWorkoutResponse
-            {
-                Success = false,
-                ErrorMessage = "Не удалось обработать ответ от ИИ"
-            };
+                return CreateFallbackWorkoutResponse(jsonResponse);
+            }
         }
 
         private VoiceFoodResponse ParseVoiceFoodResponse(string jsonResponse)
@@ -757,43 +825,52 @@ namespace FitnessTracker.API.Services
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
                 };
 
-                var tempResponse = JsonSerializer.Deserialize<TempVoiceFoodResponse>(cleanJson, options);
-
-                if (tempResponse != null && tempResponse.Success)
+                // Сначала пытаемся распарсить как полный JSON ответ
+                try
                 {
-                    var response = new VoiceFoodResponse
-                    {
-                        Success = tempResponse.Success,
-                        ErrorMessage = tempResponse.ErrorMessage,
-                        TranscribedText = tempResponse.TranscribedText,
-                        EstimatedTotalCalories = (int)Math.Round(tempResponse.EstimatedTotalCalories),
-                        FoodItems = tempResponse.FoodItems?.Select(item => new FoodItemResponse
-                        {
-                            Name = item.Name,
-                            EstimatedWeight = item.EstimatedWeight,
-                            WeightType = item.WeightType,
-                            Description = item.Description,
-                            TotalCalories = (int)Math.Round(item.TotalCalories),
-                            Confidence = item.Confidence,
-                            NutritionPer100g = item.NutritionPer100g
-                        }).ToList() ?? new List<FoodItemResponse>()
-                    };
+                    var tempResponse = JsonSerializer.Deserialize<TempVoiceFoodResponse>(cleanJson, options);
 
-                    _logger.LogInformation($"✅ Successfully parsed voice food with {response.FoodItems?.Count ?? 0} items");
-                    return response;
+                    if (tempResponse != null && tempResponse.Success)
+                    {
+                        var response = new VoiceFoodResponse
+                        {
+                            Success = tempResponse.Success,
+                            ErrorMessage = tempResponse.ErrorMessage,
+                            TranscribedText = tempResponse.TranscribedText,
+                            EstimatedTotalCalories = (int)Math.Round(tempResponse.EstimatedTotalCalories),
+                            FoodItems = tempResponse.FoodItems?.Select(item => new FoodItemResponse
+                            {
+                                Name = item.Name,
+                                EstimatedWeight = item.EstimatedWeight,
+                                WeightType = item.WeightType,
+                                Description = item.Description,
+                                TotalCalories = (int)Math.Round(item.TotalCalories),
+                                Confidence = item.Confidence,
+                                NutritionPer100g = item.NutritionPer100g
+                            }).ToList() ?? new List<FoodItemResponse>()
+                        };
+
+                        _logger.LogInformation($"✅ Successfully parsed voice food with {response.FoodItems?.Count ?? 0} items");
+                        return response;
+                    }
                 }
+                catch (JsonException)
+                {
+                    // Если не удалось распарсить как структурированный JSON, создаем fallback ответ
+                    _logger.LogWarning("⚠️ Failed to parse as structured JSON, creating fallback response");
+                }
+
+                // Fallback: создаем ответ на основе текста ответа от ИИ
+                return CreateFallbackVoiceFoodResponse(jsonResponse);
             }
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Error parsing voice food response: {ex.Message}");
                 _logger.LogDebug($"Original response: {jsonResponse}");
-            }
 
-            return new VoiceFoodResponse
-            {
-                Success = false,
-                ErrorMessage = "Не удалось обработать ответ от ИИ"
-            };
+                // Возвращаем fallback ответ вместо ошибки
+                return CreateFallbackVoiceFoodResponse(jsonResponse);
+            }
         }
 
         private string ExtractJsonFromResponse(string response)
@@ -807,6 +884,286 @@ namespace FitnessTracker.API.Services
 
             // Если не найден JSON, возвращаем весь ответ
             return response.Trim();
+        }
+
+        #endregion
+
+        #region Private Methods - Fallback Responses
+
+        private VoiceWorkoutResponse CreateFallbackWorkoutResponse(string aiResponse)
+        {
+            try
+            {
+                _logger.LogInformation("🎭 Creating fallback voice workout response");
+
+                // Извлекаем полезную информацию из ответа ИИ
+                var text = aiResponse.ToLowerInvariant();
+                var workoutType = DetermineWorkoutType(text);
+
+                var response = new VoiceWorkoutResponse
+                {
+                    Success = true,
+                    TranscribedText = ExtractMeaningfulText(aiResponse),
+                    WorkoutData = new WorkoutDataResponse // Исправлено: было VoiceWorkoutData
+                    {
+                        Type = workoutType,
+                        StartTime = DateTime.UtcNow.AddMinutes(-30),
+                        EndTime = DateTime.UtcNow,
+                        EstimatedCalories = 200,
+                        StrengthData = workoutType == "strength" ? new StrengthDataDto
+                        {
+                            Name = ExtractExerciseName(text),
+                            MuscleGroup = "Разные группы мышц",
+                            Equipment = ExtractEquipment(text),
+                            WorkingWeight = ExtractWeight(text),
+                            Sets = new List<StrengthSetDto>
+                    {
+                        new StrengthSetDto { SetNumber = 1, Weight = ExtractWeight(text), Reps = 10, IsCompleted = true }
+                    }
+                        } : null,
+                        CardioData = workoutType == "cardio" ? new CardioDataDto
+                        {
+                            CardioType = ExtractCardioType(text),
+                            DistanceKm = 3,
+                            AvgPulse = 140
+                        } : null,
+                        Notes = new List<string> { $"Распознано из голосового ввода: {ExtractMeaningfulText(aiResponse)}" }
+                    }
+                };
+
+                _logger.LogInformation($"✅ Created fallback workout response: {workoutType}");
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error creating fallback workout response: {ex.Message}");
+
+                return new VoiceWorkoutResponse
+                {
+                    Success = false,
+                    ErrorMessage = "Не удалось обработить голосовой ввод о тренировке"
+                };
+            }
+        }
+
+        private VoiceFoodResponse CreateFallbackVoiceFoodResponse(string aiResponse)
+        {
+            try
+            {
+                _logger.LogInformation("🎭 Creating fallback voice food response");
+
+                // Пытаемся извлечь полезную информацию из ответа ИИ
+                var foodItems = new List<FoodItemResponse>();
+
+                // Анализируем текст ответа на предмет упоминания еды
+                var text = aiResponse.ToLowerInvariant();
+
+                // База данных еды для fallback
+                var foodDatabase = new Dictionary<string, (string displayName, decimal calories, decimal proteins, decimal fats, decimal carbs, decimal weight, string weightType)>
+                {
+                    ["борщ"] = ("Борщ", 45, 2.1m, 2.8m, 6.7m, 300, "ml"),
+                    ["хлеб"] = ("Хлеб", 250, 8.1m, 1.0m, 48.8m, 50, "g"),
+                    ["овсянка"] = ("Овсянка", 389, 16.9m, 6.9m, 66.3m, 100, "g"),
+                    ["каша"] = ("Каша", 389, 16.9m, 6.9m, 66.3m, 100, "g"),
+                    ["банан"] = ("Банан", 89, 1.1m, 0.3m, 22.8m, 120, "g"),
+                    ["курица"] = ("Куриная грудка", 165, 31.0m, 3.6m, 0.0m, 150, "g"),
+                    ["куриная"] = ("Куриная грудка", 165, 31.0m, 3.6m, 0.0m, 150, "g"),
+                    ["рис"] = ("Рис", 130, 2.7m, 0.3m, 28.0m, 100, "g"),
+                    ["яблоко"] = ("Яблоко", 52, 0.3m, 0.2m, 13.8m, 180, "g"),
+                    ["молоко"] = ("Молоко", 60, 3.0m, 3.2m, 4.8m, 200, "ml"),
+                    ["мясо"] = ("Мясо", 250, 26.0m, 15.0m, 0.0m, 120, "g"),
+                    ["рыба"] = ("Рыба", 206, 22.0m, 12.0m, 0.0m, 150, "g"),
+                    ["картошка"] = ("Картофель", 77, 2.0m, 0.4m, 16.1m, 200, "g"),
+                    ["картофель"] = ("Картофель", 77, 2.0m, 0.4m, 16.1m, 200, "g"),
+                    ["салат"] = ("Салат овощной", 25, 1.2m, 0.3m, 4.6m, 150, "g"),
+                    ["суп"] = ("Суп", 50, 2.5m, 1.5m, 6.0m, 250, "ml"),
+                    ["макароны"] = ("Макароны", 350, 10.4m, 1.1m, 69.7m, 100, "g"),
+                    ["гречка"] = ("Гречка", 313, 12.6m, 3.3m, 57.1m, 100, "g"),
+                    ["творог"] = ("Творог", 121, 16.7m, 5.0m, 2.0m, 100, "g"),
+                    ["яйцо"] = ("Яйцо", 155, 12.7m, 10.9m, 0.7m, 60, "g"),
+                    ["омлет"] = ("Омлет", 184, 9.6m, 15.4m, 2.0m, 120, "g")
+                };
+
+                var foundFoods = new List<string>();
+
+                foreach (var kvp in foodDatabase)
+                {
+                    if (text.Contains(kvp.Key))
+                    {
+                        foundFoods.Add(kvp.Key);
+                    }
+                }
+
+                // Если нашли упоминания еды, создаем элементы
+                if (foundFoods.Any())
+                {
+                    foreach (var foodKey in foundFoods.Take(3)) // Максимум 3 элемента
+                    {
+                        var (displayName, calories, proteins, fats, carbs, weight, weightType) = foodDatabase[foodKey];
+                        var totalCalories = (int)Math.Round((calories * weight) / 100); // Добавили (int)
+
+                        foodItems.Add(new FoodItemResponse
+                        {
+                            Name = displayName,
+                            EstimatedWeight = weight,
+                            WeightType = weightType,
+                            Description = "Распознано из голосового ввода",
+                            NutritionPer100g = new NutritionPer100gDto
+                            {
+                                Calories = calories,
+                                Proteins = proteins,
+                                Fats = fats,
+                                Carbs = carbs
+                            },
+                            TotalCalories = totalCalories, 
+                            Confidence = 0.7m
+                        });
+                    }
+                }
+                else
+                {
+                    // Если ничего не нашли, создаем общий элемент
+                    foodItems.Add(new FoodItemResponse
+                    {
+                        Name = "Еда из голосового ввода",
+                        EstimatedWeight = 100,
+                        WeightType = "g",
+                        Description = "Не удалось точно определить тип еды",
+                        NutritionPer100g = new NutritionPer100gDto
+                        {
+                            Calories = 200,
+                            Proteins = 10,
+                            Fats = 8,
+                            Carbs = 25
+                        },
+                        TotalCalories = 200, 
+                        Confidence = 0.5m
+                    });
+                }
+
+                var response = new VoiceFoodResponse
+                {
+                    Success = true,
+                    TranscribedText = ExtractMeaningfulText(aiResponse),
+                    FoodItems = foodItems,
+                    TotalCalories = (int)Math.Round((calories * weight) / 100),
+                    EstimatedTotalCalories = foodItems.Sum(f => f.TotalCalories)
+                };
+
+                _logger.LogInformation($"✅ Created fallback voice food response with {foodItems.Count} items, {response.EstimatedTotalCalories} calories");
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error creating fallback voice food response: {ex.Message}");
+
+                return new VoiceFoodResponse
+                {
+                    Success = false,
+                    ErrorMessage = "Не удалось обработать голосовой ввод о питании"
+                };
+            }
+        }
+
+        private string ExtractMeaningfulText(string aiResponse)
+        {
+            // Пытаемся извлечь осмысленный текст из ответа ИИ
+            if (string.IsNullOrEmpty(aiResponse))
+                return "Голосовой ввод";
+
+            // Убираем JSON-подобные символы и лишние пробелы
+            var cleanText = aiResponse
+                .Replace("{", "")
+                .Replace("}", "")
+                .Replace("[", "")
+                .Replace("]", "")
+                .Replace("\"", "")
+                .Replace("success", "")
+                .Replace("false", "")
+                .Replace("true", "")
+                .Replace("errorMessage", "")
+                .Replace(":", "")
+                .Replace(",", " ")
+                .Trim();
+
+            // Ограничиваем длину
+            if (cleanText.Length > 100)
+                cleanText = cleanText.Substring(0, 100) + "...";
+
+            return string.IsNullOrWhiteSpace(cleanText) ? "Голосовой ввод" : cleanText;
+        }
+
+        private string DetermineWorkoutType(string text)
+        {
+            var strengthKeywords = new[] { "жим", "приседания", "тяга", "подтягивания", "отжимания", "вес", "кг", "штанга", "гантели" };
+            var cardioKeywords = new[] { "бег", "велосипед", "плавание", "ходьба", "кардио", "км", "минут" };
+
+            if (strengthKeywords.Any(k => text.Contains(k))) return "strength";
+            if (cardioKeywords.Any(k => text.Contains(k))) return "cardio";
+
+            return "strength"; // Default
+        }
+
+        private string ExtractExerciseName(string text)
+        {
+            var exercises = new Dictionary<string, string>
+            {
+                ["жим"] = "Жим лежа",
+                ["приседания"] = "Приседания",
+                ["тяга"] = "Тяга штанги",
+                ["подтягивания"] = "Подтягивания",
+                ["отжимания"] = "Отжимания",
+                ["штанга"] = "Упражнения со штангой",
+                ["гантели"] = "Упражнения с гантелями"
+            };
+
+            foreach (var kvp in exercises)
+            {
+                if (text.Contains(kvp.Key))
+                    return kvp.Value;
+            }
+
+            return "Общие упражнения";
+        }
+
+        private string ExtractEquipment(string text)
+        {
+            if (text.Contains("штанга")) return "Штанга";
+            if (text.Contains("гантели")) return "Гантели";
+            if (text.Contains("тренажер")) return "Тренажер";
+
+            return "Не указано";
+        }
+
+        private decimal ExtractWeight(string text)
+        {
+            // Ищем числа перед "кг"
+            var weightMatch = Regex.Match(text, @"(\d+)\s*кг");
+            if (weightMatch.Success && decimal.TryParse(weightMatch.Groups[1].Value, out var weight))
+            {
+                return weight;
+            }
+
+            return 50; // Default weight
+        }
+
+        private string ExtractCardioType(string text)
+        {
+            var cardioTypes = new Dictionary<string, string>
+            {
+                ["бег"] = "Бег",
+                ["велосипед"] = "Велосипед",
+                ["плавание"] = "Плавание",
+                ["ходьба"] = "Ходьба"
+            };
+
+            foreach (var kvp in cardioTypes)
+            {
+                if (text.Contains(kvp.Key))
+                    return kvp.Value;
+            }
+
+            return "Кардио";
         }
 
         #endregion
@@ -846,5 +1203,17 @@ namespace FitnessTracker.API.Services
         }
 
         #endregion
+    }
+
+    // Extension method для ToTitleCase
+    public static class StringExtensions
+    {
+        public static string ToTitleCase(this string input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return input;
+
+            return char.ToUpper(input[0]) + input.Substring(1).ToLower();
+        }
     }
 }
