@@ -20,6 +20,7 @@ namespace FitnessTracker.API.Controllers
         private readonly IFoodIntakeService _foodIntakeService;
         private readonly IActivityService _activityService;
         private readonly IBodyScanService _bodyScanService;
+        private readonly IImageService _imageService;
         private readonly ILogger<AIController> _logger;
 
         public AIController(
@@ -28,6 +29,7 @@ namespace FitnessTracker.API.Controllers
             IFoodIntakeService foodIntakeService,
             IActivityService activityService,
             IBodyScanService bodyScanService,
+            IImageService imageService,
             ILogger<AIController> logger)
         {
             _geminiService = geminiService;
@@ -35,6 +37,7 @@ namespace FitnessTracker.API.Controllers
             _foodIntakeService = foodIntakeService;
             _activityService = activityService;
             _bodyScanService = bodyScanService;
+            _imageService = imageService;
             _logger = logger;
         }
 
@@ -58,9 +61,9 @@ namespace FitnessTracker.API.Controllers
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]
         public async Task<IActionResult> ScanFood(
-            IFormFile image,
-            [FromForm] string? userPrompt = null,
-            [FromForm] bool saveResults = false)
+    IFormFile image,
+    [FromForm] string? userPrompt = null,
+    [FromForm] bool saveResults = false)
         {
             try
             {
@@ -77,20 +80,28 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = "Недостаточно LW Coins для сканирования еды" });
                 }
 
-                // Конвертируем изображение в байты
+                // НОВОЕ: Сохраняем изображение и получаем URL
+                var imageUrl = await _imageService.SaveImageAsync(image, "food-scans");
+
+                // Конвертируем изображение в байты для анализа
                 using var memoryStream = new MemoryStream();
                 await image.CopyToAsync(memoryStream);
                 var imageData = memoryStream.ToArray();
 
-                _logger.LogInformation($"🍎 Processing food scan for user {userId}, image size: {imageData.Length} bytes");
+                _logger.LogInformation($"🍎 Processing food scan for user {userId}, image size: {imageData.Length} bytes, saved at: {imageUrl}");
 
                 // Анализируем с помощью Gemini
                 var result = await _geminiService.AnalyzeFoodImageAsync(imageData, userPrompt);
 
                 if (!result.Success)
                 {
+                    // Удаляем сохраненное изображение при ошибке
+                    await _imageService.DeleteImageAsync(imageUrl);
                     return BadRequest(new { error = result.ErrorMessage });
                 }
+
+                // НОВОЕ: Добавляем URL изображения в ответ
+                result.ImageUrl = imageUrl;
 
                 // Если нужно сохранить результаты
                 if (saveResults && result.FoodItems?.Any() == true)
@@ -104,7 +115,8 @@ namespace FitnessTracker.API.Controllers
                                 Name = fi.Name,
                                 Weight = fi.EstimatedWeight,
                                 WeightType = fi.WeightType,
-                                NutritionPer100g = fi.NutritionPer100g
+                                NutritionPer100g = fi.NutritionPer100g,
+                                Image = imageUrl // НОВОЕ: Сохраняем URL изображения
                             }).ToList(),
                             DateTime = DateTime.UtcNow
                         };
@@ -154,13 +166,18 @@ namespace FitnessTracker.API.Controllers
 
                 _logger.LogInformation($"💪 Processing body analysis for user {userId}");
 
-                // Конвертируем изображения в байты
+                // НОВОЕ: Сохраняем изображения и получаем URLs
+                string? frontImageUrl = null;
+                string? sideImageUrl = null;
+                string? backImageUrl = null;
+
                 byte[]? frontImageData = null;
                 byte[]? sideImageData = null;
                 byte[]? backImageData = null;
 
                 if (request.FrontImage != null)
                 {
+                    frontImageUrl = await _imageService.SaveImageAsync(request.FrontImage, "body-scans");
                     using var ms = new MemoryStream();
                     await request.FrontImage.CopyToAsync(ms);
                     frontImageData = ms.ToArray();
@@ -168,6 +185,7 @@ namespace FitnessTracker.API.Controllers
 
                 if (request.SideImage != null)
                 {
+                    sideImageUrl = await _imageService.SaveImageAsync(request.SideImage, "body-scans");
                     using var ms = new MemoryStream();
                     await request.SideImage.CopyToAsync(ms);
                     sideImageData = ms.ToArray();
@@ -175,6 +193,7 @@ namespace FitnessTracker.API.Controllers
 
                 if (request.BackImage != null)
                 {
+                    backImageUrl = await _imageService.SaveImageAsync(request.BackImage, "body-scans");
                     using var ms = new MemoryStream();
                     await request.BackImage.CopyToAsync(ms);
                     backImageData = ms.ToArray();
@@ -193,17 +212,30 @@ namespace FitnessTracker.API.Controllers
 
                 if (!result.Success)
                 {
+                    // Удаляем сохраненные изображения при ошибке
+                    if (!string.IsNullOrEmpty(frontImageUrl))
+                        await _imageService.DeleteImageAsync(frontImageUrl);
+                    if (!string.IsNullOrEmpty(sideImageUrl))
+                        await _imageService.DeleteImageAsync(sideImageUrl);
+                    if (!string.IsNullOrEmpty(backImageUrl))
+                        await _imageService.DeleteImageAsync(backImageUrl);
+
                     return BadRequest(new { error = result.ErrorMessage });
                 }
+
+                // НОВОЕ: Добавляем URLs изображений в ответ
+                result.FrontImageUrl = frontImageUrl;
+                result.SideImageUrl = sideImageUrl;
+                result.BackImageUrl = backImageUrl;
 
                 // Сохраняем результат как body scan
                 try
                 {
                     var addBodyScanRequest = new AddBodyScanRequest
                     {
-                        FrontImageUrl = "ai_generated", // Placeholder
-                        SideImageUrl = "ai_generated",
-                        BackImageUrl = request.BackImage != null ? "ai_generated" : null,
+                        FrontImageUrl = frontImageUrl ?? "no_image",
+                        SideImageUrl = sideImageUrl ?? "no_image",
+                        BackImageUrl = backImageUrl,
                         Weight = request.CurrentWeight ?? 0,
                         BodyFatPercentage = result.BodyAnalysis.EstimatedBodyFatPercentage,
                         MusclePercentage = result.BodyAnalysis.EstimatedMusclePercentage,

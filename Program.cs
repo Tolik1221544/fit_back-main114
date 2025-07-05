@@ -9,8 +9,11 @@ using Microsoft.AspNetCore.Mvc;
 using System.Text;
 using System.Reflection;
 using System.Security.Claims;
+using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddHttpContextAccessor(); // НОВОЕ: добавляем HttpContextAccessor
 
 builder.Services.AddControllers(options =>
 {
@@ -117,6 +120,7 @@ builder.Services.AddScoped<IAchievementService, AchievementService>();
 builder.Services.AddScoped<IExperienceService, ExperienceService>();
 builder.Services.AddScoped<IGoalService, GoalService>();
 builder.Services.AddScoped<IGeminiService, GeminiService>();
+builder.Services.AddScoped<IImageService, ImageService>(); // НОВОЕ: добавляем ImageService
 
 // Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -130,7 +134,6 @@ builder.Services.AddScoped<IBodyScanRepository, BodyScanRepository>();
 builder.Services.AddScoped<IAchievementRepository, AchievementRepository>();
 builder.Services.AddScoped<IExperienceRepository, ExperienceRepository>();
 builder.Services.AddScoped<IStepsRepository, StepsRepository>();
-
 builder.Services.AddScoped<IGoalRepository, GoalRepository>();
 
 // JWT Authentication
@@ -335,6 +338,24 @@ else
 {
     app.UseCors("AllowAll");
 }
+
+// НОВОЕ: Создаем папки для загрузок если их нет
+var uploadsPath = Path.Combine(app.Environment.WebRootPath ?? app.Environment.ContentRootPath, "uploads");
+Directory.CreateDirectory(Path.Combine(uploadsPath, "food-scans"));
+Directory.CreateDirectory(Path.Combine(uploadsPath, "body-scans"));
+
+// НОВОЕ: Настройка статических файлов для изображений
+app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(uploadsPath),
+    RequestPath = "/uploads",
+    OnPrepareResponse = ctx =>
+    {
+        ctx.Context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
+        ctx.Context.Response.Headers.Add("Cache-Control", "public,max-age=3600");
+    }
+});
 
 app.Use(async (context, next) =>
 {

@@ -20,17 +20,20 @@ namespace FitnessTracker.API.Controllers
         private readonly IMissionService _missionService;
         private readonly IGeminiService _geminiService;
         private readonly ILwCoinService _lwCoinService;
+        private readonly IImageService _imageService; // НОВОЕ
 
         public FoodIntakeController(
             IFoodIntakeService foodIntakeService,
             IMissionService missionService,
             IGeminiService geminiService,
-            ILwCoinService lwCoinService)
+            ILwCoinService lwCoinService,
+            IImageService imageService) // НОВОЕ
         {
             _foodIntakeService = foodIntakeService;
             _missionService = missionService;
             _geminiService = geminiService;
             _lwCoinService = lwCoinService;
+            _imageService = imageService; // НОВОЕ
         }
 
         /// <summary>
@@ -169,7 +172,7 @@ namespace FitnessTracker.API.Controllers
         /// </summary>
         /// <param name="image">Изображение продукта</param>
         /// <param name="userPrompt">Дополнительные инструкции от пользователя</param>
-        /// <returns>Распознанная информация о продукте</returns>
+        /// <returns>Распознанная информация о продукте с URL изображения</returns>
         /// <response code="200">Продукт успешно распознан</response>
         /// <response code="400">Недостаточно LW Coins или ошибка обработки</response>
         /// <response code="401">Требуется авторизация</response>
@@ -178,9 +181,10 @@ namespace FitnessTracker.API.Controllers
         /// Эта функция тратит 1 LW Coin за каждое сканирование.
         /// Убедитесь что у пользователя достаточно монет или активна премиум подписка.
         /// Может распознать несколько блюд на одном изображении.
+        /// Теперь возвращает URL сохраненного изображения.
         /// </remarks>
         [HttpPost("scan")]
-        [ProducesResponseType(typeof(FoodScanResponse), 200)]
+        [ProducesResponseType(typeof(ScanFoodResponseWithImage), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]
         public async Task<IActionResult> ScanFood(IFormFile image, [FromForm] string? userPrompt = null)
@@ -200,6 +204,9 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = "Недостаточно LW Coins для сканирования еды" });
                 }
 
+                // НОВОЕ: Сохраняем изображение
+                var imageUrl = await _imageService.SaveImageAsync(image, "food-scans");
+
                 // Конвертируем изображение в байты
                 using var memoryStream = new MemoryStream();
                 await image.CopyToAsync(memoryStream);
@@ -210,11 +217,12 @@ namespace FitnessTracker.API.Controllers
 
                 if (!result.Success)
                 {
+                    await _imageService.DeleteImageAsync(imageUrl);
                     return BadRequest(new { error = result.ErrorMessage });
                 }
 
-                // Преобразуем ответ в старый формат для совместимости
-                var legacyResponse = new ScanFoodResponse
+                // Преобразуем ответ в старый формат для совместимости + добавляем URL
+                var legacyResponse = new ScanFoodResponseWithImage
                 {
                     Items = result.FoodItems?.Select(fi => new FoodIntakeDto
                     {
@@ -223,8 +231,10 @@ namespace FitnessTracker.API.Controllers
                         Weight = fi.EstimatedWeight,
                         WeightType = fi.WeightType,
                         DateTime = DateTime.UtcNow,
-                        NutritionPer100g = fi.NutritionPer100g
-                    }).ToList() ?? new List<FoodIntakeDto>()
+                        NutritionPer100g = fi.NutritionPer100g,
+                        Image = imageUrl // НОВОЕ: URL изображения
+                    }).ToList() ?? new List<FoodIntakeDto>(),
+                    ImageUrl = imageUrl // НОВОЕ: URL изображения
                 };
 
                 return Ok(legacyResponse);
@@ -241,7 +251,7 @@ namespace FitnessTracker.API.Controllers
         /// <param name="image">Изображение продукта</param>
         /// <param name="userPrompt">Дополнительные инструкции</param>
         /// <param name="saveResults">Автоматически сохранить результаты</param>
-        /// <returns>Полный ответ от Gemini AI</returns>
+        /// <returns>Полный ответ от Gemini AI с URL изображения</returns>
         /// <response code="200">Анализ завершен</response>
         /// <response code="400">Ошибка обработки</response>
         /// <response code="401">Требуется авторизация</response>
@@ -269,6 +279,9 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = "Недостаточно LW Coins для ИИ сканирования еды" });
                 }
 
+                // НОВОЕ: Сохраняем изображение
+                var imageUrl = await _imageService.SaveImageAsync(image, "food-scans");
+
                 // Конвертируем изображение в байты
                 using var memoryStream = new MemoryStream();
                 await image.CopyToAsync(memoryStream);
@@ -279,8 +292,12 @@ namespace FitnessTracker.API.Controllers
 
                 if (!result.Success)
                 {
+                    await _imageService.DeleteImageAsync(imageUrl);
                     return BadRequest(new { error = result.ErrorMessage });
                 }
+
+                // НОВОЕ: Добавляем URL изображения в ответ
+                result.ImageUrl = imageUrl;
 
                 // Если нужно сохранить результаты
                 if (saveResults && result.FoodItems?.Any() == true)
@@ -294,7 +311,8 @@ namespace FitnessTracker.API.Controllers
                                 Name = fi.Name,
                                 Weight = fi.EstimatedWeight,
                                 WeightType = fi.WeightType,
-                                NutritionPer100g = fi.NutritionPer100g
+                                NutritionPer100g = fi.NutritionPer100g,
+                                Image = imageUrl // НОВОЕ: URL изображения
                             }).ToList(),
                             DateTime = DateTime.UtcNow
                         };

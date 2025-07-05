@@ -47,6 +47,16 @@ namespace FitnessTracker.API.DTOs
         public NutritionPer100gDto NutritionPer100g { get; set; } = new NutritionPer100gDto();
     }
 
+    public class FoodScanResponse
+    {
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+        public List<FoodItemResponse>? FoodItems { get; set; }
+        public int EstimatedCalories { get; set; }
+        public string? FullDescription { get; set; }
+        public string? ImageUrl { get; set; } 
+    }
+
     public class NutritionPer100gDto
     {
         public decimal Calories { get; set; }
@@ -58,5 +68,11 @@ namespace FitnessTracker.API.DTOs
     public class ScanFoodResponse
     {
         public List<FoodIntakeDto> Items { get; set; } = new List<FoodIntakeDto>();
+    }
+
+    public class ScanFoodResponseWithImage
+    {
+        public List<FoodIntakeDto> Items { get; set; } = new List<FoodIntakeDto>();
+        public string? ImageUrl { get; set; } // НОВОЕ: URL сохраненного изображения
     }
 }
