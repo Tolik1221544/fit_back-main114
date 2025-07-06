@@ -1,18 +1,18 @@
-namespace FitnessTracker.API.DTOs
+﻿namespace FitnessTracker.API.DTOs
 {
     public class ReferralStatsDto
     {
         public string UserId { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty; 
+        public string Name { get; set; } = string.Empty;
         public string ReferralCode { get; set; } = string.Empty;
         public int Level { get; set; }
         public int TotalReferrals { get; set; }
         public int MonthlyReferrals { get; set; }
         public int TotalEarnedCoins { get; set; }
         public int MonthlyEarnedCoins { get; set; }
-        public List<ReferredUserDto> FirstLevelReferrals { get; set; } = new List<ReferredUserDto>(); 
-        public List<ReferredUserDto> SecondLevelReferrals { get; set; } = new List<ReferredUserDto>(); 
+        public List<ReferredUserDto> FirstLevelReferrals { get; set; } = new List<ReferredUserDto>();
+        public List<ReferredUserDto> SecondLevelReferrals { get; set; } = new List<ReferredUserDto>();
         public ReferralRankDto Rank { get; set; } = new ReferralRankDto();
         public List<ReferralLeaderboardDto> Leaderboard { get; set; } = new List<ReferralLeaderboardDto>();
     }
@@ -20,13 +20,13 @@ namespace FitnessTracker.API.DTOs
     public class ReferredUserDto
     {
         public string Email { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty; 
+        public string Name { get; set; } = string.Empty;
         public int Level { get; set; }
         public DateTime JoinedAt { get; set; }
         public int RewardCoins { get; set; } = 150;
         public bool IsPremium { get; set; }
-        public string Status { get; set; } = "Active"; // Active, Inactive
-        public int ReferralLevel { get; set; } = 1; 
+        public string Status { get; set; } = "Active";
+        public int ReferralLevel { get; set; } = 1;
     }
 
     public class ReferralRankDto
@@ -67,5 +67,4 @@ namespace FitnessTracker.API.DTOs
         public string ReferrerEmail { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
     }
-   
 }

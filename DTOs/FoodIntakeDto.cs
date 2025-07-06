@@ -1,4 +1,4 @@
-namespace FitnessTracker.API.DTOs
+﻿namespace FitnessTracker.API.DTOs
 {
     public class FoodIntakeDto
     {
@@ -46,4 +46,13 @@ namespace FitnessTracker.API.DTOs
         public NutritionPer100gDto NutritionPer100g { get; set; } = new NutritionPer100gDto();
     }
 
+    /// <summary>
+    /// 📸 Ответ на сканирование еды (legacy)
+    /// </summary>
+    public class ScanFoodResponse
+    {
+        public List<FoodIntakeDto>? Items { get; set; }
+        public bool Success { get; set; } = true;
+        public string? ErrorMessage { get; set; }
+    }
 }
