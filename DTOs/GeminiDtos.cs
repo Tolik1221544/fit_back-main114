@@ -74,6 +74,11 @@ namespace FitnessTracker.API.DTOs
         public decimal EstimatedWaistCircumference { get; set; }
         public decimal EstimatedChestCircumference { get; set; }
         public decimal EstimatedHipCircumference { get; set; }
+
+        // ✅ НОВЫЕ ПОЛЯ для основного обмена
+        public int BasalMetabolicRate { get; set; } // Основной обмен в ккал (например: 1200)
+        public string MetabolicRateCategory { get; set; } = string.Empty; // "Низкий", "Нормальный", "Высокий"
+
         public List<string> ExerciseRecommendations { get; set; } = new List<string>();
         public List<string> NutritionRecommendations { get; set; } = new List<string>();
         public string TrainingFocus { get; set; } = string.Empty;

@@ -242,12 +242,17 @@ namespace FitnessTracker.API.Controllers
                         WaistCircumference = result.BodyAnalysis.EstimatedWaistCircumference,
                         ChestCircumference = result.BodyAnalysis.EstimatedChestCircumference,
                         HipCircumference = result.BodyAnalysis.EstimatedHipCircumference,
-                        Notes = $"AI Analysis: {result.BodyAnalysis.OverallCondition}",
+
+                        // ✅ НОВЫЕ ПОЛЯ: Сохраняем основной обмен веществ
+                        BasalMetabolicRate = result.BodyAnalysis.BasalMetabolicRate,
+                        MetabolicRateCategory = result.BodyAnalysis.MetabolicRateCategory,
+
+                        Notes = $"AI Analysis: {result.BodyAnalysis.OverallCondition}. BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал ({result.BodyAnalysis.MetabolicRateCategory})",
                         ScanDate = DateTime.UtcNow
                     };
 
                     await _bodyScanService.AddBodyScanAsync(userId, addBodyScanRequest);
-                    _logger.LogInformation($"✅ Saved body scan analysis for user {userId}");
+                    _logger.LogInformation($"✅ Saved body scan analysis for user {userId} with BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал");
                 }
                 catch (Exception ex)
                 {

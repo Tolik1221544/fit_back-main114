@@ -40,6 +40,8 @@ namespace FitnessTracker.API.Services
             return _mapper.Map<BodyScanDto>(scan);
         }
 
+        // Заменить метод AddBodyScanAsync в Services/BodyScanService.cs
+
         public async Task<BodyScanDto> AddBodyScanAsync(string userId, AddBodyScanRequest request)
         {
             var bodyScan = new BodyScan
@@ -55,7 +57,10 @@ namespace FitnessTracker.API.Services
                 ChestCircumference = request.ChestCircumference,
                 HipCircumference = request.HipCircumference,
                 Notes = request.Notes,
-                ScanDate = request.ScanDate
+                ScanDate = request.ScanDate,
+
+                BasalMetabolicRate = request.BasalMetabolicRate,
+                MetabolicRateCategory = request.MetabolicRateCategory
             };
 
             var createdScan = await _bodyScanRepository.CreateAsync(bodyScan);
@@ -92,6 +97,11 @@ namespace FitnessTracker.API.Services
             if (!string.IsNullOrEmpty(request.Notes))
                 scan.Notes = request.Notes;
 
+            if (request.BasalMetabolicRate.HasValue)
+                scan.BasalMetabolicRate = request.BasalMetabolicRate;
+            if (!string.IsNullOrEmpty(request.MetabolicRateCategory))
+                scan.MetabolicRateCategory = request.MetabolicRateCategory;
+
             var updatedScan = await _bodyScanRepository.UpdateAsync(scan);
             return _mapper.Map<BodyScanDto>(updatedScan);
         }
@@ -104,6 +114,8 @@ namespace FitnessTracker.API.Services
 
             await _bodyScanRepository.DeleteAsync(scanId);
         }
+
+        // Заменить метод GetBodyScanComparisonAsync в Services/BodyScanService.cs
 
         public async Task<BodyScanComparisonDto> GetBodyScanComparisonAsync(string userId, string? previousScanId = null)
         {
@@ -133,6 +145,21 @@ namespace FitnessTracker.API.Services
 
             if (previousScan != null)
             {
+                int? bmrDifference = null;
+                string? metabolicRateChange = null;
+
+                if (currentScan.BasalMetabolicRate.HasValue && previousScan.BasalMetabolicRate.HasValue)
+                {
+                    bmrDifference = currentScan.BasalMetabolicRate.Value - previousScan.BasalMetabolicRate.Value;
+
+                    if (bmrDifference > 50)
+                        metabolicRateChange = "Улучшился";
+                    else if (bmrDifference < -50)
+                        metabolicRateChange = "Ухудшился";
+                    else
+                        metabolicRateChange = "Без изменений";
+                }
+
                 comparison.Progress = new BodyScanProgressDto
                 {
                     WeightDifference = currentScan.Weight - previousScan.Weight,
@@ -141,7 +168,10 @@ namespace FitnessTracker.API.Services
                     WaistDifference = (currentScan.WaistCircumference ?? 0) - (previousScan.WaistCircumference ?? 0),
                     ChestDifference = (currentScan.ChestCircumference ?? 0) - (previousScan.ChestCircumference ?? 0),
                     HipDifference = (currentScan.HipCircumference ?? 0) - (previousScan.HipCircumference ?? 0),
-                    DaysBetweenScans = (int)(currentScan.ScanDate - previousScan.ScanDate).TotalDays
+                    DaysBetweenScans = (int)(currentScan.ScanDate - previousScan.ScanDate).TotalDays,
+
+                    BasalMetabolicRateDifference = bmrDifference,
+                    MetabolicRateChange = metabolicRateChange
                 };
             }
 
