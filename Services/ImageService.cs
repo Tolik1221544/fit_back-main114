@@ -1,21 +1,23 @@
+п»їusing Microsoft.AspNetCore.Hosting;
+
 namespace FitnessTracker.API.Services
 {
     public class ImageService : IImageService
     {
         private readonly IWebHostEnvironment _environment;
-        private readonly IConfiguration _configuration;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IConfiguration _configuration;
         private readonly ILogger<ImageService> _logger;
 
         public ImageService(
             IWebHostEnvironment environment,
-            IConfiguration configuration,
             IHttpContextAccessor httpContextAccessor,
+            IConfiguration configuration,
             ILogger<ImageService> logger)
         {
             _environment = environment;
-            _configuration = configuration;
             _httpContextAccessor = httpContextAccessor;
+            _configuration = configuration;
             _logger = logger;
         }
 
@@ -24,40 +26,45 @@ namespace FitnessTracker.API.Services
             try
             {
                 if (image == null || image.Length == 0)
-                    throw new ArgumentException("Invalid image file");
+                    throw new ArgumentException("Image is required");
 
-                // Проверяем тип файла
-                var allowedTypes = new[] { "image/jpeg", "image/jpg", "image/png", "image/webp" };
+                // РџСЂРѕРІРµСЂСЏРµРј СЂР°Р·РјРµСЂ С„Р°Р№Р»Р° (РјР°РєСЃРёРјСѓРј 10MB)
+                if (image.Length > 10 * 1024 * 1024)
+                    throw new ArgumentException("Image size must be less than 10MB");
+
+                // РџСЂРѕРІРµСЂСЏРµРј С‚РёРї С„Р°Р№Р»Р°
+                var allowedTypes = new[] { "image/jpeg", "image/jpg", "image/png", "image/gif" };
                 if (!allowedTypes.Contains(image.ContentType.ToLowerInvariant()))
-                    throw new ArgumentException("Invalid image type. Only JPEG, PNG and WebP are allowed.");
+                    throw new ArgumentException("Only JPEG, PNG and GIF images are allowed");
 
-                // Создаем уникальное имя файла
-                var extension = Path.GetExtension(image.FileName).ToLowerInvariant();
-                if (string.IsNullOrEmpty(extension))
-                    extension = ".jpg";
+                // РЎРѕР·РґР°РµРј СѓРЅРёРєР°Р»СЊРЅРѕРµ РёРјСЏ С„Р°Р№Р»Р°
+                var fileExtension = Path.GetExtension(image.FileName).ToLowerInvariant();
+                var fileName = $"{Guid.NewGuid()}{fileExtension}";
 
-                var fileName = $"{Guid.NewGuid()}{extension}";
-                var uploadsFolder = Path.Combine(_environment.WebRootPath ?? _environment.ContentRootPath, "uploads", folder);
+                // РћРїСЂРµРґРµР»СЏРµРј РїСѓС‚СЊ РґР»СЏ СЃРѕС…СЂР°РЅРµРЅРёСЏ
+                var uploadsPath = GetUploadsPath();
+                var folderPath = Path.Combine(uploadsPath, folder);
 
-                // Создаем папку если не существует
-                Directory.CreateDirectory(uploadsFolder);
+                // РЎРѕР·РґР°РµРј РїР°РїРєСѓ РµСЃР»Рё РЅРµ СЃСѓС‰РµСЃС‚РІСѓРµС‚
+                Directory.CreateDirectory(folderPath);
 
-                var filePath = Path.Combine(uploadsFolder, fileName);
+                var filePath = Path.Combine(folderPath, fileName);
 
-                // Сохраняем файл
+                // РЎРѕС…СЂР°РЅСЏРµРј С„Р°Р№Р»
                 using (var stream = new FileStream(filePath, FileMode.Create))
                 {
                     await image.CopyToAsync(stream);
                 }
 
-                _logger.LogInformation($"Image saved: {fileName} in folder {folder}");
+                // Р’РѕР·РІСЂР°С‰Р°РµРј URL РґР»СЏ РґРѕСЃС‚СѓРїР° Рє С„Р°Р№Р»Сѓ
+                var imageUrl = GetImageUrl(fileName, folder);
+                _logger.LogInformation($"вњ… Image saved: {imageUrl}");
 
-                // Возвращаем URL
-                return GetImageUrl(fileName, folder);
+                return imageUrl;
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error saving image: {ex.Message}");
+                _logger.LogError($"вќЊ Error saving image: {ex.Message}");
                 throw;
             }
         }
@@ -67,32 +74,36 @@ namespace FitnessTracker.API.Services
             try
             {
                 if (imageData == null || imageData.Length == 0)
-                    throw new ArgumentException("Invalid image data");
+                    throw new ArgumentException("Image data is required");
 
-                // Создаем уникальное имя файла
-                var extension = Path.GetExtension(fileName).ToLowerInvariant();
-                if (string.IsNullOrEmpty(extension))
-                    extension = ".jpg";
+                // РџСЂРѕРІРµСЂСЏРµРј СЂР°Р·РјРµСЂ
+                if (imageData.Length > 10 * 1024 * 1024)
+                    throw new ArgumentException("Image size must be less than 10MB");
 
-                var uniqueFileName = $"{Guid.NewGuid()}{extension}";
-                var uploadsFolder = Path.Combine(_environment.WebRootPath ?? _environment.ContentRootPath, "uploads", folder);
+                // РЎРѕР·РґР°РµРј СѓРЅРёРєР°Р»СЊРЅРѕРµ РёРјСЏ С„Р°Р№Р»Р°
+                var uniqueFileName = $"{Guid.NewGuid()}_{fileName}";
 
-                // Создаем папку если не существует
-                Directory.CreateDirectory(uploadsFolder);
+                // РћРїСЂРµРґРµР»СЏРµРј РїСѓС‚СЊ РґР»СЏ СЃРѕС…СЂР°РЅРµРЅРёСЏ
+                var uploadsPath = GetUploadsPath();
+                var folderPath = Path.Combine(uploadsPath, folder);
 
-                var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+                // РЎРѕР·РґР°РµРј РїР°РїРєСѓ РµСЃР»Рё РЅРµ СЃСѓС‰РµСЃС‚РІСѓРµС‚
+                Directory.CreateDirectory(folderPath);
 
-                // Сохраняем файл
+                var filePath = Path.Combine(folderPath, uniqueFileName);
+
+                // РЎРѕС…СЂР°РЅСЏРµРј С„Р°Р№Р»
                 await File.WriteAllBytesAsync(filePath, imageData);
 
-                _logger.LogInformation($"Image saved from bytes: {uniqueFileName} in folder {folder}");
+                // Р’РѕР·РІСЂР°С‰Р°РµРј URL РґР»СЏ РґРѕСЃС‚СѓРїР° Рє С„Р°Р№Р»Сѓ
+                var imageUrl = GetImageUrl(uniqueFileName, folder);
+                _logger.LogInformation($"вњ… Image saved from bytes: {imageUrl}");
 
-                // Возвращаем URL
-                return GetImageUrl(uniqueFileName, folder);
+                return imageUrl;
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error saving image from bytes: {ex.Message}");
+                _logger.LogError($"вќЊ Error saving image from bytes: {ex.Message}");
                 throw;
             }
         }
@@ -104,47 +115,49 @@ namespace FitnessTracker.API.Services
                 if (string.IsNullOrEmpty(imageUrl))
                     return false;
 
-                // Извлекаем путь к файлу из URL
+                // РР·РІР»РµРєР°РµРј РїСѓС‚СЊ Рє С„Р°Р№Р»Сѓ РёР· URL
                 var uri = new Uri(imageUrl, UriKind.RelativeOrAbsolute);
                 var relativePath = uri.IsAbsoluteUri ? uri.LocalPath : imageUrl;
 
-                // Удаляем /uploads/ из начала пути
+                // РЈРґР°Р»СЏРµРј РїСЂРµС„РёРєСЃ /uploads/
                 if (relativePath.StartsWith("/uploads/"))
                     relativePath = relativePath.Substring("/uploads/".Length);
 
-                var filePath = Path.Combine(_environment.WebRootPath ?? _environment.ContentRootPath, "uploads", relativePath);
+                var uploadsPath = GetUploadsPath();
+                var filePath = Path.Combine(uploadsPath, relativePath);
 
                 if (File.Exists(filePath))
                 {
-                    await Task.Run(() => File.Delete(filePath));
-                    _logger.LogInformation($"Image deleted: {filePath}");
+                    File.Delete(filePath);
+                    _logger.LogInformation($"вњ… Image deleted: {filePath}");
                     return true;
                 }
 
+                _logger.LogWarning($"вљ пёЏ Image not found for deletion: {filePath}");
                 return false;
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error deleting image: {ex.Message}");
+                _logger.LogError($"вќЊ Error deleting image: {ex.Message}");
                 return false;
             }
         }
 
         public string GetImageUrl(string fileName, string folder)
         {
-            // Получаем базовый URL из конфигурации или текущего запроса
+            // РџРѕР»СѓС‡Р°РµРј Р±Р°Р·РѕРІС‹Р№ URL РёР· РєРѕРЅС„РёРіСѓСЂР°С†РёРё РёР»Рё С‚РµРєСѓС‰РµРіРѕ Р·Р°РїСЂРѕСЃР°
             var baseUrl = GetBaseUrl();
             return $"{baseUrl}/uploads/{folder}/{fileName}";
         }
 
         private string GetBaseUrl()
         {
-            // Сначала пытаемся получить из конфигурации
+            // РЎРЅР°С‡Р°Р»Р° РїС‹С‚Р°РµРјСЃСЏ РїРѕР»СѓС‡РёС‚СЊ РёР· РєРѕРЅС„РёРіСѓСЂР°С†РёРё
             var configBaseUrl = _configuration["BaseUrl"];
             if (!string.IsNullOrEmpty(configBaseUrl))
                 return configBaseUrl;
 
-            // Если нет в конфигурации, строим из текущего запроса
+            // Р•СЃР»Рё РЅРµС‚ РІ РєРѕРЅС„РёРіСѓСЂР°С†РёРё, СЃС‚СЂРѕРёРј РёР· С‚РµРєСѓС‰РµРіРѕ Р·Р°РїСЂРѕСЃР°
             var httpContext = _httpContextAccessor.HttpContext;
             if (httpContext != null)
             {
@@ -154,6 +167,15 @@ namespace FitnessTracker.API.Services
 
             // Fallback
             return "http://178.236.16.91:60170";
+        }
+
+        private string GetUploadsPath()
+        {
+            var webRootPath = _environment.WebRootPath;
+            if (string.IsNullOrEmpty(webRootPath))
+                webRootPath = _environment.ContentRootPath;
+
+            return Path.Combine(webRootPath, "uploads");
         }
     }
 }

@@ -219,23 +219,23 @@ namespace FitnessTracker.API.Services
                 var base64Audio = Convert.ToBase64String(audioData);
 
                 var contents = new List<GeminiContent>
+        {
+            new GeminiContent
+            {
+                Parts = new List<GeminiPart>
                 {
-                    new GeminiContent
+                    new GeminiPart { Text = prompt },
+                    new GeminiPart
                     {
-                        Parts = new List<GeminiPart>
+                        InlineData = new GeminiInlineData
                         {
-                            new GeminiPart { Text = prompt },
-                            new GeminiPart
-                            {
-                                InlineData = new GeminiInlineData
-                                {
-                                    MimeType = mimeType,
-                                    Data = base64Audio
-                                }
-                            }
+                            MimeType = mimeType,
+                            Data = base64Audio
                         }
                     }
-                };
+                }
+            }
+        };
 
                 var config = new GeminiGenerationConfig
                 {
@@ -250,6 +250,7 @@ namespace FitnessTracker.API.Services
                     var text = response.Candidates[0]?.Content?.Parts?.FirstOrDefault()?.Text;
                     if (!string.IsNullOrEmpty(text))
                     {
+                        _logger.LogDebug($"🎤 Parsing voice workout: {text}");
                         return ParseVoiceWorkoutResponse(text);
                     }
                 }
@@ -730,90 +731,49 @@ calories ≈ (proteins × 4) + (fats × 9) + (carbs × 4)
 
         private string CreateVoiceWorkoutAnalysisPrompt(string? workoutType)
         {
-            return @"Ты — эксперт по автоматической расшифровке аудио тренировок и преобразованию их в структурированный JSON. Твоя цель — максимально точно извлечь из аудио все данные о тренировке и вернуть их в строгом JSON без дополнительной разметки. Отвечай только в locale(RU_ru). Только в этой локализации предоставляй value в json.
+            return @"Ты эксперт по распознаванию речи о тренировках. Внимательно прослушай аудио.
 
-Инструкция для выполнения задачи:
+ВАЖНО: Отвечай ТОЛЬКО чистым JSON без обёрток ```json
 
-Процесс распознавания:
-1. Полностью прослушай аудиозапись до конца.
-2. Точно расшифруй каждое слово, сохраняя порядок и пунктуацию говорящего.
+ПРАВИЛА РАСПОЗНАВАНИЯ:
+1. ТОЧНО распознай название упражнения
+2. ""штанга"" = любое упражнение со штангой
+3. ""тяга штанги"" = ""Тяга штанги""  
+4. ""жим"" = ""Жим лежа"" или ""Жим штанги""
+5. ""приседания"" = ""Приседания""
+6. Если просто ""штанга"" - используй ""Тяга штанги""
 
-Извлечение ключевых параметров тренировки:
-- Выделяй названия упражнений на русском из списка: «Жим лежа», «Приседания», «Становая тяга», «Подтягивания», «Отжимания», «Тяга штанги», «Жим стоя», «Бег», «Велосипед».
-- Находи указания рабочих весов (в килограммах), количество повторений и количество подходов.
-- Определи тип тренировки:
-  * strength (силовая) — если упор на упражнения с весами
-  * cardio (кардио) — если упор на бег, велосипед или аналогичные упражнения
-- По возможности извлекай время начала и окончания сессии (в формате ISO 8601) и примерную калорийность.
+ПРАВИЛА ВРЕМЕНИ:
+- ""начало 21:15"" → startTime: ""2025-07-08T21:15:00Z""
+- ""окончание 22:00"" → endTime: ""2025-07-08T22:00:00Z""
+- Если одно время → добавь 45 минут для второго
 
-Структура итогового JSON:
-{
-  ""success"": true | false,
-  ""transcribedText"": ""<полный текст расшифровки>"",
-  ""workoutData"": {
-    ""type"": ""strength"" | ""cardio"",
-    ""startTime"": ""<ISO 8601 время начала>"" | null,
-    ""endTime"": ""<ISO 8601 время окончания>"" | null,
-    ""estimatedCalories"": <число> | null,
-    ""strengthData"": [
-      {
-        ""name"": ""<название упражнения>"",
-        ""muscleGroup"": ""<группа мышц>"",
-        ""equipment"": ""<тип оборудования>"",
-        ""workingWeight"": <кг>,
-        ""restTimeSeconds"": <секунд> | null,
-        ""sets"": [
-          {
-            ""setNumber"": <номер>,
-            ""weight"": <кг>,
-            ""reps"": <кол-во повторений>,
-            ""isCompleted"": true | false
-          }
-        ]
-      }
-    ] | null,
-    ""cardioData"": {
-      ""activity"": ""<Бег|Велосипед>"",
-      ""durationMinutes"": <число> | null,
-      ""distanceKm"": <число> | null
-    } | null,
-    ""notes"": [ ""<дополнительные комментарии>"" ] | []
-  },
-  ""errorMessage"": ""<текст ошибки>"" | null
-}
+ГРУППЫ МЫШЦ:
+- тяга штанги → ""Спина""
+- жим → ""Грудь""  
+- приседания → ""Ноги""
+- штанга (общее) → ""Спина""
 
-Обработка ошибок:
-Если не удалось распознать никакой тренировки, верни:
-{
-  ""success"": false,
-  ""errorMessage"": ""Не удалось распознать тренировку""
-}
-
-Все поля, которые не были найдены, должны иметь значение null или пустой массив.
-
-Формат ответа:
-Обязательно возвращай только JSON — без Markdown, без обёрток типа ```json и без любых пояснений.
-
-Пример финального ответа:
+СТРУКТУРА (без обёрток):
 {
   ""success"": true,
-  ""transcribedText"": ""жим лежа 80 кг 10 повторений 3 подхода"",
+  ""transcribedText"": ""точная расшифровка без JSON символов"",
   ""workoutData"": {
     ""type"": ""strength"",
-    ""startTime"": ""2025-07-08T08:00:00Z"",
-    ""endTime"": ""2025-07-08T09:00:00Z"",
-    ""estimatedCalories"": 400,
+    ""startTime"": ""2025-07-08T21:15:00Z"",
+    ""endTime"": ""2025-07-08T22:00:00Z"",
+    ""estimatedCalories"": 300,
     ""strengthData"": [
       {
-        ""name"": ""Жим лежа"",
-        ""muscleGroup"": ""Грудь"",
+        ""name"": ""Тяга штанги"",
+        ""muscleGroup"": ""Спина"",
         ""equipment"": ""Штанга"",
-        ""workingWeight"": 80,
+        ""workingWeight"": 25,
         ""restTimeSeconds"": 120,
         ""sets"": [
           {
             ""setNumber"": 1,
-            ""weight"": 80,
+            ""weight"": 25,
             ""reps"": 10,
             ""isCompleted"": true
           }
@@ -822,11 +782,14 @@ calories ≈ (proteins × 4) + (fats × 9) + (carbs × 4)
     ],
     ""cardioData"": null,
     ""notes"": []
-  },
-  ""errorMessage"": null
-}";
-        }
+  }
+}
 
+ПРИМЕРЫ:
+""Штанга 25 кг"" → name: ""Тяга штанги"", muscleGroup: ""Спина""
+""Жим 40 килограмм"" → name: ""Жим лежа"", muscleGroup: ""Грудь""
+""Приседания 30 кг"" → name: ""Приседания"", muscleGroup: ""Ноги""";
+        }
 
         private string CreateVoiceFoodAnalysisPrompt(string? mealType)
         {
@@ -1032,7 +995,8 @@ calories ≈ (proteins × 4) + (fats × 9) + (carbs × 4)
         {
             try
             {
-                var cleanJson = ExtractJsonFromResponse(jsonResponse);
+                // Чистим JSON от обёрток и мусора
+                var cleanJson = ExtractAndCleanJson(jsonResponse);
                 _logger.LogDebug($"🎤 Parsing voice workout: {cleanJson}");
 
                 var options = new JsonSerializerOptions
@@ -1043,29 +1007,70 @@ calories ≈ (proteins × 4) + (fats × 9) + (carbs × 4)
 
                 var response = JsonSerializer.Deserialize<VoiceWorkoutResponse>(cleanJson, options);
 
-                if (response != null)
+                if (response != null && response.Success)
                 {
-                    if (response.Success)
+                    // Очищаем transcribedText от JSON мусора
+                    if (!string.IsNullOrEmpty(response.TranscribedText))
                     {
-                        _logger.LogInformation("✅ Successfully parsed voice workout");
-                        return response;
+                        response.TranscribedText = CleanTranscribedText(response.TranscribedText);
                     }
-                    else
+
+                    // Проверяем и исправляем время
+                    if (response.WorkoutData != null)
                     {
-                        // Если Gemini вернул success: false, создаем fallback
-                        return CreateFallbackWorkoutResponse(jsonResponse);
+                        var now = DateTime.UtcNow;
+
+                        if (response.WorkoutData.StartTime == default || response.WorkoutData.StartTime < new DateTime(2020, 1, 1))
+                        {
+                            response.WorkoutData.StartTime = now.AddMinutes(-45);
+                            _logger.LogWarning("⚠️ StartTime corrected");
+                        }
+
+                        if (!response.WorkoutData.EndTime.HasValue || response.WorkoutData.EndTime.Value == default ||
+                            response.WorkoutData.EndTime.Value <= response.WorkoutData.StartTime)
+                        {
+                            response.WorkoutData.EndTime = response.WorkoutData.StartTime.AddMinutes(45);
+                            _logger.LogWarning("⚠️ EndTime corrected");
+                        }
                     }
+
+                    _logger.LogInformation($"✅ Successfully parsed: {response.WorkoutData?.StrengthData?.FirstOrDefault()?.Name}, times: {response.WorkoutData?.StartTime:HH:mm}-{response.WorkoutData?.EndTime:HH:mm}");
+                    return response;
                 }
 
-                // Fallback для неструктурированного ответа
                 return CreateFallbackWorkoutResponse(jsonResponse);
             }
             catch (Exception ex)
             {
-                _logger.LogError($"❌ Error parsing voice workout response: {ex.Message}");
-                _logger.LogDebug($"Original response: {jsonResponse}");
-
+                _logger.LogError($"❌ Error parsing voice workout: {ex.Message}");
                 return CreateFallbackWorkoutResponse(jsonResponse);
+            }
+        }
+
+        private string ExtractAndCleanJson(string response)
+        {
+            try
+            {
+                // Убираем обёртки ```json
+                var cleaned = response
+                    .Replace("```json", "")
+                    .Replace("```", "")
+                    .Trim();
+
+                // Ищем JSON объект
+                var startIndex = cleaned.IndexOf('{');
+                var lastIndex = cleaned.LastIndexOf('}');
+
+                if (startIndex >= 0 && lastIndex > startIndex)
+                {
+                    cleaned = cleaned.Substring(startIndex, lastIndex - startIndex + 1);
+                }
+
+                return cleaned;
+            }
+            catch
+            {
+                return response;
             }
         }
 
@@ -1151,56 +1156,474 @@ calories ≈ (proteins × 4) + (fats × 9) + (carbs × 4)
         {
             try
             {
-                _logger.LogInformation("🎭 Creating fallback voice workout response");
+                _logger.LogInformation("🎭 Creating enhanced fallback response");
 
-                // Извлекаем полезную информацию из ответа ИИ
                 var text = aiResponse.ToLowerInvariant();
-                var workoutType = DetermineWorkoutType(text);
+                var now = DateTime.UtcNow;
+
+                // ИЗВЛЕКАЕМ ДАННЫЕ ИЗ ТЕКСТА
+                var extractedData = ExtractWorkoutDataFromText(text);
+                var (startTime, endTime) = ExtractTimeFromText(text, now);
+
+                // Если времена одинаковые - исправляем
+                if (startTime == endTime)
+                {
+                    endTime = startTime.AddMinutes(45);
+                }
 
                 var response = new VoiceWorkoutResponse
                 {
                     Success = true,
-                    TranscribedText = ExtractMeaningfulText(aiResponse),
-                    WorkoutData = new WorkoutDataResponse // Исправлено: было VoiceWorkoutData
+                    TranscribedText = CleanTranscribedText(aiResponse),
+                    WorkoutData = new WorkoutDataResponse
                     {
-                        Type = workoutType,
-                        StartTime = DateTime.UtcNow.AddMinutes(-30),
-                        EndTime = DateTime.UtcNow,
-                        EstimatedCalories = 200,
-                        StrengthData = workoutType == "strength" ? new StrengthDataDto
-                        {
-                            Name = ExtractExerciseName(text),
-                            MuscleGroup = "Разные группы мышц",
-                            Equipment = ExtractEquipment(text),
-                            WorkingWeight = ExtractWeight(text),
-                            Sets = new List<StrengthSetDto>
-                    {
-                        new StrengthSetDto { SetNumber = 1, Weight = ExtractWeight(text), Reps = 10, IsCompleted = true }
-                    }
-                        } : null,
-                        CardioData = workoutType == "cardio" ? new CardioDataDto
-                        {
-                            CardioType = ExtractCardioType(text),
-                            DistanceKm = 3,
-                            AvgPulse = 140
-                        } : null,
-                        Notes = new List<string> { $"Распознано из голосового ввода: {ExtractMeaningfulText(aiResponse)}" }
+                        Type = extractedData.WorkoutType,
+                        StartTime = startTime,
+                        EndTime = endTime,
+                        EstimatedCalories = CalculateEstimatedCalories(extractedData.WorkoutType, (int)(endTime - startTime).TotalMinutes),
+                        StrengthData = extractedData.WorkoutType == "strength" ? CreateStrengthData(extractedData) : null,
+                        CardioData = extractedData.WorkoutType == "cardio" ? CreateCardioData(extractedData) : null,
+                        Notes = new List<string> { $"Распознано: {extractedData.ExerciseName}, {extractedData.Weight}кг" }
                     }
                 };
 
-                _logger.LogInformation($"✅ Created fallback workout response: {workoutType}");
+                _logger.LogInformation($"✅ Enhanced fallback: {extractedData.ExerciseName}, {extractedData.Weight}кг, {extractedData.Reps} повторений, {startTime:HH:mm}-{endTime:HH:mm}");
                 return response;
             }
             catch (Exception ex)
             {
-                _logger.LogError($"❌ Error creating fallback workout response: {ex.Message}");
-
-                return new VoiceWorkoutResponse
-                {
-                    Success = false,
-                    ErrorMessage = "Не удалось обработить голосовой ввод о тренировке"
-                };
+                _logger.LogError($"❌ Error in enhanced fallback: {ex.Message}");
+                return CreateBasicFallback();
             }
+        }
+
+        private (string WorkoutType, string ExerciseName, decimal Weight, int Reps, int Sets) ExtractWorkoutDataFromText(string text)
+        {
+            var workoutType = "strength";
+            var exerciseName = "Тяга штанги"; // Дефолт для штанги
+            decimal weight = 0;
+            int reps = 10;
+            int sets = 3;
+
+            try
+            {
+                _logger.LogInformation($"🔍 Analyzing text: {text}");
+
+                // УЛУЧШЕННЫЕ ПАТТЕРНЫ ДЛЯ УПРАЖНЕНИЙ
+                var exercisePatterns = new Dictionary<string, string>
+                {
+                    // Точные совпадения
+                    [@"\bтяга\s*штанги\b"] = "Тяга штанги",
+                    [@"\bжим\s*лежа\b"] = "Жим лежа",
+                    [@"\bжим\s*штанги\b"] = "Жим штанги",
+                    [@"\bстановая\s*тяга\b"] = "Становая тяга",
+                    [@"\bжим\s*стоя\b"] = "Жим стоя",
+
+                    // Общие термины
+                    [@"\bприседания?\b"] = "Приседания",
+                    [@"\bподтягивания?\b"] = "Подтягивания",
+                    [@"\bотжимания?\b"] = "Отжимания",
+                    [@"\bбицепс\b"] = "Подъем на бицепс",
+                    [@"\bтрицепс\b"] = "Упражнения на трицепс",
+
+                    // Если просто штанга - тяга штанги
+                    [@"\bштанга\b"] = "Тяга штанги",
+                    [@"\bжим\b"] = "Жим лежа",
+                    [@"\bтяга\b"] = "Тяга штанги",
+
+                    // Кардио
+                    [@"\bбег\b"] = "Бег",
+                    [@"\bвелосипед\b"] = "Велосипед",
+                    [@"\bкардио\b"] = "Кардио"
+                };
+
+                // Ищем упражнение по приоритету (сначала точные совпадения)
+                foreach (var pattern in exercisePatterns)
+                {
+                    if (Regex.IsMatch(text, pattern.Key, RegexOptions.IgnoreCase))
+                    {
+                        exerciseName = pattern.Value;
+                        _logger.LogInformation($"✅ Found exercise: {exerciseName} (pattern: {pattern.Key})");
+
+                        // Определяем тип тренировки
+                        if (exerciseName == "Бег" || exerciseName == "Велосипед" || exerciseName == "Кардио")
+                        {
+                            workoutType = "cardio";
+                        }
+                        break;
+                    }
+                }
+
+                // Извлекаем вес с лучшими паттернами
+                var weightPatterns = new[]
+                {
+            @"(\d+)\s*кг\b",
+            @"(\d+)\s*килограмм[а-я]*\b",
+            @"(\d+)\s*кило\b",
+            @"\bвес[а-я]*\s*(\d+)\b",
+            @"(\d+)\s*к[её]г[её]?\b"
+        };
+
+                foreach (var pattern in weightPatterns)
+                {
+                    var match = Regex.Match(text, pattern, RegexOptions.IgnoreCase);
+                    if (match.Success && decimal.TryParse(match.Groups[1].Value, out var parsedWeight))
+                    {
+                        weight = parsedWeight;
+                        _logger.LogInformation($"💪 Extracted weight: {weight}kg (matched: '{match.Value}')");
+                        break;
+                    }
+                }
+
+                // Извлекаем повторения
+                var repsPatterns = new[]
+                {
+            @"(\d+)\s*повторени[йя]\b",
+            @"(\d+)\s*раз[а]?\b",
+            @"(\d+)\s*реп[а]?\b",
+            @"\bповторений?\s*(\d+)\b",
+            @"(\d+)\s*подъем[а-я]*\b"
+        };
+
+                foreach (var pattern in repsPatterns)
+                {
+                    var match = Regex.Match(text, pattern, RegexOptions.IgnoreCase);
+                    if (match.Success && int.TryParse(match.Groups[1].Value, out var parsedReps))
+                    {
+                        reps = Math.Max(1, Math.Min(50, parsedReps));
+                        _logger.LogInformation($"🔢 Extracted reps: {reps}");
+                        break;
+                    }
+                }
+
+                // Извлекаем подходы
+                var setsPatterns = new[]
+                {
+            @"(\d+)\s*подход[а-я]*\b",
+            @"(\d+)\s*сет[а-я]*\b",
+            @"\bподходов?\s*(\d+)\b",
+            @"\bсетов?\s*(\d+)\b"
+        };
+
+                foreach (var pattern in setsPatterns)
+                {
+                    var match = Regex.Match(text, pattern, RegexOptions.IgnoreCase);
+                    if (match.Success && int.TryParse(match.Groups[1].Value, out var parsedSets))
+                    {
+                        sets = Math.Max(1, Math.Min(10, parsedSets));
+                        _logger.LogInformation($"📊 Extracted sets: {sets}");
+                        break;
+                    }
+                }
+
+                _logger.LogInformation($"🎯 Final extraction: {exerciseName}, {weight}кг, {reps}x{sets}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error extracting data: {ex.Message}");
+            }
+
+            return (workoutType, exerciseName, weight, reps, sets);
+        }
+
+        private StrengthDataDto CreateStrengthData((string WorkoutType, string ExerciseName, decimal Weight, int Reps, int Sets) data)
+        {
+            var sets = new List<StrengthSetDto>();
+
+            // Создаем реалистичные подходы
+            for (int i = 1; i <= data.Sets; i++)
+            {
+                sets.Add(new StrengthSetDto
+                {
+                    SetNumber = i,
+                    Weight = data.Weight,
+                    Reps = data.Reps,
+                    IsCompleted = true,
+                    Notes = i == 1 ? "Первый подход" : null
+                });
+            }
+
+            return new StrengthDataDto
+            {
+                Name = data.ExerciseName,
+                MuscleGroup = GetMuscleGroup(data.ExerciseName),
+                Equipment = GetEquipment(data.ExerciseName),
+                WorkingWeight = data.Weight,
+                RestTimeSeconds = 120, // 2 минуты отдыха
+                Sets = sets
+            };
+        }
+
+        private string GetMuscleGroup(string exerciseName)
+        {
+            var muscleGroups = new Dictionary<string, string>
+            {
+                // Спина
+                ["тяга штанги"] = "Спина",
+                ["тяга"] = "Спина",
+                ["подтягивания"] = "Спина",
+                ["становая тяга"] = "Спина",
+
+                // Грудь
+                ["жим лежа"] = "Грудь",
+                ["жим штанги"] = "Грудь",
+                ["жим"] = "Грудь",
+                ["отжимания"] = "Грудь",
+
+                // Плечи
+                ["жим стоя"] = "Плечи",
+                ["жим над головой"] = "Плечи",
+
+                // Ноги
+                ["приседания"] = "Ноги",
+                ["присед"] = "Ноги",
+
+                // Руки
+                ["подъем на бицепс"] = "Бицепс",
+                ["бицепс"] = "Бицепс",
+                ["упражнения на трицепс"] = "Трицепс",
+                ["трицепс"] = "Трицепс"
+            };
+
+            var exerciseKey = exerciseName.ToLowerInvariant();
+
+            // Ищем точное совпадение
+            if (muscleGroups.ContainsKey(exerciseKey))
+                return muscleGroups[exerciseKey];
+
+            // Ищем частичное совпадение
+            foreach (var kvp in muscleGroups)
+            {
+                if (exerciseKey.Contains(kvp.Key))
+                    return kvp.Value;
+            }
+
+            return "Разные группы мышц";
+        }
+
+        private string GetEquipment(string exerciseName)
+        {
+            var equipment = new Dictionary<string, string>
+            {
+                ["штанг"] = "Штанга",
+                ["гантел"] = "Гантели",
+                ["подтягивания"] = "Турник",
+                ["отжимания"] = "Собственный вес",
+                ["тяга"] = "Штанга",
+                ["жим"] = "Штанга",
+                ["приседания"] = "Штанга"
+            };
+
+            var exerciseKey = exerciseName.ToLowerInvariant();
+
+            foreach (var kvp in equipment)
+            {
+                if (exerciseKey.Contains(kvp.Key))
+                    return kvp.Value;
+            }
+
+            return "Разное оборудование";
+        }
+
+        private CardioDataDto CreateCardioData((string WorkoutType, string ExerciseName, decimal Weight, int Reps, int Sets) data)
+        {
+            return new CardioDataDto
+            {
+                CardioType = data.ExerciseName.Contains("бег") ? "Бег" : "Кардио",
+                DistanceKm = 3,
+                AvgPulse = 140,
+                AvgPace = "5:30"
+            };
+        }
+
+        private string CleanTranscribedText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return "Голосовой ввод тренировки";
+
+            // Убираем JSON мусор более агрессивно
+            var cleaned = text
+                .Replace("```json", "")
+                .Replace("```", "")
+                .Replace("{", "")
+                .Replace("}", "")
+                .Replace("\"", "")
+                .Replace("success", "")
+                .Replace("true", "")
+                .Replace("false", "")
+                .Replace(":", "")
+                .Replace(",", " ")
+                .Replace("transcribedText", "")
+                .Replace("workoutData", "")
+                .Replace("\\n", " ")
+                .Replace("\n", " ")
+                .Replace("  ", " ")
+                .Trim();
+
+            // Если всё ещё содержит JSON мусор, берём только начало
+            if (cleaned.Contains("strengthData") || cleaned.Contains("type"))
+            {
+                var sentences = cleaned.Split('.', '!', '?');
+                cleaned = sentences.FirstOrDefault(s => s.Length > 10 &&
+                    !s.Contains("strengthData") &&
+                    !s.Contains("type")) ?? "Голосовой ввод";
+            }
+
+            return cleaned.Length > 100 ? cleaned.Substring(0, 100) + "..." : cleaned;
+        }
+
+        private VoiceWorkoutResponse CreateBasicFallback()
+        {
+            var now = DateTime.UtcNow;
+            return new VoiceWorkoutResponse
+            {
+                Success = true,
+                TranscribedText = "Тренировка (голосовой ввод)",
+                WorkoutData = new WorkoutDataResponse
+                {
+                    Type = "strength",
+                    StartTime = now.AddMinutes(-30),
+                    EndTime = now,
+                    EstimatedCalories = 200,
+                    StrengthData = new StrengthDataDto
+                    {
+                        Name = "Общая тренировка",
+                        MuscleGroup = "Все группы мышц",
+                        Equipment = "Разное",
+                        WorkingWeight = 20,
+                        Sets = new List<StrengthSetDto>
+                {
+                    new StrengthSetDto { SetNumber = 1, Weight = 20, Reps = 10, IsCompleted = true }
+                }
+                    },
+                    Notes = new List<string> { "Базовая тренировка (автоматически)" }
+                }
+            };
+        }
+
+        private (DateTime startTime, DateTime endTime) ExtractTimeFromText(string text, DateTime fallbackTime)
+        {
+            var now = fallbackTime;
+            var startTime = now.AddMinutes(-45); // По умолчанию 45 минут назад
+            var endTime = now; // По умолчанию сейчас
+
+            try
+            {
+                // Более точные паттерны времени
+                var timePatterns = new[]
+                {
+            // Время начала
+            @"начал[а-я]*\s*в?\s*(\d{1,2})[:\.](\d{2})",
+            @"старт[а-я]*\s*в?\s*(\d{1,2})[:\.](\d{2})",
+            @"время\s*начала\s*(\d{1,2})[:\.](\d{2})",
+            
+            // Время окончания  
+            @"закончил[а-я]*\s*в?\s*(\d{1,2})[:\.](\d{2})",
+            @"окончание\s*(\d{1,2})[:\.](\d{2})",
+            @"финиш\s*(\d{1,2})[:\.](\d{2})",
+            
+            // Диапазон времени
+            @"с\s*(\d{1,2})[:\.](\d{2})\s*до\s*(\d{1,2})[:\.](\d{2})",
+            @"(\d{1,2})[:\.](\d{2})\s*[-–—]\s*(\d{1,2})[:\.](\d{2})",
+            
+            // Продолжительность
+            @"(\d+)\s*минут[а-я]*\s*тренирова",
+            @"тренировка\s*(\d+)\s*минут"
+        };
+
+                bool timeFound = false;
+
+                foreach (var pattern in timePatterns)
+                {
+                    var match = Regex.Match(text, pattern, RegexOptions.IgnoreCase);
+                    if (match.Success)
+                    {
+                        if (pattern.Contains("минут")) // Продолжительность
+                        {
+                            if (int.TryParse(match.Groups[1].Value, out int duration))
+                            {
+                                startTime = now.AddMinutes(-duration);
+                                endTime = now;
+                                timeFound = true;
+                            }
+                        }
+                        else if (match.Groups.Count >= 5) // Диапазон времени
+                        {
+                            var startHour = int.Parse(match.Groups[1].Value);
+                            var startMinute = int.Parse(match.Groups[2].Value);
+                            var endHour = int.Parse(match.Groups[3].Value);
+                            var endMinute = int.Parse(match.Groups[4].Value);
+
+                            startTime = new DateTime(now.Year, now.Month, now.Day, startHour, startMinute, 0, DateTimeKind.Utc);
+                            endTime = new DateTime(now.Year, now.Month, now.Day, endHour, endMinute, 0, DateTimeKind.Utc);
+                            timeFound = true;
+                        }
+                        else if (pattern.Contains("окончание") || pattern.Contains("закончил"))
+                        {
+                            // Время окончания
+                            var hour = int.Parse(match.Groups[1].Value);
+                            var minute = int.Parse(match.Groups[2].Value);
+                            endTime = new DateTime(now.Year, now.Month, now.Day, hour, minute, 0, DateTimeKind.Utc);
+                            startTime = endTime.AddMinutes(-45);
+                            timeFound = true;
+                        }
+                        else
+                        {
+                            // Время начала
+                            var hour = int.Parse(match.Groups[1].Value);
+                            var minute = int.Parse(match.Groups[2].Value);
+                            startTime = new DateTime(now.Year, now.Month, now.Day, hour, minute, 0, DateTimeKind.Utc);
+                            endTime = startTime.AddMinutes(45);
+                            timeFound = true;
+                        }
+                        break;
+                    }
+                }
+
+                // Проверяем корректность
+                if (endTime <= startTime)
+                {
+                    endTime = startTime.AddMinutes(45);
+                }
+
+                // Если время в будущем, переносим на вчера
+                if (startTime > now.AddMinutes(10))
+                {
+                    startTime = startTime.AddDays(-1);
+                    endTime = endTime.AddDays(-1);
+                }
+
+                if (timeFound)
+                {
+                    _logger.LogInformation($"⏰ Time extracted: {startTime:HH:mm} - {endTime:HH:mm}");
+                }
+                else
+                {
+                    _logger.LogInformation($"⏰ Using default time: {startTime:HH:mm} - {endTime:HH:mm}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"⚠️ Error extracting time: {ex.Message}");
+                // Fallback: разные времена
+                startTime = now.AddMinutes(-45);
+                endTime = now;
+            }
+
+            return (startTime, endTime);
+        }
+
+        private int CalculateEstimatedCalories(string workoutType, int durationMinutes)
+        {
+            var baseCalorisPerMinute = workoutType.ToLowerInvariant() switch
+            {
+                "strength" => 8,  // 8 ккал/мин для силовых
+                "cardio" => 12,   // 12 ккал/мин для кардио
+                _ => 10
+            };
+
+            var totalCalories = Math.Max(50, baseCalorisPerMinute * Math.Max(10, durationMinutes));
+            return Math.Min(800, totalCalories); // Ограничиваем максимум 800 ккал
         }
 
         private VoiceFoodResponse CreateFallbackVoiceFoodResponse(string aiResponse)
