@@ -303,45 +303,45 @@ namespace FitnessTracker.API.Services.AI.Providers
 			return ExtractTextFromVertexResponse(responseContent);
 		}
 
-		private object ConvertToVertexFormat(UniversalAIRequest request)
-		{
-			var contents = request.Messages.Select(msg => new
-			{
-				role = msg.Role,
-				parts = msg.Content.Select(content =>
-				{
-					if (content.Type == "text")
-					{
-						return new { text = content.Text };
-					}
-					else if (content.Type == "image" || content.Type == "audio")
-					{
-						return new
-						{
-							inlineData = new
-							{
-								mimeType = content.Media!.MimeType,
-								data = Convert.ToBase64String(content.Media.Data)
-							}
-						};
-					}
-					return new { text = content.Text };
-				}).ToArray()
-			}).ToArray();
+        private object ConvertToVertexFormat(UniversalAIRequest request)
+        {
+            var contents = request.Messages.Select(msg => new
+            {
+                role = msg.Role,
+                parts = msg.Content.Select(content =>
+                {
+                    if (content.Type == "text")
+                    {
+                        return new { text = content.Text };
+                    }
+                    else if (content.Type == "image" || content.Type == "audio")
+                    {
+                        return new
+                        {
+                            inlineData = new
+                            {
+                                mimeType = content.Media!.MimeType,
+                                data = Convert.ToBase64String(content.Media.Data)
+                            }
+                        };
+                    }
+                    return new { text = content.Text };
+                }).ToArray()
+            }).ToArray();
 
-			return new
-			{
-				contents = contents,
-				generationConfig = new
-				{
-					temperature = request.Config.Temperature,
-					topP = request.Config.TopP,
-					maxOutputTokens = request.Config.MaxTokens
-				}
-			};
-		}
+            return new
+            {
+                contents = contents,
+                generationConfig = new
+                {
+                    temperature = request.Config.Temperature,
+                    topP = request.Config.TopP,
+                    maxOutputTokens = request.Config.MaxTokens
+                }
+            };
+        }
 
-		private string ExtractTextFromVertexResponse(string jsonResponse)
+        private string ExtractTextFromVertexResponse(string jsonResponse)
 		{
 			try
 			{

@@ -94,8 +94,26 @@ namespace FitnessTracker.API.Services.AI
 
         public async Task<bool> IsHealthyAsync()
         {
-            var provider = GetActiveProvider();
-            return await provider.IsHealthyAsync();
+            try
+            {
+                var testContents = new List<GeminiContent>
+        {
+            new GeminiContent
+            {
+                Parts = new List<GeminiPart>
+                {
+                    new GeminiPart { Text = "Test" }
+                }
+            }
+        };
+
+                var response = await SendGeminiRequestAsync(testContents);
+                return response?.Candidates?.Any() == true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private IAIProvider GetActiveProvider()
@@ -120,22 +138,23 @@ namespace FitnessTracker.API.Services.AI
 
         public async Task<Dictionary<string, bool>> GetProviderHealthStatusAsync()
         {
-            var healthStatus = new Dictionary<string, bool>();
+            var providers = new Dictionary<string, bool>();
 
-            foreach (var provider in _providers.Values)
+            try
             {
-                try
-                {
-                    var isHealthy = await provider.IsHealthyAsync();
-                    healthStatus[provider.ProviderName] = isHealthy;
-                }
-                catch
-                {
-                    healthStatus[provider.ProviderName] = false;
-                }
-            }
+                // Тест Vertex AI
+                providers["Vertex AI (Gemini Pro 2.5)"] = await IsHealthyAsync();
 
-            return healthStatus;
+                // Здесь можно добавить тесты других провайдеров
+                // providers["OpenAI GPT-4"] = await TestOpenAI();
+
+                return providers;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError($"Error checking provider health: {ex.Message}");
+                return new Dictionary<string, bool> { { "Vertex AI (Gemini Pro 2.5)", false } };
+            }
         }
     }
 }

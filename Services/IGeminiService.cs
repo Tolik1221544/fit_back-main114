@@ -46,5 +46,10 @@ namespace FitnessTracker.API.Services
         /// 📝 Проверка качества изображения
         /// </summary>
         Task<bool> ValidateImageQualityAsync(byte[] imageData);
+
+        /// <summary>
+        /// 🏥 Проверка здоровья сервиса
+        /// </summary>
+        Task<bool> IsHealthyAsync();
     }
 }
