@@ -3,7 +3,6 @@
 		<TargetFramework>net8.0</TargetFramework>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
-		<!-- Включаем генерацию XML документации для Swagger -->
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<NoWarn>$(NoWarn);1591</NoWarn>
 	</PropertyGroup>
@@ -23,5 +22,8 @@
 		<PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
 		<PackageReference Include="System.Text.Json" Version="8.0.5" />
 		<PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
+
+		<PackageReference Include="Google.Cloud.AIPlatform.V1" Version="3.8.0" />
+		<PackageReference Include="Google.Apis.Core" Version="1.68.0" />
 	</ItemGroup>
 </Project>

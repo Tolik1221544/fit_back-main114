@@ -1,5 +1,7 @@
 ﻿using FitnessTracker.API.Data;
 using FitnessTracker.API.Services;
+using FitnessTracker.API.Services.AI; 
+using FitnessTracker.API.Services.AI.Providers; 
 using FitnessTracker.API.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -13,7 +15,7 @@ using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddHttpContextAccessor(); // НОВОЕ: добавляем HttpContextAccessor
+builder.Services.AddHttpContextAccessor();
 
 builder.Services.AddControllers(options =>
 {
@@ -40,9 +42,9 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "🏃‍♂️ Fitness Tracker API с Gemini AI",
-        Version = "v2.2.0",
-        Description = "Полнофункциональный API для фитнес-трекера с интеграцией Gemini AI для анализа изображений и голоса"
+        Title = "🏃‍♂️ Fitness Tracker API с Universal AI",
+        Version = "v3.0.0",
+        Description = "Полнофункциональный API для фитнес-трекера с универсальной AI архитектурой (Vertex AI Gemini Pro 2.5 + OpenAI + другие)"
     });
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -97,11 +99,19 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // AutoMapper
 builder.Services.AddAutoMapper(typeof(Program));
 
-builder.Services.AddHttpClient<IGeminiService, GeminiService>(client =>
+// ✅ НОВОЕ: Настройка HTTP клиентов для AI провайдеров
+builder.Services.AddHttpClient<VertexAIProvider>(client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(120); // Увеличиваем таймаут для ИИ запросов
-    client.DefaultRequestHeaders.Add("User-Agent", "FitnessTracker-API/2.2.0");
+    client.Timeout = TimeSpan.FromSeconds(120);
+    client.DefaultRequestHeaders.Add("User-Agent", "FitnessTracker-API/3.0.0");
 });
+
+// ✅ НОВОЕ: AI Services
+builder.Services.AddScoped<IGoogleCloudTokenService, GoogleCloudTokenService>();
+builder.Services.AddScoped<IAIProvider, VertexAIProvider>();
+
+// ✅ НОВОЕ: Заменяем старый GeminiService на UniversalAIService
+builder.Services.AddScoped<IGeminiService, UniversalAIService>();
 
 // Основные сервисы
 builder.Services.AddScoped<IEmailService, EmailService>();
@@ -119,10 +129,9 @@ builder.Services.AddScoped<IBodyScanService, BodyScanService>();
 builder.Services.AddScoped<IAchievementService, AchievementService>();
 builder.Services.AddScoped<IExperienceService, ExperienceService>();
 builder.Services.AddScoped<IGoalService, GoalService>();
-builder.Services.AddScoped<IGeminiService, GeminiService>();
-builder.Services.AddScoped<IImageService, ImageService>(); // НОВОЕ: добавляем ImageService
+builder.Services.AddScoped<IImageService, ImageService>();
 
-// Repositories
+// Repositories (без изменений)
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IFoodIntakeRepository, FoodIntakeRepository>();
 builder.Services.AddScoped<IActivityRepository, ActivityRepository>();
@@ -136,7 +145,7 @@ builder.Services.AddScoped<IExperienceRepository, ExperienceRepository>();
 builder.Services.AddScoped<IStepsRepository, StepsRepository>();
 builder.Services.AddScoped<IGoalRepository, GoalRepository>();
 
-// JWT Authentication
+// JWT Authentication (без изменений)
 const string JWT_SECRET_KEY = "fitness-tracker-super-secret-key-that-is-definitely-long-enough-for-security-2024";
 var key = Encoding.UTF8.GetBytes(JWT_SECRET_KEY);
 
@@ -221,12 +230,12 @@ builder.Services.AddCors(options =>
 
 builder.Services.Configure<IISServerOptions>(options =>
 {
-    options.MaxRequestBodySize = 50000000; // 50MB для изображений и аудио
+    options.MaxRequestBodySize = 50000000;
 });
 
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.Limits.MaxRequestBodySize = 50000000; // 50MB
+    options.Limits.MaxRequestBodySize = 50000000;
     options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(60);
     options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(60);
 });
@@ -237,32 +246,46 @@ using (var scope = app.Services.CreateScope())
 {
     try
     {
-        var geminiService = scope.ServiceProvider.GetRequiredService<IGeminiService>();
+        var universalAI = scope.ServiceProvider.GetRequiredService<IGeminiService>() as UniversalAIService;
         var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
-        var apiKey = configuration["GeminiAI:ApiKey"];
-        var model = configuration["GeminiAI:Model"];
+        Console.WriteLine("🤖 Universal AI Configuration:");
+        Console.WriteLine($"   Active Provider: {configuration["AI:ActiveProvider"] ?? "Vertex AI (Gemini Pro 2.5)"}");
+        Console.WriteLine($"   Google Cloud Project: {configuration["GoogleCloud:ProjectId"] ?? "NOT SET"}");
+        Console.WriteLine($"   Google Cloud Location: {configuration["GoogleCloud:Location"] ?? "us-central1"}");
+        Console.WriteLine($"   Google Cloud Model: {configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro"}");
 
-        Console.WriteLine("🤖 Gemini AI Configuration:");
-        Console.WriteLine($"   API Key: {(!string.IsNullOrEmpty(apiKey) ? $"{apiKey[..10]}..." : "NOT SET")}");
-        Console.WriteLine($"   Model: {model ?? "NOT SET"}");
+        // Проверяем доступность сервисного аккаунта
+        var tokenService = scope.ServiceProvider.GetRequiredService<IGoogleCloudTokenService>();
+        var isValidServiceAccount = await tokenService.ValidateServiceAccountAsync();
 
-        if (string.IsNullOrEmpty(apiKey))
+        if (isValidServiceAccount)
         {
-            Console.WriteLine("⚠️ WARNING: Gemini API key not configured! AI features will not work.");
+            Console.WriteLine("✅ Google Cloud service account validated successfully");
         }
         else
         {
-            Console.WriteLine("✅ Gemini AI service configured successfully");
+            Console.WriteLine("⚠️ WARNING: Google Cloud service account validation failed!");
+        }
+
+        // Проверяем здоровье всех провайдеров
+        if (universalAI != null)
+        {
+            var healthStatus = await universalAI.GetProviderHealthStatusAsync();
+            Console.WriteLine("🏥 AI Providers Health Status:");
+            foreach (var provider in healthStatus)
+            {
+                var status = provider.Value ? "✅ HEALTHY" : "❌ UNHEALTHY";
+                Console.WriteLine($"   {provider.Key}: {status}");
+            }
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Error checking Gemini configuration: {ex.Message}");
+        Console.WriteLine($"❌ Error checking AI configuration: {ex.Message}");
     }
 }
 
-// Инициализация базы данных
 using (var scope = app.Services.CreateScope())
 {
     try
@@ -321,7 +344,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "🏃‍♂️ Fitness Tracker API v2.2.0 with Gemini AI");
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "🏃‍♂️ Fitness Tracker API v3.0.0 with Universal AI");
         c.RoutePrefix = "swagger";
         c.DefaultModelsExpandDepth(-1);
         c.DisplayRequestDuration();
@@ -339,12 +362,12 @@ else
     app.UseCors("AllowAll");
 }
 
-// НОВОЕ: Создаем папки для загрузок если их нет
+// Создаем папки для загрузок если их нет
 var uploadsPath = Path.Combine(app.Environment.WebRootPath ?? app.Environment.ContentRootPath, "uploads");
 Directory.CreateDirectory(Path.Combine(uploadsPath, "food-scans"));
 Directory.CreateDirectory(Path.Combine(uploadsPath, "body-scans"));
 
-// НОВОЕ: Настройка статических файлов для изображений
+// Настройка статических файлов для изображений
 app.UseStaticFiles();
 app.UseStaticFiles(new StaticFileOptions
 {
@@ -406,7 +429,7 @@ app.MapControllers();
 var port = Environment.GetEnvironmentVariable("PORT") ?? "60170";
 var url = $"http://0.0.0.0:{port}";
 
-Console.WriteLine("🚀 Fitness Tracker API with Gemini AI starting...");
+Console.WriteLine("🚀 Fitness Tracker API with Universal AI starting...");
 Console.WriteLine($"📊 Swagger: {url}/swagger");
 Console.WriteLine($"🌐 API: {url}");
 Console.WriteLine($"📚 Docs: {url}/api/docs");

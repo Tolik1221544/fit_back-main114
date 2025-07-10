@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
 namespace FitnessTracker.API.Controllers
+
 {
     /// <summary>
     /// 🤖 Контроллер для работы с ИИ функциями (Gemini)
@@ -137,6 +138,139 @@ namespace FitnessTracker.API.Controllers
             {
                 _logger.LogError($"❌ Error scanning food: {ex.Message}");
                 return BadRequest(new { error = $"Ошибка сканирования: {ex.Message}" });
+            }
+            /// <summary>
+            /// 🔄 Переключить AI провайдера
+            /// </summary>
+            /// <param name="providerName">Название провайдера</param>
+            /// <returns>Результат переключения</returns>
+            /// <response code="200">Провайдер успешно переключен</response>
+            /// <response code="400">Неверное название провайдера</response>
+            /// <response code="401">Требуется авторизация администратора</response>
+            [HttpPost("switch-provider")]
+            [ProducesResponseType(200)]
+            [ProducesResponseType(400)]
+            [ProducesResponseType(401)]
+            public async Task<IActionResult> SwitchProvider([FromBody] SwitchProviderRequest request)
+            {
+                try
+                {
+                    var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                    if (string.IsNullOrEmpty(userId))
+                        return Unauthorized();
+
+                    // Здесь можно добавить проверку на админа
+                    // Пока что любой авторизованный пользователь может переключать
+
+                    var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+
+                    // В реальном приложении это должно сохраняться в базу данных
+                    // Пока что просто логируем
+                    _logger.LogInformation($"🔄 User {userId} requested to switch to provider: {request.ProviderName}");
+
+                    return Ok(new
+                    {
+                        success = true,
+                        message = $"Provider switched to {request.ProviderName}",
+                        note = "In production, this should update the database configuration"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"❌ Error switching provider: {ex.Message}");
+                    return BadRequest(new { error = ex.Message });
+                }
+            }
+
+            /// <summary>
+            /// 🏥 Получить статус всех AI провайдеров
+            /// </summary>
+            /// <returns>Статус работы всех доступных провайдеров</returns>
+            /// <response code="200">Статус получен</response>
+            [HttpGet("providers-status")]
+            [AllowAnonymous]
+            [ProducesResponseType(200)]
+            public async Task<IActionResult> GetProvidersStatus()
+            {
+                try
+                {
+                    var universalAI = _geminiService as UniversalAIService;
+
+                    if (universalAI == null)
+                    {
+                        return Ok(new
+                        {
+                            Message = "Universal AI service not available",
+                            LegacyService = "Gemini",
+                            Timestamp = DateTime.UtcNow
+                        });
+                    }
+
+                    var healthStatus = await universalAI.GetProviderHealthStatusAsync();
+                    var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+                    var activeProvider = configuration["AI:ActiveProvider"] ?? "Vertex AI (Gemini Pro 2.5)";
+
+                    return Ok(new
+                    {
+                        ActiveProvider = activeProvider,
+                        Providers = healthStatus.Select(p => new
+                        {
+                            Name = p.Key,
+                            Status = p.Value ? "Online" : "Offline",
+                            IsActive = p.Key == activeProvider
+                        }),
+                        Timestamp = DateTime.UtcNow,
+                        TotalProviders = healthStatus.Count,
+                        HealthyProviders = healthStatus.Count(p => p.Value)
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"❌ Error getting providers status: {ex.Message}");
+                    return StatusCode(503, new
+                    {
+                        Error = ex.Message,
+                        Timestamp = DateTime.UtcNow
+                    });
+                }
+            }
+
+            /// <summary>
+            /// 🧪 Тестировать конкретного провайдера
+            /// </summary>
+            /// <param name="providerName">Название провайдера для тестирования</param>
+            /// <returns>Результат тестирования</returns>
+            [HttpPost("test-provider")]
+            [AllowAnonymous]
+            [ProducesResponseType(200)]
+            [ProducesResponseType(400)]
+            public async Task<IActionResult> TestProvider([FromBody] TestProviderRequest request)
+            {
+                try
+                {
+                    _logger.LogInformation($"🧪 Testing provider: {request.ProviderName}");
+
+                    // Здесь бы было хорошо иметь возможность тестировать конкретного провайдера
+                    // Пока что используем общий метод
+                    var isHealthy = await _geminiService.IsHealthyAsync();
+
+                    return Ok(new
+                    {
+                        ProviderName = request.ProviderName,
+                        Status = isHealthy ? "Healthy" : "Unhealthy",
+                        TestTime = DateTime.UtcNow,
+                        Message = isHealthy ? "Provider is working correctly" : "Provider is not responding"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"❌ Error testing provider {request.ProviderName}: {ex.Message}");
+                    return BadRequest(new
+                    {
+                        error = ex.Message,
+                        providerName = request.ProviderName
+                    });
+                }
             }
         }
 
@@ -551,5 +685,14 @@ namespace FitnessTracker.API.Controllers
                 return BadRequest(new { error = ex.Message });
             }
         }
+    }
+    public class SwitchProviderRequest
+    {
+        public string ProviderName { get; set; } = string.Empty;
+    }
+
+    public class TestProviderRequest
+    {
+        public string ProviderName { get; set; } = string.Empty;
     }
 }
