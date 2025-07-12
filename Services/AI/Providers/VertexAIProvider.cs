@@ -1,4 +1,4 @@
-using FitnessTracker.API.DTOs;
+п»їusing FitnessTracker.API.DTOs;
 using FitnessTracker.API.Services.AI;
 using System.Text;
 using System.Text.Json;
@@ -41,38 +41,40 @@ namespace FitnessTracker.API.Services.AI.Providers
                 var mimeType = GetImageMimeType(imageData);
 
                 var prompt = $@"
-Проанализируй изображение еды и предоставь детальную информацию в JSON формате.
+РџСЂРѕР°РЅР°Р»РёР·РёСЂСѓР№ РёР·РѕР±СЂР°Р¶РµРЅРёРµ РµРґС‹ Рё РїСЂРµРґРѕСЃС‚Р°РІСЊ РґРµС‚Р°Р»СЊРЅСѓСЋ РёРЅС„РѕСЂРјР°С†РёСЋ РІ JSON С„РѕСЂРјР°С‚Рµ.
 
 {userPrompt ?? ""}
 
-Верни ТОЛЬКО JSON без дополнительного текста:
+Р’РµСЂРЅРё РўРћР›Р¬РљРћ JSON Р±РµР· РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕРіРѕ С‚РµРєСЃС‚Р°:
 {{
   ""foodItems"": [
     {{
-      ""name"": ""название блюда"",
-      ""estimatedWeight"": вес_в_граммах,
+      ""name"": ""РЅР°Р·РІР°РЅРёРµ Р±Р»СЋРґР°"",
+      ""estimatedWeight"": РІРµСЃ_РІ_РіСЂР°РјРјР°С…,
       ""weightType"": ""g"",
-      ""description"": ""описание"",
+      ""description"": ""РѕРїРёСЃР°РЅРёРµ"",
       ""nutritionPer100g"": {{
-        ""calories"": калории_на_100г,
-        ""proteins"": белки_на_100г,
-        ""fats"": жиры_на_100г,
-        ""carbs"": углеводы_на_100г
+        ""calories"": РєР°Р»РѕСЂРёРё_РЅР°_100Рі,
+        ""proteins"": Р±РµР»РєРё_РЅР°_100Рі,
+        ""fats"": Р¶РёСЂС‹_РЅР°_100Рі,
+        ""carbs"": СѓРіР»РµРІРѕРґС‹_РЅР°_100Рі
       }},
-      ""totalCalories"": общие_калории,
-      ""confidence"": уверенность_от_0_до_1
+      ""totalCalories"": РѕР±С‰РёРµ_РєР°Р»РѕСЂРёРё,
+      ""confidence"": СѓРІРµСЂРµРЅРЅРѕСЃС‚СЊ_РѕС‚_0_РґРѕ_1
     }}
   ],
-  ""estimatedCalories"": общие_калории_всех_блюд,
-  ""fullDescription"": ""подробное описание всех блюд""
+  ""estimatedCalories"": РѕР±С‰РёРµ_РєР°Р»РѕСЂРёРё_РІСЃРµС…_Р±Р»СЋРґ,
+  ""fullDescription"": ""РїРѕРґСЂРѕР±РЅРѕРµ РѕРїРёСЃР°РЅРёРµ РІСЃРµС… Р±Р»СЋРґ""
 }}";
 
+                // вњ… РРЎРџР РђР’Р›Р•РќРћ: Р”РѕР±Р°РІР»РµРЅР° "role": "user"
                 var request = new
                 {
                     contents = new[]
                     {
                         new
                         {
+                            role = "user", // в†ђ РљР›Р®Р§Р•Р’РћР• РРЎРџР РђР’Р›Р•РќРР•!
                             parts = new object[]
                             {
                                 new { text = prompt },
@@ -141,36 +143,36 @@ namespace FitnessTracker.API.Services.AI.Providers
                 var parts = new List<object>();
 
                 var prompt = $@"
-Проанализируй изображения тела и предоставь подробную оценку в JSON формате.
+РџСЂРѕР°РЅР°Р»РёР·РёСЂСѓР№ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ С‚РµР»Р° Рё РїСЂРµРґРѕСЃС‚Р°РІСЊ РїРѕРґСЂРѕР±РЅСѓСЋ РѕС†РµРЅРєСѓ РІ JSON С„РѕСЂРјР°С‚Рµ.
 
-Данные пользователя:
-- Вес: {weight ?? 0}кг
-- Рост: {height ?? 0}см
-- Возраст: {age ?? 0}
-- Пол: {gender ?? "не указан"}
-- Цели: {goals ?? "не указаны"}
+Р”Р°РЅРЅС‹Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ:
+- Р’РµСЃ: {weight ?? 0}РєРі
+- Р РѕСЃС‚: {height ?? 0}СЃРј
+- Р’РѕР·СЂР°СЃС‚: {age ?? 0}
+- РџРѕР»: {gender ?? "РЅРµ СѓРєР°Р·Р°РЅ"}
+- Р¦РµР»Рё: {goals ?? "РЅРµ СѓРєР°Р·Р°РЅС‹"}
 
-Верни ТОЛЬКО JSON без дополнительного текста:
+Р’РµСЂРЅРё РўРћР›Р¬РљРћ JSON Р±РµР· РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕРіРѕ С‚РµРєСЃС‚Р°:
 {{
   ""bodyAnalysis"": {{
-    ""estimatedBodyFatPercentage"": процент_жира,
-    ""estimatedMusclePercentage"": процент_мышц,
-    ""bodyType"": ""тип телосложения"",
-    ""postureAnalysis"": ""анализ осанки"",
-    ""overallCondition"": ""общее состояние"",
-    ""bmi"": индекс_массы_тела,
-    ""bmiCategory"": ""категория ИМТ"",
-    ""estimatedWaistCircumference"": обхват_талии_см,
-    ""estimatedChestCircumference"": обхват_груди_см,
-    ""estimatedHipCircumference"": обхват_бедер_см,
-    ""basalMetabolicRate"": основной_обмен_ккал,
-    ""metabolicRateCategory"": ""категория метаболизма"",
-    ""exerciseRecommendations"": [""рекомендация1"", ""рекомендация2""],
-    ""nutritionRecommendations"": [""рекомендация1"", ""рекомендация2""],
-    ""trainingFocus"": ""фокус тренировок""
+    ""estimatedBodyFatPercentage"": РїСЂРѕС†РµРЅС‚_Р¶РёСЂР°,
+    ""estimatedMusclePercentage"": РїСЂРѕС†РµРЅС‚_РјС‹С€С†,
+    ""bodyType"": ""С‚РёРї С‚РµР»РѕСЃР»РѕР¶РµРЅРёСЏ"",
+    ""postureAnalysis"": ""Р°РЅР°Р»РёР· РѕСЃР°РЅРєРё"",
+    ""overallCondition"": ""РѕР±С‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ"",
+    ""bmi"": РёРЅРґРµРєСЃ_РјР°СЃСЃС‹_С‚РµР»Р°,
+    ""bmiCategory"": ""РєР°С‚РµРіРѕСЂРёСЏ РРњРў"",
+    ""estimatedWaistCircumference"": РѕР±С…РІР°С‚_С‚Р°Р»РёРё_СЃРј,
+    ""estimatedChestCircumference"": РѕР±С…РІР°С‚_РіСЂСѓРґРё_СЃРј,
+    ""estimatedHipCircumference"": РѕР±С…РІР°С‚_Р±РµРґРµСЂ_СЃРј,
+    ""basalMetabolicRate"": РѕСЃРЅРѕРІРЅРѕР№_РѕР±РјРµРЅ_РєРєР°Р»,
+    ""metabolicRateCategory"": ""РєР°С‚РµРіРѕСЂРёСЏ РјРµС‚Р°Р±РѕР»РёР·РјР°"",
+    ""exerciseRecommendations"": [""СЂРµРєРѕРјРµРЅРґР°С†РёСЏ1"", ""СЂРµРєРѕРјРµРЅРґР°С†РёСЏ2""],
+    ""nutritionRecommendations"": [""СЂРµРєРѕРјРµРЅРґР°С†РёСЏ1"", ""СЂРµРєРѕРјРµРЅРґР°С†РёСЏ2""],
+    ""trainingFocus"": ""С„РѕРєСѓСЃ С‚СЂРµРЅРёСЂРѕРІРѕРє""
   }},
-  ""recommendations"": [""общая рекомендация1"", ""общая рекомендация2""],
-  ""fullAnalysis"": ""подробный анализ""
+  ""recommendations"": [""РѕР±С‰Р°СЏ СЂРµРєРѕРјРµРЅРґР°С†РёСЏ1"", ""РѕР±С‰Р°СЏ СЂРµРєРѕРјРµРЅРґР°С†РёСЏ2""],
+  ""fullAnalysis"": ""РїРѕРґСЂРѕР±РЅС‹Р№ Р°РЅР°Р»РёР·""
 }}";
 
                 parts.Add(new { text = prompt });
@@ -211,11 +213,16 @@ namespace FitnessTracker.API.Services.AI.Providers
                     });
                 }
 
+                // вњ… РРЎРџР РђР’Р›Р•РќРћ: Р”РѕР±Р°РІР»РµРЅР° "role": "user"
                 var request = new
                 {
                     contents = new[]
                     {
-                        new { parts = parts.ToArray() }
+                        new
+                        {
+                            role = "user", // в†ђ РљР›Р®Р§Р•Р’РћР• РРЎРџР РђР’Р›Р•РќРР•!
+                            parts = parts.ToArray()
+                        }
                     },
                     generation_config = new
                     {
@@ -264,38 +271,40 @@ namespace FitnessTracker.API.Services.AI.Providers
                 var mimeType = GetAudioMimeType(audioData);
 
                 var prompt = $@"
-Распознай речь из аудио и извлеки информацию о тренировке в JSON формате.
+Р Р°СЃРїРѕР·РЅР°Р№ СЂРµС‡СЊ РёР· Р°СѓРґРёРѕ Рё РёР·РІР»РµРєРё РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ С‚СЂРµРЅРёСЂРѕРІРєРµ РІ JSON С„РѕСЂРјР°С‚Рµ.
 
-Тип тренировки: {workoutType ?? "любой"}
+РўРёРї С‚СЂРµРЅРёСЂРѕРІРєРё: {workoutType ?? "Р»СЋР±РѕР№"}
 
-Верни ТОЛЬКО JSON без дополнительного текста:
+Р’РµСЂРЅРё РўРћР›Р¬РљРћ JSON Р±РµР· РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕРіРѕ С‚РµРєСЃС‚Р°:
 {{
-  ""transcribedText"": ""распознанный текст"",
+  ""transcribedText"": ""СЂР°СЃРїРѕР·РЅР°РЅРЅС‹Р№ С‚РµРєСЃС‚"",
   ""workoutData"": {{
-    ""type"": ""strength или cardio"",
+    ""type"": ""strength РёР»Рё cardio"",
     ""startTime"": ""2025-07-11T10:00:00Z"",
     ""endTime"": ""2025-07-11T11:00:00Z"",
-    ""estimatedCalories"": калории,
+    ""estimatedCalories"": РєР°Р»РѕСЂРёРё,
     ""strengthData"": {{
-      ""name"": ""название упражнения"",
-      ""muscleGroup"": ""группа мышц"",
-      ""workingWeight"": вес_кг
+      ""name"": ""РЅР°Р·РІР°РЅРёРµ СѓРїСЂР°Р¶РЅРµРЅРёСЏ"",
+      ""muscleGroup"": ""РіСЂСѓРїРїР° РјС‹С€С†"",
+      ""workingWeight"": РІРµСЃ_РєРі
     }},
     ""cardioData"": {{
-      ""cardioType"": ""тип кардио"",
-      ""distanceKm"": дистанция,
-      ""avgPulse"": пульс
+      ""cardioType"": ""С‚РёРї РєР°СЂРґРёРѕ"",
+      ""distanceKm"": РґРёСЃС‚Р°РЅС†РёСЏ,
+      ""avgPulse"": РїСѓР»СЊСЃ
     }},
-    ""notes"": [""заметка1"", ""заметка2""]
+    ""notes"": [""Р·Р°РјРµС‚РєР°1"", ""Р·Р°РјРµС‚РєР°2""]
   }}
 }}";
 
+                // вњ… РРЎРџР РђР’Р›Р•РќРћ: Р”РѕР±Р°РІР»РµРЅР° "role": "user"
                 var request = new
                 {
                     contents = new[]
                     {
                         new
                         {
+                            role = "user", // в†ђ РљР›Р®Р§Р•Р’РћР• РРЎРџР РђР’Р›Р•РќРР•!
                             parts = new object[]
                             {
                                 new { text = prompt },
@@ -357,38 +366,40 @@ namespace FitnessTracker.API.Services.AI.Providers
                 var mimeType = GetAudioMimeType(audioData);
 
                 var prompt = $@"
-Распознай речь из аудио и извлеки информацию о питании в JSON формате.
+Р Р°СЃРїРѕР·РЅР°Р№ СЂРµС‡СЊ РёР· Р°СѓРґРёРѕ Рё РёР·РІР»РµРєРё РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ РїРёС‚Р°РЅРёРё РІ JSON С„РѕСЂРјР°С‚Рµ.
 
-Тип приема пищи: {mealType ?? "любой"}
+РўРёРї РїСЂРёРµРјР° РїРёС‰Рё: {mealType ?? "Р»СЋР±РѕР№"}
 
-Верни ТОЛЬКО JSON без дополнительного текста:
+Р’РµСЂРЅРё РўРћР›Р¬РљРћ JSON Р±РµР· РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕРіРѕ С‚РµРєСЃС‚Р°:
 {{
-  ""transcribedText"": ""распознанный текст"",
+  ""transcribedText"": ""СЂР°СЃРїРѕР·РЅР°РЅРЅС‹Р№ С‚РµРєСЃС‚"",
   ""foodItems"": [
     {{
-      ""name"": ""название блюда"",
-      ""estimatedWeight"": вес_в_граммах,
+      ""name"": ""РЅР°Р·РІР°РЅРёРµ Р±Р»СЋРґР°"",
+      ""estimatedWeight"": РІРµСЃ_РІ_РіСЂР°РјРјР°С…,
       ""weightType"": ""g"",
-      ""description"": ""описание"",
+      ""description"": ""РѕРїРёСЃР°РЅРёРµ"",
       ""nutritionPer100g"": {{
-        ""calories"": калории_на_100г,
-        ""proteins"": белки_на_100г,
-        ""fats"": жиры_на_100г,
-        ""carbs"": углеводы_на_100г
+        ""calories"": РєР°Р»РѕСЂРёРё_РЅР°_100Рі,
+        ""proteins"": Р±РµР»РєРё_РЅР°_100Рі,
+        ""fats"": Р¶РёСЂС‹_РЅР°_100Рі,
+        ""carbs"": СѓРіР»РµРІРѕРґС‹_РЅР°_100Рі
       }},
-      ""totalCalories"": общие_калории,
-      ""confidence"": уверенность_от_0_до_1
+      ""totalCalories"": РѕР±С‰РёРµ_РєР°Р»РѕСЂРёРё,
+      ""confidence"": СѓРІРµСЂРµРЅРЅРѕСЃС‚СЊ_РѕС‚_0_РґРѕ_1
     }}
   ],
-  ""estimatedTotalCalories"": общие_калории_всех_блюд
+  ""estimatedTotalCalories"": РѕР±С‰РёРµ_РєР°Р»РѕСЂРёРё_РІСЃРµС…_Р±Р»СЋРґ
 }}";
 
+                // вњ… РРЎРџР РђР’Р›Р•РќРћ: Р”РѕР±Р°РІР»РµРЅР° "role": "user"
                 var request = new
                 {
                     contents = new[]
                     {
                         new
                         {
+                            role = "user", // в†ђ РљР›Р®Р§Р•Р’РћР• РРЎРџР РђР’Р›Р•РќРР•!
                             parts = new object[]
                             {
                                 new { text = prompt },
@@ -439,8 +450,37 @@ namespace FitnessTracker.API.Services.AI.Providers
         {
             try
             {
+                // вњ… РџР РћРЎРўРћР™ РўР•РЎРў Р—Р”РћР РћР’Р¬РЇ РЎ ROLE
+                var request = new
+                {
+                    contents = new[]
+                    {
+                        new
+                        {
+                            role = "user", // в†ђ РљР›Р®Р§Р•Р’РћР• РРЎРџР РђР’Р›Р•РќРР•!
+                            parts = new[]
+                            {
+                                new { text = "Say 'OK' if you are working" }
+                            }
+                        }
+                    }
+                };
+
+                var projectId = _configuration["GoogleCloud:ProjectId"];
+                var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
+                var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
+
                 var accessToken = await _tokenService.GetAccessTokenAsync();
-                return !string.IsNullOrEmpty(accessToken);
+                var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
+
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
+
+                var json = JsonSerializer.Serialize(request);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync(url, content);
+                return response.IsSuccessStatusCode;
             }
             catch
             {
@@ -482,9 +522,13 @@ namespace FitnessTracker.API.Services.AI.Providers
                 // MP3
                 if (audioData.Length >= 3 && audioData[0] == 0xFF && (audioData[1] & 0xE0) == 0xE0)
                     return "audio/mp3";
+
+                // OGG
+                if (audioData.Length >= 4 && audioData[0] == 0x4F && audioData[1] == 0x67 && audioData[2] == 0x67 && audioData[3] == 0x53)
+                    return "audio/ogg";
             }
 
-            return "audio/wav"; // Default
+            return "audio/ogg"; // Default РґР»СЏ .ogg С„Р°Р№Р»РѕРІ
         }
 
         private FoodScanResponse ParseFoodScanResponse(string responseText)
@@ -611,7 +655,7 @@ namespace FitnessTracker.API.Services.AI.Providers
         {
             try
             {
-                // Извлекаем JSON из текста
+                // РР·РІР»РµРєР°РµРј JSON РёР· С‚РµРєСЃС‚Р°
                 var startIndex = jsonText.IndexOf('{');
                 var lastIndex = jsonText.LastIndexOf('}');
 
@@ -700,7 +744,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                         bodyAnalysis.EstimatedChestCircumference = analysis.TryGetProperty("estimatedChestCircumference", out var chest) ? chest.GetDecimal() : 0;
                         bodyAnalysis.EstimatedHipCircumference = analysis.TryGetProperty("estimatedHipCircumference", out var hip) ? hip.GetDecimal() : 0;
                         bodyAnalysis.BasalMetabolicRate = analysis.TryGetProperty("basalMetabolicRate", out var bmr) ? bmr.GetInt32() : 1500;
-                        bodyAnalysis.MetabolicRateCategory = analysis.TryGetProperty("metabolicRateCategory", out var mrc) ? mrc.GetString() ?? "Нормальный" : "Нормальный";
+                        bodyAnalysis.MetabolicRateCategory = analysis.TryGetProperty("metabolicRateCategory", out var mrc) ? mrc.GetString() ?? "РќРѕСЂРјР°Р»СЊРЅС‹Р№" : "РќРѕСЂРјР°Р»СЊРЅС‹Р№";
                         bodyAnalysis.TrainingFocus = analysis.TryGetProperty("trainingFocus", out var tf) ? tf.GetString() ?? "" : "";
 
                         if (analysis.TryGetProperty("exerciseRecommendations", out var exRecs))
