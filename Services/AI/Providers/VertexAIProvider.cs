@@ -45,50 +45,61 @@ namespace FitnessTracker.API.Services.AI.Providers
 
 {userPrompt ?? ""}
 
+ВАЖНЫЕ ПРАВИЛА ДЛЯ ЕДИНИЦ ИЗМЕРЕНИЯ:
+1. Для ЖИДКИХ продуктов используй ""weightType"": ""ml"":
+   - Супы, бульоны, борщ, щи
+   - Напитки (чай, кофе, сок, компот)
+   - Соусы, подливы, жидкие каши
+
+2. Для ТВЕРДЫХ продуктов используй ""weightType"": ""g"":
+   - Хлеб, мясо, рыба, овощи, фрукты
+   - Каши, гарниры, выпечка, салаты
+
+3. Определяй тип по консистенции продукта на изображении
+
 Верни ТОЛЬКО JSON без дополнительного текста:
 {{
   ""foodItems"": [
     {{
       ""name"": ""название блюда"",
-      ""estimatedWeight"": вес_в_граммах,
-      ""weightType"": ""g"",
-      ""description"": ""описание"",
+      ""estimatedWeight"": количество_в_правильных_единицах,
+      ""weightType"": ""ml или g"",
+      ""description"": ""описание блюда"",
       ""nutritionPer100g"": {{
-        ""calories"": калории_на_100г,
-        ""proteins"": белки_на_100г,
-        ""fats"": жиры_на_100г,
-        ""carbs"": углеводы_на_100г
+        ""calories"": калории_на_100г_или_100мл,
+        ""proteins"": белки_на_100г_или_100мл,
+        ""fats"": жиры_на_100г_или_100мл,
+        ""carbs"": углеводы_на_100г_или_100мл
       }},
       ""totalCalories"": общие_калории,
       ""confidence"": уверенность_от_0_до_1
     }}
   ],
   ""estimatedCalories"": общие_калории_всех_блюд,
-  ""fullDescription"": ""подробное описание всех блюд""
+  ""fullDescription"": ""подробное описание всех блюд на изображении""
 }}";
 
-                // ✅ ИСПРАВЛЕНО: Добавлена "role": "user"
                 var request = new
                 {
                     contents = new[]
                     {
+                new
+                {
+                    role = "user", 
+                    parts = new object[]
+                    {
+                        new { text = prompt },
                         new
                         {
-                            role = "user", // ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ!
-                            parts = new object[]
+                            inline_data = new
                             {
-                                new { text = prompt },
-                                new
-                                {
-                                    inline_data = new
-                                    {
-                                        mime_type = mimeType,
-                                        data = base64Image
-                                    }
-                                }
+                                mime_type = mimeType,
+                                data = base64Image
                             }
                         }
-                    },
+                    }
+                }
+            },
                     generation_config = new
                     {
                         temperature = 0.1,
@@ -213,14 +224,13 @@ namespace FitnessTracker.API.Services.AI.Providers
                     });
                 }
 
-                // ✅ ИСПРАВЛЕНО: Добавлена "role": "user"
                 var request = new
                 {
                     contents = new[]
                     {
                         new
                         {
-                            role = "user", // ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ!
+                            role = "user", 
                             parts = parts.ToArray()
                         }
                     },
@@ -275,50 +285,69 @@ namespace FitnessTracker.API.Services.AI.Providers
 
 Тип тренировки: {workoutType ?? "любой"}
 
-Верни ТОЛЬКО JSON без дополнительного текста:
-{{
-  ""transcribedText"": ""распознанный текст"",
-  ""workoutData"": {{
-    ""type"": ""strength или cardio"",
-    ""startTime"": ""2025-07-11T10:00:00Z"",
-    ""endTime"": ""2025-07-11T11:00:00Z"",
-    ""estimatedCalories"": калории,
-    ""strengthData"": {{
-      ""name"": ""название упражнения"",
-      ""muscleGroup"": ""группа мышц"",
-      ""workingWeight"": вес_кг
-    }},
-    ""cardioData"": {{
-      ""cardioType"": ""тип кардио"",
-      ""distanceKm"": дистанция,
-      ""avgPulse"": пульс
-    }},
-    ""notes"": [""заметка1"", ""заметка2""]
-  }}
-}}";
+ВАЖНЫЕ ПРАВИЛА:
+1. Если время НЕ указано явно - используй текущее время как startTime
+2. Если указано только время начала - добавь 45 минут для endTime
+3. Время указывай в ISO формате: ""2025-07-13T17:00:00Z""
+4. Если время указано как ""17:00"" - преобразуй в ""2025-07-13T17:00:00Z""
+5. Если время указано как ""в 17:00"" или ""начало в 17:00"" - это startTime
+6. Если время указано как ""до 17:30"" или ""окончание в 17:30"" - это endTime
 
-                // ✅ ИСПРАВЛЕНО: Добавлена "role": "user"
+Верни ТОЛЬКО валидный JSON без дополнительного текста:
+{{
+  ""transcribedText"": ""точный распознанный текст"",
+  ""workoutData"": {{
+    ""type"": ""strength"",
+    ""startTime"": ""2025-07-13T17:00:00Z"",
+    ""endTime"": ""2025-07-13T17:30:00Z"",
+    ""estimatedCalories"": 200,
+    ""strengthData"": {{
+      ""name"": ""Жим штанги лежа"",
+      ""muscleGroup"": ""Грудь"",
+      ""equipment"": ""Штанга"",
+      ""workingWeight"": 25,
+      ""restTimeSeconds"": 120,
+      ""sets"": [
+        {{
+          ""setNumber"": 1,
+          ""weight"": 25,
+          ""reps"": 10,
+          ""isCompleted"": true,
+          ""notes"": """"
+        }}
+      ]
+    }},
+    ""cardioData"": null,
+    ""notes"": [""Тренировка по голосовому вводу""]
+  }}
+}}
+
+ПРИМЕРЫ:
+- ""Штанга 25 кг"" → startTime: текущее время, endTime: +45 минут
+- ""Штанга 25 кг начало в 17:00"" → startTime: ""2025-07-13T17:00:00Z"", endTime: ""2025-07-13T17:45:00Z""
+- ""Штанга 25 кг начало в 17:00, окончание в 17:30"" → startTime: ""2025-07-13T17:00:00Z"", endTime: ""2025-07-13T17:30:00Z""";
+
                 var request = new
                 {
                     contents = new[]
                     {
+                new
+                {
+                    role = "user",
+                    parts = new object[]
+                    {
+                        new { text = prompt },
                         new
                         {
-                            role = "user", // ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ!
-                            parts = new object[]
+                            inline_data = new
                             {
-                                new { text = prompt },
-                                new
-                                {
-                                    inline_data = new
-                                    {
-                                        mime_type = mimeType,
-                                        data = base64Audio
-                                    }
-                                }
+                                mime_type = mimeType,
+                                data = base64Audio
                             }
                         }
-                    },
+                    }
+                }
+            },
                     generation_config = new
                     {
                         temperature = 0.1,
@@ -370,50 +399,100 @@ namespace FitnessTracker.API.Services.AI.Providers
 
 Тип приема пищи: {mealType ?? "любой"}
 
-Верни ТОЛЬКО JSON без дополнительного текста:
+ВАЖНЫЕ ПРАВИЛА ДЛЯ ЕДИНИЦ ИЗМЕРЕНИЯ:
+1. Для ЖИДКИХ продуктов используй ""weightType"": ""ml"" (миллилитры):
+   - Супы (борщ, щи, солянка, бульон)
+   - Напитки (чай, кофе, сок, вода, молоко)
+   - Соусы, подливы
+   - Жидкие каши (овсянка на молоке)
+   - Смузи, коктейли
+
+2. Для ТВЕРДЫХ продуктов используй ""weightType"": ""g"" (граммы):
+   - Хлеб, мясо, рыба, овощи, фрукты
+   - Твердые каши (гречка, рис)
+   - Выпечка, сладости
+   - Орехи, семечки
+
+3. Для жидких продуктов ""estimatedWeight"" = объем в миллилитрах
+4. Для твердых продуктов ""estimatedWeight"" = вес в граммах
+
+ПРИМЕРЫ:
+- ""Борщ 300 мл"" → ""estimatedWeight"": 300, ""weightType"": ""ml""
+- ""Чай 200 мл"" → ""estimatedWeight"": 200, ""weightType"": ""ml""
+- ""Хлеб 50 г"" → ""estimatedWeight"": 50, ""weightType"": ""g""
+- ""Яблоко 150 г"" → ""estimatedWeight"": 150, ""weightType"": ""g""
+
+Верни ТОЛЬКО валидный JSON без дополнительного текста:
 {{
-  ""transcribedText"": ""распознанный текст"",
+  ""transcribedText"": ""точный распознанный текст"",
   ""foodItems"": [
     {{
       ""name"": ""название блюда"",
-      ""estimatedWeight"": вес_в_граммах,
-      ""weightType"": ""g"",
-      ""description"": ""описание"",
+      ""estimatedWeight"": количество_в_правильных_единицах,
+      ""weightType"": ""ml или g"",
+      ""description"": ""краткое описание продукта"",
       ""nutritionPer100g"": {{
-        ""calories"": калории_на_100г,
-        ""proteins"": белки_на_100г,
-        ""fats"": жиры_на_100г,
-        ""carbs"": углеводы_на_100г
+        ""calories"": калории_на_100г_или_100мл,
+        ""proteins"": белки_на_100г_или_100мл,
+        ""fats"": жиры_на_100г_или_100мл,
+        ""carbs"": углеводы_на_100г_или_100мл
       }},
-      ""totalCalories"": общие_калории,
+      ""totalCalories"": общие_калории_порции,
       ""confidence"": уверенность_от_0_до_1
     }}
   ],
-  ""estimatedTotalCalories"": общие_калории_всех_блюд
+  ""estimatedTotalCalories"": общие_калории_всех_продуктов
+}}
+
+КОНКРЕТНЫЕ ПРИМЕРЫ ОТВЕТОВ:
+- Борщ:
+{{
+  ""name"": ""Борщ"",
+  ""estimatedWeight"": 300,
+  ""weightType"": ""ml"",
+  ""nutritionPer100g"": {{""calories"": 45, ""proteins"": 2.0, ""fats"": 1.5, ""carbs"": 6.0}},
+  ""totalCalories"": 135
+}}
+
+- Хлеб:
+{{
+  ""name"": ""Хлеб белый"",
+  ""estimatedWeight"": 50,
+  ""weightType"": ""g"",
+  ""nutritionPer100g"": {{""calories"": 265, ""proteins"": 8.1, ""fats"": 3.2, ""carbs"": 48.8}},
+  ""totalCalories"": 132
+}}
+
+- Молоко:
+{{
+  ""name"": ""Молоко"",
+  ""estimatedWeight"": 200,
+  ""weightType"": ""ml"",
+  ""nutritionPer100g"": {{""calories"": 64, ""proteins"": 3.2, ""fats"": 3.6, ""carbs"": 4.8}},
+  ""totalCalories"": 128
 }}";
 
-                // ✅ ИСПРАВЛЕНО: Добавлена "role": "user"
                 var request = new
                 {
                     contents = new[]
                     {
+                new
+                {
+                    role = "user",
+                    parts = new object[]
+                    {
+                        new { text = prompt },
                         new
                         {
-                            role = "user", // ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ!
-                            parts = new object[]
+                            inline_data = new
                             {
-                                new { text = prompt },
-                                new
-                                {
-                                    inline_data = new
-                                    {
-                                        mime_type = mimeType,
-                                        data = base64Audio
-                                    }
-                                }
+                                mime_type = mimeType,
+                                data = base64Audio
                             }
                         }
-                    },
+                    }
+                }
+            },
                     generation_config = new
                     {
                         temperature = 0.1,
@@ -450,14 +529,13 @@ namespace FitnessTracker.API.Services.AI.Providers
         {
             try
             {
-                // ✅ ПРОСТОЙ ТЕСТ ЗДОРОВЬЯ С ROLE
                 var request = new
                 {
                     contents = new[]
                     {
                         new
                         {
-                            role = "user", // ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ!
+                            role = "user", 
                             parts = new[]
                             {
                                 new { text = "Say 'OK' if you are working" }
@@ -789,6 +867,8 @@ namespace FitnessTracker.API.Services.AI.Providers
         {
             try
             {
+                _logger.LogInformation($"🎤 Parsing voice workout JSON: {jsonText}");
+
                 var startIndex = jsonText.IndexOf('{');
                 var lastIndex = jsonText.LastIndexOf('}');
 
@@ -802,54 +882,110 @@ namespace FitnessTracker.API.Services.AI.Providers
                     var response = new VoiceWorkoutResponse
                     {
                         Success = true,
-                        TranscribedText = root.TryGetProperty("transcribedText", out var transcribed) ? transcribed.GetString() : ""
+                        TranscribedText = root.TryGetProperty("transcribedText", out var transcribed)
+                            ? transcribed.GetString() : "Не удалось распознать текст"
                     };
 
                     if (root.TryGetProperty("workoutData", out var workoutData))
                     {
                         response.WorkoutData = new WorkoutDataResponse
                         {
-                            Type = workoutData.TryGetProperty("type", out var type) ? type.GetString() ?? "" : "",
-                            StartTime = workoutData.TryGetProperty("startTime", out var startTime) ? DateTime.Parse(startTime.GetString() ?? DateTime.UtcNow.ToString()) : DateTime.UtcNow,
-                            EndTime = workoutData.TryGetProperty("endTime", out var endTime) ? DateTime.Parse(endTime.GetString() ?? DateTime.UtcNow.AddMinutes(30).ToString()) : DateTime.UtcNow.AddMinutes(30),
-                            EstimatedCalories = workoutData.TryGetProperty("estimatedCalories", out var calories) ? calories.GetInt32() : 0
+                            Type = SafeGetString(workoutData, "type", "strength"),
+                            StartTime = SafeParseDateTime(workoutData, "startTime"),
+                            EndTime = SafeParseDateTime(workoutData, "endTime"),
+                            EstimatedCalories = SafeGetInt(workoutData, "estimatedCalories", 200)
                         };
 
-                        if (workoutData.TryGetProperty("strengthData", out var strengthData))
+                        if (workoutData.TryGetProperty("strengthData", out var strengthData) &&
+                            strengthData.ValueKind != JsonValueKind.Null)
                         {
                             response.WorkoutData.StrengthData = new StrengthDataDto
                             {
-                                Name = strengthData.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
-                                MuscleGroup = strengthData.TryGetProperty("muscleGroup", out var muscle) ? muscle.GetString() ?? "" : "",
-                                WorkingWeight = strengthData.TryGetProperty("workingWeight", out var weight) ? weight.GetDecimal() : 0
+                                Name = SafeGetString(strengthData, "name", "Упражнение"),
+                                MuscleGroup = SafeGetString(strengthData, "muscleGroup", "Не указано"),
+                                Equipment = SafeGetString(strengthData, "equipment", "Не указано"),
+                                WorkingWeight = SafeGetDecimal(strengthData, "workingWeight", 0),
+                                RestTimeSeconds = SafeGetInt(strengthData, "restTimeSeconds", 120)
                             };
+
+                            // Парсим подходы
+                            if (strengthData.TryGetProperty("sets", out var setsArray) &&
+                                setsArray.ValueKind == JsonValueKind.Array)
+                            {
+                                var sets = new List<StrengthSetDto>();
+                                foreach (var setElement in setsArray.EnumerateArray())
+                                {
+                                    sets.Add(new StrengthSetDto
+                                    {
+                                        SetNumber = SafeGetInt(setElement, "setNumber", sets.Count + 1),
+                                        Weight = SafeGetDecimal(setElement, "weight", response.WorkoutData.StrengthData.WorkingWeight),
+                                        Reps = SafeGetInt(setElement, "reps", 10),
+                                        IsCompleted = SafeGetBool(setElement, "isCompleted", true),
+                                        Notes = SafeGetString(setElement, "notes", "")
+                                    });
+                                }
+                                response.WorkoutData.StrengthData.Sets = sets;
+                            }
+                            else
+                            {
+                                // Создаем один подход по умолчанию
+                                response.WorkoutData.StrengthData.Sets = new List<StrengthSetDto>
+                        {
+                            new StrengthSetDto
+                            {
+                                SetNumber = 1,
+                                Weight = response.WorkoutData.StrengthData.WorkingWeight,
+                                Reps = 10,
+                                IsCompleted = true,
+                                Notes = "Подход из голосового ввода"
+                            }
+                        };
+                            }
                         }
 
-                        if (workoutData.TryGetProperty("cardioData", out var cardioData))
+                        if (workoutData.TryGetProperty("cardioData", out var cardioData) &&
+                            cardioData.ValueKind != JsonValueKind.Null)
                         {
                             response.WorkoutData.CardioData = new CardioDataDto
                             {
-                                CardioType = cardioData.TryGetProperty("cardioType", out var cardioType) ? cardioType.GetString() ?? "" : "",
-                                DistanceKm = cardioData.TryGetProperty("distanceKm", out var distance) ? distance.GetDecimal() : null,
-                                AvgPulse = cardioData.TryGetProperty("avgPulse", out var pulse) ? pulse.GetInt32() : null
+                                CardioType = SafeGetString(cardioData, "cardioType", "Кардио"),
+                                DistanceKm = SafeGetNullableDecimal(cardioData, "distanceKm"),
+                                AvgPulse = SafeGetNullableInt(cardioData, "avgPulse"),
+                                MaxPulse = SafeGetNullableInt(cardioData, "maxPulse"),
+                                AvgPace = SafeGetString(cardioData, "avgPace", "")
                             };
                         }
 
-                        if (workoutData.TryGetProperty("notes", out var notes))
+                        // Парсим заметки
+                        if (workoutData.TryGetProperty("notes", out var notes) &&
+                            notes.ValueKind == JsonValueKind.Array)
                         {
                             response.WorkoutData.Notes = notes.EnumerateArray()
                                 .Select(x => x.GetString() ?? "").Where(x => !string.IsNullOrEmpty(x)).ToList();
                         }
+                        else
+                        {
+                            response.WorkoutData.Notes = new List<string> { "Тренировка добавлена голосом" };
+                        }
+
+                        // Автоматически устанавливаем endTime если не указан
+                        if (response.WorkoutData.EndTime <= response.WorkoutData.StartTime)
+                        {
+                            response.WorkoutData.EndTime = response.WorkoutData.StartTime.AddMinutes(45);
+                        }
                     }
 
+                    _logger.LogInformation($"✅ Voice workout parsed successfully: {response.WorkoutData?.Type}");
                     return response;
                 }
 
+                _logger.LogError("❌ Invalid JSON format in voice workout response");
                 return new VoiceWorkoutResponse { Success = false, ErrorMessage = "Invalid JSON format" };
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error parsing voice workout JSON: {ex.Message}");
+                _logger.LogError($"❌ Error parsing voice workout JSON: {ex.Message}");
+                _logger.LogError($"JSON content: {jsonText}");
                 return new VoiceWorkoutResponse { Success = false, ErrorMessage = "Failed to parse workout data" };
             }
         }
@@ -916,5 +1052,87 @@ namespace FitnessTracker.API.Services.AI.Providers
                 return new VoiceFoodResponse { Success = false, ErrorMessage = "Failed to parse food data" };
             }
         }
+        private string SafeGetString(JsonElement element, string propertyName, string defaultValue = "")
+        {
+            return element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.String
+                ? prop.GetString() ?? defaultValue
+                : defaultValue;
+        }
+
+        private int SafeGetInt(JsonElement element, string propertyName, int defaultValue = 0)
+        {
+            if (element.TryGetProperty(propertyName, out var prop))
+            {
+                if (prop.ValueKind == JsonValueKind.Number && prop.TryGetInt32(out var intValue))
+                    return intValue;
+                if (prop.ValueKind == JsonValueKind.String && int.TryParse(prop.GetString(), out var parsedInt))
+                    return parsedInt;
+            }
+            return defaultValue;
+        }
+
+        private decimal SafeGetDecimal(JsonElement element, string propertyName, decimal defaultValue = 0)
+        {
+            if (element.TryGetProperty(propertyName, out var prop))
+            {
+                if (prop.ValueKind == JsonValueKind.Number && prop.TryGetDecimal(out var decimalValue))
+                    return decimalValue;
+                if (prop.ValueKind == JsonValueKind.String && decimal.TryParse(prop.GetString(), out var parsedDecimal))
+                    return parsedDecimal;
+            }
+            return defaultValue;
+        }
+
+        private bool SafeGetBool(JsonElement element, string propertyName, bool defaultValue = false)
+        {
+            return element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.True
+                ? prop.GetBoolean()
+                : defaultValue;
+        }
+
+        private int? SafeGetNullableInt(JsonElement element, string propertyName)
+        {
+            if (element.TryGetProperty(propertyName, out var prop))
+            {
+                if (prop.ValueKind == JsonValueKind.Number && prop.TryGetInt32(out var intValue))
+                    return intValue;
+                if (prop.ValueKind == JsonValueKind.String && int.TryParse(prop.GetString(), out var parsedInt))
+                    return parsedInt;
+            }
+            return null;
+        }
+
+        private decimal? SafeGetNullableDecimal(JsonElement element, string propertyName)
+        {
+            if (element.TryGetProperty(propertyName, out var prop))
+            {
+                if (prop.ValueKind == JsonValueKind.Number && prop.TryGetDecimal(out var decimalValue))
+                    return decimalValue;
+                if (prop.ValueKind == JsonValueKind.String && decimal.TryParse(prop.GetString(), out var parsedDecimal))
+                    return parsedDecimal;
+            }
+            return null;
+        }
+
+        private DateTime SafeParseDateTime(JsonElement element, string propertyName)
+        {
+            if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.String)
+            {
+                var dateString = prop.GetString();
+                if (!string.IsNullOrEmpty(dateString))
+                {
+                    if (DateTime.TryParse(dateString, out var parsedDate))
+                        return parsedDate;
+
+                    if (TimeSpan.TryParse(dateString, out var timeSpan))
+                    {
+                        return DateTime.UtcNow.Date.Add(timeSpan);
+                    }
+                }
+            }
+
+            return DateTime.UtcNow; 
+        }
+
     }
 }

@@ -428,13 +428,10 @@ namespace FitnessTracker.API.Controllers
         /// <response code="400">Недостаточно LW Coins или ошибка обработки</response>
         /// <response code="401">Требуется авторизация</response>
         [HttpPost("voice-workout")]
-        [ProducesResponseType(typeof(VoiceWorkoutResponse), 200)]
-        [ProducesResponseType(400)]
-        [ProducesResponseType(401)]
         public async Task<IActionResult> VoiceWorkout(
-            IFormFile audioFile,
-            [FromForm] string? workoutType = null,
-            [FromForm] bool saveResults = false)
+    IFormFile audioFile,
+    [FromForm] string? workoutType = null,
+    [FromForm] bool saveResults = false)
         {
             try
             {
@@ -456,15 +453,18 @@ namespace FitnessTracker.API.Controllers
                 await audioFile.CopyToAsync(memoryStream);
                 var audioData = memoryStream.ToArray();
 
-                _logger.LogInformation($"🎤 Processing voice workout for user {userId}, audio size: {audioData.Length} bytes");
+                _logger.LogInformation($"🎤 Processing voice workout for user {userId}, audio size: {audioData.Length} bytes, workoutType: {workoutType}");
 
                 // Анализируем с помощью Gemini
                 var result = await _geminiService.AnalyzeVoiceWorkoutAsync(audioData, workoutType);
 
                 if (!result.Success)
                 {
+                    _logger.LogError($"❌ Voice workout analysis failed: {result.ErrorMessage}");
                     return BadRequest(new { error = result.ErrorMessage });
                 }
+
+                _logger.LogInformation($"✅ Voice workout analysis successful. Type: {result.WorkoutData?.Type}, StartTime: {result.WorkoutData?.StartTime}, EndTime: {result.WorkoutData?.EndTime}");
 
                 // Если нужно сохранить результаты
                 if (saveResults && result.WorkoutData != null)
@@ -474,8 +474,10 @@ namespace FitnessTracker.API.Controllers
                         var addActivityRequest = new AddActivityRequest
                         {
                             Type = result.WorkoutData.Type,
-                            StartDate = result.WorkoutData.StartTime,
-                            EndDate = result.WorkoutData.EndTime,
+                            StartDate = result.WorkoutData.StartTime.Date,
+                            StartTime = result.WorkoutData.StartTime,
+                            EndDate = result.WorkoutData.EndTime?.Date,
+                            EndTime = result.WorkoutData.EndTime,
                             Calories = result.WorkoutData.EstimatedCalories,
                             StrengthData = result.WorkoutData.StrengthData,
                             CardioData = result.WorkoutData.CardioData
@@ -487,6 +489,7 @@ namespace FitnessTracker.API.Controllers
                     catch (Exception ex)
                     {
                         _logger.LogError($"❌ Error saving voice workout: {ex.Message}");
+                        // Не прерываем выполнение, возвращаем результат анализа
                     }
                 }
 
@@ -495,6 +498,7 @@ namespace FitnessTracker.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Error processing voice workout: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
                 return BadRequest(new { error = $"Ошибка обработки голосовой тренировки: {ex.Message}" });
             }
         }
