@@ -336,33 +336,13 @@ namespace FitnessTracker.API.Data
             modelBuilder.Entity<Skin>().HasData(
                 new Skin
                 {
-                    Id = "skin_athlete",
-                    Name = "Атлет",
-                    Cost = 200,
-                    ImageUrl = "https://example.com/skins/athlete.png",
-                    Description = "Скин для настоящих спортсменов",
-                    ExperienceBoost = 1.1m,
+                    Id = "skin_minimalist",
+                    Name = "Минималист",
+                    Cost = 150,
+                    ImageUrl = "https://example.com/skins/minimalist.png",
+                    Description = "Для пользователей, которые тратят меньше 5 монет в день. Учит ценить каждую монету.",
+                    ExperienceBoost = 1.1m, // 10% буст опыта
                     Tier = 1
-                },
-                new Skin
-                {
-                    Id = "skin_machine",
-                    Name = "Машина",
-                    Cost = 500,
-                    ImageUrl = "https://example.com/skins/machine.png",
-                    Description = "Скин для тех, кто работает как машина",
-                    ExperienceBoost = 1.5m,
-                    Tier = 2
-                },
-                new Skin
-                {
-                    Id = "skin_superhuman",
-                    Name = "Сверхчеловек",
-                    Cost = 2000,
-                    ImageUrl = "https://example.com/skins/superhuman.png",
-                    Description = "Скин для сверхлюдей",
-                    ExperienceBoost = 2.0m,
-                    Tier = 3
                 },
                 new Skin
                 {
@@ -370,9 +350,49 @@ namespace FitnessTracker.API.Data
                     Name = "Экономист",
                     Cost = 300,
                     ImageUrl = "https://example.com/skins/economist.png",
-                    Description = "Скин для тех, кто умеет экономить монеты",
-                    ExperienceBoost = 1.2m,
+                    Description = "Для тех, кто умеет экономить монеты и планировать траты разумно",
+                    ExperienceBoost = 1.2m, // 20% буст опыта
                     Tier = 1
+                },
+                new Skin
+                {
+                    Id = "skin_investor",
+                    Name = "Инвестор",
+                    Cost = 500,
+                    ImageUrl = "https://example.com/skins/investor.png",
+                    Description = "Для тех, кто накопил значительную сумму и думает стратегически",
+                    ExperienceBoost = 1.3m, // 30% буст опыта
+                    Tier = 2
+                },
+                new Skin
+                {
+                    Id = "skin_machine",
+                    Name = "Машина",
+                    Cost = 700,
+                    ImageUrl = "https://example.com/skins/machine.png",
+                    Description = "Для тех, кто работает как машина в тренировках и питании",
+                    ExperienceBoost = 1.4m, // 40% буст опыта
+                    Tier = 2
+                },
+                new Skin
+                {
+                    Id = "skin_strategist",
+                    Name = "Стратег",
+                    Cost = 1000,
+                    ImageUrl = "https://example.com/skins/strategist.png",
+                    Description = "Мастер планирования и долгосрочных целей. Венец экономической мудрости.",
+                    ExperienceBoost = 1.5m, // 50% буст опыта
+                    Tier = 3
+                },
+                new Skin
+                {
+                    Id = "skin_superhuman",
+                    Name = "Сверхчеловек",
+                    Cost = 2000,
+                    ImageUrl = "https://example.com/skins/superhuman.png",
+                    Description = "Для истинных легенд фитнеса, которые достигли невозможного",
+                    ExperienceBoost = 2.0m, // 100% буст опыта (ДВОЙНОЙ ОПЫТ!)
+                    Tier = 3
                 }
             );
 

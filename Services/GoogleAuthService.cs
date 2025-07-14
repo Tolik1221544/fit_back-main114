@@ -69,11 +69,13 @@ namespace FitnessTracker.API.Services
                         Level = 1,
                         Experience = 0,
                         LwCoins = 300,
+                        FractionalLwCoins = 300.0, 
                         ReferralCode = referralCode,
                         IsEmailConfirmed = true,
                         JoinedAt = DateTime.UtcNow,
                         LastMonthlyRefill = DateTime.UtcNow
                     };
+
                     user = await _userRepository.CreateAsync(user);
 
                     _logger.LogInformation($"New user created via Google: {email}");

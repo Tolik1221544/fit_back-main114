@@ -108,13 +108,14 @@ namespace FitnessTracker.API.Services
 
                     user = new User
                     {
-                        Id = Guid.NewGuid().ToString(), 
+                        Id = Guid.NewGuid().ToString(),
                         Email = email,
                         Name = "Пользователь",
                         RegisteredVia = "email",
                         Level = 1,
                         Experience = 0,
                         LwCoins = 300,
+                        FractionalLwCoins = 300.0, 
                         ReferralCode = referralCode,
                         JoinedAt = DateTime.UtcNow,
                         LastMonthlyRefill = DateTime.UtcNow,

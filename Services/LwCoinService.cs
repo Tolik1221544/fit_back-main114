@@ -48,12 +48,15 @@ namespace FitnessTracker.API.Services
 
             var dailyRemaining = isPremium ? decimal.MaxValue : Math.Max(0, DAILY_LIMIT_BASE - todayUsage);
 
+            var currentBalance = await GetUserFractionalBalanceAsync(userId);
+            var usedThisMonth = await GetUsedCoinsThisMonthAsync(userId);
+
             return new LwCoinBalanceDto
             {
-                Balance = user.LwCoins,
+                Balance = (int)Math.Floor(currentBalance), 
                 MonthlyAllowance = MONTHLY_ALLOWANCE,
-                UsedThisMonth = (int)await GetUsedCoinsThisMonthAsync(userId),
-                RemainingThisMonth = isPremium ? int.MaxValue : Math.Max(0, MONTHLY_ALLOWANCE - (int)await GetUsedCoinsThisMonthAsync(userId)),
+                UsedThisMonth = (int)usedThisMonth,
+                RemainingThisMonth = isPremium ? int.MaxValue : Math.Max(0, MONTHLY_ALLOWANCE - (int)usedThisMonth),
                 IsPremium = isPremium,
                 PremiumExpiresAt = premiumExpiresAt,
                 NextRefillDate = GetNextRefillDate(user.LastMonthlyRefill),
@@ -135,26 +138,32 @@ namespace FitnessTracker.API.Services
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) return 0;
 
-            // Если FractionalLwCoins еще не инициализирован, используем целые монеты
+            if (user.FractionalLwCoins <= 0 && user.LwCoins > 0)
+            {
+                user.FractionalLwCoins = user.LwCoins;
+                await _userRepository.UpdateAsync(user);
+                _logger.LogInformation($"Initialized FractionalLwCoins for user {userId}: {user.LwCoins}");
+            }
+
             return user.FractionalLwCoins > 0 ? (decimal)user.FractionalLwCoins : user.LwCoins;
         }
 
         /// <summary>
-        /// ✅ НОВОЕ: Списание дробных монет
         /// </summary>
         private async Task DeductFractionalCoinsAsync(string userId, decimal amount)
         {
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) return;
 
-            // Обновляем дробный баланс
-            var currentFractional = user.FractionalLwCoins > 0 ? (decimal)user.FractionalLwCoins : user.LwCoins;
+            // Получаем текущий дробный баланс
+            var currentFractional = await GetUserFractionalBalanceAsync(userId);
             var newFractional = currentFractional - amount;
 
             user.FractionalLwCoins = (double)newFractional;
             user.LwCoins = (int)Math.Floor(newFractional); // Целая часть для совместимости
 
             await _userRepository.UpdateAsync(user);
+            _logger.LogInformation($"Deducted {amount} fractional coins from user {userId}. New balance: {newFractional}");
         }
 
         /// <summary>
@@ -175,14 +184,18 @@ namespace FitnessTracker.API.Services
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) return false;
 
-            // Добавляем как целые, так и дробные монеты
-            user.LwCoins += amount;
-            user.FractionalLwCoins += amount;
+            // Получаем текущий дробный баланс
+            var currentFractional = await GetUserFractionalBalanceAsync(userId);
+            var newFractional = currentFractional + amount;
+
+            // Обновляем как дробные, так и целые монеты
+            user.FractionalLwCoins = (double)newFractional;
+            user.LwCoins = (int)Math.Floor(newFractional);
             await _userRepository.UpdateAsync(user);
 
             await CreateTransactionAsync(userId, amount, amount, type, description);
 
-            _logger.LogInformation($"User {userId} earned {amount} LW Coins: {description}");
+            _logger.LogInformation($"User {userId} earned {amount} LW Coins: {description}. New balance: {newFractional}");
             return true;
         }
 
