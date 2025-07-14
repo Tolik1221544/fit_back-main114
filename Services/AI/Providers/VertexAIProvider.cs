@@ -12,7 +12,7 @@ namespace FitnessTracker.API.Services.AI.Providers
         private readonly IConfiguration _configuration;
         private readonly ILogger<VertexAIProvider> _logger;
 
-        public string ProviderName => "Vertex AI (Gemini Pro 2.5)";
+        public string ProviderName => "Vertex AI (Gemini Flash 2.5)";
 
         public VertexAIProvider(
             HttpClient httpClient,
@@ -32,7 +32,7 @@ namespace FitnessTracker.API.Services.AI.Providers
             {
                 var projectId = _configuration["GoogleCloud:ProjectId"];
                 var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
-                var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
+                var model = _configuration["GoogleCloud:Model"] ?? "gemini-flash-2.5";
 
                 var accessToken = await _tokenService.GetAccessTokenAsync();
                 var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
@@ -146,7 +146,7 @@ namespace FitnessTracker.API.Services.AI.Providers
             {
                 var projectId = _configuration["GoogleCloud:ProjectId"];
                 var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
-                var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
+                var model = _configuration["GoogleCloud:Model"] ?? "gemini-flash-2.5";
 
                 var accessToken = await _tokenService.GetAccessTokenAsync();
                 var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
@@ -272,7 +272,7 @@ namespace FitnessTracker.API.Services.AI.Providers
             {
                 var projectId = _configuration["GoogleCloud:ProjectId"];
                 var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
-                var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
+                var model = _configuration["GoogleCloud:Model"] ?? "gemini-flash-2.5";
 
                 var accessToken = await _tokenService.GetAccessTokenAsync();
                 var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
@@ -386,7 +386,7 @@ namespace FitnessTracker.API.Services.AI.Providers
             {
                 var projectId = _configuration["GoogleCloud:ProjectId"];
                 var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
-                var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
+                var model = _configuration["GoogleCloud:Model"] ?? "gemini-flash-2.5";
 
                 var accessToken = await _tokenService.GetAccessTokenAsync();
                 var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
@@ -546,7 +546,7 @@ namespace FitnessTracker.API.Services.AI.Providers
 
                 var projectId = _configuration["GoogleCloud:ProjectId"];
                 var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
-                var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
+                var model = _configuration["GoogleCloud:Model"] ?? "gemini-flash-2.5";
 
                 var accessToken = await _tokenService.GetAccessTokenAsync();
                 var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
