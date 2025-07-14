@@ -250,10 +250,10 @@ using (var scope = app.Services.CreateScope())
         var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
         Console.WriteLine("🤖 Universal AI Configuration:");
-        Console.WriteLine($"   Active Provider: {configuration["AI:ActiveProvider"] ?? "Vertex AI (Gemini Pro 2.5)"}");
+        Console.WriteLine($"   Active Provider: {configuration["AI:ActiveProvider"] ?? "Vertex AI (Gemini Flash 2.5)"}");
         Console.WriteLine($"   Google Cloud Project: {configuration["GoogleCloud:ProjectId"] ?? "NOT SET"}");
         Console.WriteLine($"   Google Cloud Location: {configuration["GoogleCloud:Location"] ?? "us-central1"}");
-        Console.WriteLine($"   Google Cloud Model: {configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro"}");
+        Console.WriteLine($"   Google Cloud Model: {configuration["GoogleCloud:Model"] ?? "gemini-flash-2.5"}");
 
         // Проверяем доступность сервисного аккаунта
         var tokenService = scope.ServiceProvider.GetRequiredService<IGoogleCloudTokenService>();
