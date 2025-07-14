@@ -11,10 +11,50 @@ namespace FitnessTracker.API.Controllers
         {
             var documentation = new
             {
-                title = "🏃‍♂️ Fitness Tracker API Documentation with Gemini AI",
-                version = "2.2.0",
-                description = "Complete API documentation for Fitness Tracker with LW Coin system and Gemini AI integration",
+                title = "🏃‍♂️ Fitness Tracker API Documentation with New Economic Model",
+                version = "3.0.0",
+                description = "Complete API documentation for Fitness Tracker with updated LW Coin pricing system and Gemini AI integration",
                 baseUrl = "https://your-api.com",
+
+                // ✅ НОВАЯ СЕКЦИЯ: Экономическая модель
+                economicModel = new
+                {
+                    title = "💰 Новая ценовая модель LW Coins",
+                    description = "Обновленная система ценообразования согласно требованиям заказчика",
+                    newPricing = new
+                    {
+                        photoAnalysis = new { cost = 2.5m, description = "Анализ фото еды с помощью AI" },
+                        voiceInput = new { cost = 1.5m, description = "Голосовой ввод тренировки/питания" },
+                        textAnalysis = new { cost = 1.0m, description = "Текстовый анализ и обработка" },
+                        bodyAnalysis = new { cost = 0.0m, description = "Анализ тела (остается бесплатным)" },
+                        exerciseTracking = new { cost = 0.0m, description = "Отслеживание упражнений (бесплатно)" }
+                    },
+                    dailyLimits = new
+                    {
+                        baseTier = new
+                        {
+                            dailyBudget = 10.0m,
+                            calculation = "300 монет / 30 дней = 10 монет/день",
+                            targetUsage = new
+                            {
+                                photos = 3,    // 3 * 2.5 = 7.5 монеты
+                                voice = 1,     // 1 * 1.5 = 1.5 монеты  
+                                text = 2,      // 2 * 1.0 = 2.0 монеты
+                                total = 11.0m, // Итого: 11 монет
+                                note = "Слегка превышает дневной лимит, нужна оптимизация"
+                            },
+                            optimizedUsage = new
+                            {
+                                photos = 3,    // 3 * 2.5 = 7.5 монеты
+                                voice = 1,     // 1 * 1.5 = 1.5 монеты
+                                text = 1,      // 1 * 1.0 = 1.0 монета
+                                total = 10.0m, // Итого: 10 монет (точно в лимите)
+                                note = "Оптимальное использование для тарифа 'База'"
+                            }
+                        },
+                        premiumTier = new { dailyBudget = "Unlimited", description = "Безлимитное использование" }
+                    }
+                },
 
                 authentication = new
                 {
@@ -48,9 +88,9 @@ namespace FitnessTracker.API.Controllers
                         new {
                             method = "POST",
                             path = "/api/ai/scan-food",
-                            description = "🍎 ИИ анализ еды по фото (Gemini)",
+                            description = "🍎 ИИ анализ еды по фото (Gemini) - 2.5 монеты",
                             auth = "required",
-                            cost = "1 LW Coin",
+                            cost = "2.5 LW Coins",
                             body = new {
                                 image = "multipart/form-data",
                                 userPrompt = "Дополнительные инструкции (опционально)",
@@ -72,13 +112,14 @@ namespace FitnessTracker.API.Controllers
                                     }
                                 },
                                 estimatedCalories = 150,
-                                fullDescription = "Анализ от ИИ"
+                                fullDescription = "Анализ от ИИ",
+                                imageUrl = "URL сохраненного изображения"
                             }
                         },
                         new {
                             method = "POST",
                             path = "/api/ai/analyze-body",
-                            description = "💪 ИИ анализ тела по фотографиям",
+                            description = "💪 ИИ анализ тела по фотографиям - БЕСПЛАТНО",
                             auth = "required",
                             cost = "Бесплатно",
                             body = new {
@@ -98,17 +139,21 @@ namespace FitnessTracker.API.Controllers
                                     estimatedMusclePercentage = 42.0,
                                     bodyType = "Мезоморф",
                                     bmi = 22.9,
+                                    basalMetabolicRate = 1800,
+                                    metabolicRateCategory = "Нормальный",
                                     exerciseRecommendations = new[] { "Силовые тренировки", "Кардио" },
                                     nutritionRecommendations = new[] { "Увеличить белок", "Контролировать углеводы" }
-                                }
+                                },
+                                frontImageUrl = "URL фронтального изображения",
+                                sideImageUrl = "URL бокового изображения"
                             }
                         },
                         new {
                             method = "POST",
                             path = "/api/ai/voice-workout",
-                            description = "🎤 Голосовой ввод тренировки",
+                            description = "🎤 Голосовой ввод тренировки - 1.5 монеты",
                             auth = "required",
-                            cost = "1 LW Coin",
+                            cost = "1.5 LW Coins",
                             body = new {
                                 audioFile = "multipart/form-data (wav/mp3)",
                                 workoutType = "strength/cardio (опционально)",
@@ -119,10 +164,16 @@ namespace FitnessTracker.API.Controllers
                                 transcribedText = "Сделал жим лежа 80 кг на 10 повторений",
                                 workoutData = new {
                                     type = "strength",
+                                    startTime = "2025-07-13T17:00:00Z",
+                                    endTime = "2025-07-13T17:30:00Z",
+                                    estimatedCalories = 200,
                                     strengthData = new {
                                         name = "Жим лежа",
                                         muscleGroup = "Грудь",
-                                        workingWeight = 80
+                                        workingWeight = 80,
+                                        sets = new object[] {
+                                            new { setNumber = 1, weight = 80, reps = 10, isCompleted = true }
+                                        }
                                     }
                                 }
                             }
@@ -130,9 +181,9 @@ namespace FitnessTracker.API.Controllers
                         new {
                             method = "POST",
                             path = "/api/ai/voice-food",
-                            description = "🗣️ Голосовой ввод питания",
+                            description = "🗣️ Голосовой ввод питания - 1.5 монеты",
                             auth = "required",
-                            cost = "1 LW Coin",
+                            cost = "1.5 LW Coins",
                             body = new {
                                 audioFile = "multipart/form-data (wav/mp3)",
                                 mealType = "breakfast/lunch/dinner/snack (опционально)",
@@ -145,35 +196,84 @@ namespace FitnessTracker.API.Controllers
                                     new {
                                         name = "Борщ",
                                         estimatedWeight = 300,
-                                        totalCalories = 150
+                                        totalCalories = 150,
+                                        weightType = "ml"
+                                    },
+                                    new {
+                                        name = "Хлеб белый",
+                                        estimatedWeight = 50,
+                                        totalCalories = 132,
+                                        weightType = "g"
                                     }
+                                },
+                                estimatedTotalCalories = 282
+                            }
+                        }
+                    },
+
+                    lwCoins = new object[]
+                    {
+                        new {
+                            method = "GET",
+                            path = "/api/lw-coin/balance",
+                            description = "💰 Баланс LW Coins с дневными лимитами",
+                            auth = "required",
+                            response = new {
+                                balance = 250,
+                                monthlyAllowance = 300,
+                                isPremium = false,
+                                dailyUsage = 7.5m,
+                                dailyLimit = 10.0m,
+                                dailyRemaining = 2.5m
+                            }
+                        },
+                        new {
+                            method = "POST",
+                            path = "/api/lw-coin/spend",
+                            description = "💸 Потратить LW Coins с новыми ценами",
+                            auth = "required",
+                            body = new {
+                                amount = 1,
+                                type = "ai_scan",
+                                description = "Photo analysis",
+                                featureUsed = "photo"
+                            },
+                            note = "Система автоматически определит стоимость: photo=2.5, voice=1.5, text=1.0"
+                        },
+                        new {
+                            method = "GET",
+                            path = "/api/lw-coin/pricing",
+                            description = "💲 Обновленный прайс-лист",
+                            auth = "не требуется",
+                            response = new {
+                                lwCoinPricing = new {
+                                    photoCost = 2.5m,
+                                    voiceCost = 1.5m,
+                                    textCost = 1.0m,
+                                    bodyAnalysisCost = 0.0m,
+                                    exerciseTrackingCost = 0.0m
+                                },
+                                dailyLimits = new {
+                                    baseUserDailyLimit = 10.0m,
+                                    targetUsage = "3 фото + 1 голос + 2 текста = 11 монет",
+                                    optimizedUsage = "3 фото + 1 голос + 1 текст = 10 монет"
                                 }
                             }
                         },
                         new {
                             method = "GET",
-                            path = "/api/ai/status",
-                            description = "🧠 Проверка статуса ИИ сервиса",
-                            auth = "не требуется",
-                            response = new {
-                                service = "Gemini AI",
-                                status = "Online",
-                                features = new[] { "Food Analysis", "Body Analysis", "Voice Recognition" }
-                            }
-                        },
-                        new {
-                            method = "GET",
-                            path = "/api/ai/usage-stats",
-                            description = "📊 Статистика использования ИИ",
+                            path = "/api/lw-coin/check-limit/{featureType}",
+                            description = "📊 Проверить дневные лимиты",
                             auth = "required",
                             response = new {
-                                totalAIUsage = 45,
-                                monthlyAIUsage = 12,
+                                dailyUsage = 7.5m,
+                                dailyLimit = 10.0m,
+                                dailyRemaining = 2.5m,
+                                isPremium = false,
                                 featureUsage = new {
-                                    foodScans = 25,
-                                    voiceWorkouts = 10,
-                                    voiceFood = 8,
-                                    bodyAnalysis = 2
+                                    photo = 3,
+                                    voice = 0,
+                                    text = 0
                                 }
                             }
                         }
@@ -183,47 +283,17 @@ namespace FitnessTracker.API.Controllers
                     {
                         new {
                             method = "GET",
-                            path = "/api/food-intake?date=2025-06-24",
+                            path = "/api/food-intake?date=2025-07-13",
                             description = "🍎 Получить записи питания",
                             auth = "required",
                             filters = new { date = "YYYY-MM-DD (опционально)" }
                         },
                         new {
                             method = "POST",
-                            path = "/api/food-intake",
-                            description = "➕ Добавить прием пищи",
-                            auth = "required",
-                            body = new {
-                                items = new object[] {
-                                    new {
-                                        name = "Овсянка",
-                                        weight = 100,
-                                        weightType = "g",
-                                        nutritionPer100g = new {
-                                            calories = 389,
-                                            proteins = 16.9,
-                                            fats = 6.9,
-                                            carbs = 66.3
-                                        }
-                                    }
-                                },
-                                dateTime = "2025-06-24T08:00:00Z"
-                            }
-                        },
-                        new {
-                            method = "POST",
-                            path = "/api/food-intake/scan",
-                            description = "📸 Сканирование еды (устаревший метод)",
-                            auth = "required",
-                            cost = "1 LW Coin",
-                            note = "⚠️ Используйте /api/ai/scan-food для лучших результатов"
-                        },
-                        new {
-                            method = "POST",
                             path = "/api/food-intake/ai-scan",
-                            description = "🤖 Новое сканирование еды с Gemini AI",
+                            description = "🤖 ИИ сканирование еды - 2.5 монеты",
                             auth = "required",
-                            cost = "1 LW Coin",
+                            cost = "2.5 LW Coins",
                             body = new {
                                 image = "multipart/form-data",
                                 userPrompt = "Опциональные инструкции",
@@ -236,139 +306,210 @@ namespace FitnessTracker.API.Controllers
                     {
                         new {
                             method = "GET",
-                            path = "/api/activity?startDate=2025-06-01&endDate=2025-06-30&type=strength",
-                            description = "🏃‍♂️ Получить активности с фильтрами",
+                            path = "/api/activity?startDate=2025-07-01&endDate=2025-07-31&type=strength",
+                            description = "🏃‍♂️ Получить активности с фильтрами - БЕСПЛАТНО",
                             auth = "required"
                         },
                         new {
                             method = "POST",
                             path = "/api/activity",
-                            description = "➕ Добавить тренировку",
+                            description = "➕ Добавить тренировку - БЕСПЛАТНО",
                             auth = "required",
+                            cost = "Бесплатно",
                             bodyStrength = new {
                                 type = "strength",
-                                startDate = "2025-06-24T10:00:00Z",
+                                startDate = "2025-07-13T10:00:00Z",
                                 calories = 300,
                                 strengthData = new {
                                     name = "Жим лежа",
                                     muscleGroup = "Грудь",
                                     equipment = "Штанга",
-                                    workingWeight = 80
-                                }
-                            }
-                        },
-                        new {
-                            method = "POST",
-                            path = "/api/activity/steps",
-                            description = "👣 Добавить/обновить шаги",
-                            auth = "required",
-                            body = new { steps = 10000, calories = 500, date = "2025-06-24T00:00:00Z" }
-                        }
-                    },
-
-                    lwCoins = new object[]
-                    {
-                        new {
-                            method = "GET",
-                            path = "/api/lw-coin/balance",
-                            description = "💰 Баланс LW Coins",
-                            auth = "required",
-                            response = new { balance = 300, monthlyAllowance = 300, isPremium = false }
-                        },
-                        new {
-                            method = "GET",
-                            path = "/api/lw-coin/pricing",
-                            description = "💲 Прайс-лист",
-                            auth = "не требуется",
-                            response = new {
-                                lwCoinPricing = new {
-                                    photoCost = 1,
-                                    voiceCost = 1,
-                                    aiFeatures = "1 LW Coin за запрос"
+                                    workingWeight = 80,
+                                    sets = new object[] {
+                                        new { setNumber = 1, weight = 80, reps = 10, isCompleted = true },
+                                        new { setNumber = 2, weight = 80, reps = 8, isCompleted = true }
+                                    }
                                 }
                             }
                         }
+                    ]
+                },
+
+                    // ✅ ОБНОВЛЕННЫЕ ПРИМЕРЫ ИСПОЛЬЗОВАНИЯ
+                    examples = new
+                    {
+                        newEconomicWorkflow = new string[]
+                    {
+                        "✅ НОВОЕ: Работа с обновленной ценовой моделью",
+                        "1. GET /api/lw-coin/balance → Проверить дневной лимит (10 монет)",
+                        "2. POST /api/ai/scan-food → Сфотографировать еду (-2.5 монеты)",
+                        "3. POST /api/ai/scan-food → Еще одно фото (-2.5 монеты)",
+                        "4. POST /api/ai/scan-food → Третье фото (-2.5 монеты)",
+                        "5. POST /api/ai/voice-food → Голосовой ввод (-1.5 монеты)",
+                        "6. Остаток: 10 - 7.5 - 1.5 = 1 монета",
+                        "7. POST /api/ai/text-analysis → Текстовый анализ (-1.0 монета)",
+                        "8. Дневной лимит исчерпан ✅"
+                    },
+                        dailyOptimalUsage = new string[]
+                    {
+                        "💡 Оптимальное использование для тарифа 'База':",
+                        "🌅 Утром: 1 фото завтрака (-2.5 монеты)",
+                        "🥗 Обед: 1 фото обеда (-2.5 монеты)",
+                        "🍽️ Ужин: 1 фото ужина (-2.5 монеты)",
+                        "🎤 Вечером: голосовой ввод тренировки (-1.5 монеты)",
+                        "📝 Анализ: 1 текстовый запрос (-1.0 монета)",
+                        "Итого: 10.0 монет = точно в дневном лимите ✅"
+                    },
+                        freeFeatures = new string[]
+                    {
+                        "🆓 Полностью бесплатные функции:",
+                        "💪 Анализ тела с фотографиями (безлимитно)",
+                        "🏃‍♂️ Отслеживание тренировок и упражнений",
+                        "📊 Просмотр статистики и прогресса",
+                        "🎯 Создание и отслеживание целей",
+                        "🏆 Миссии и достижения",
+                        "🎨 Система скинов с бустом опыта"
+                    }
                     },
 
-                    bodyScan = new object[]
+                    // ✅ ОБНОВЛЕННЫЕ ТАРИФНЫЕ ПЛАНЫ
+                    pricingTiers = new
                     {
-                        new {
-                            method = "POST",
-                            path = "/api/body-scan",
-                            description = "📸 Добавить скан тела (ручной)",
-                            auth = "required"
+                        free = new
+                        {
+                            name = "Бесплатный",
+                            monthlyCoins = 0,
+                            dailyLimit = "Нет монет",
+                            features = new[] { "Отслеживание упражнений", "Анализ тела", "Базовая статистика" }
+                        },
+                        base = new
+                        {
+                            name = "База",
+                            price = "$3.00/месяц",
+                            monthlyCoins = 300,
+                            dailyLimit = "10 монет/день",
+                            targetUsage = "3 фото + 1 голос + 1 текст в день",
+                            features = new[] {
+                            "300 LW Coins в месяц",
+                            "Дневной лимит 10 монет",
+                            "ИИ анализ фото еды (2.5 монеты)",
+                            "Голосовой ввод (1.5 монеты)",
+                            "Текстовый анализ (1.0 монета)",
+                            "Безлимитный анализ тела",
+                            "Все бесплатные функции"
                         }
-                    }
-                },
-
-                newFeatures = new
-                {
-                    geminiAI = new string[]
-                    {
-                        "🍎 Умное распознавание еды с точной калорийностью",
-                        "💪 Анализ тела и рекомендации по тренировкам",
-                        "🎤 Голосовой ввод тренировок и питания",
-                        "📊 Подробная аналитика от ИИ",
-                        "🧠 Персонализированные рекомендации"
-                    }
-                },
-
-                examples = new
-                {
-                    aiWorkflow = new string[]
-                    {
-                        "✅ НОВОЕ: Работа с ИИ функциями",
-                        "1. GET /api/ai/status → Проверить статус ИИ",
-                        "2. POST /api/ai/scan-food → Сфотографировать еду",
-                        "3. POST /api/ai/analyze-body → Анализ тела",
-                        "4. POST /api/ai/voice-workout → Голосовой ввод тренировки",
-                        "5. POST /api/ai/voice-food → Голосовой ввод питания",
-                        "6. GET /api/ai/usage-stats → Статистика использования"
+                        },
+                        premium = new
+                        {
+                            name = "Pro",
+                            price = "$8.99/месяц",
+                            monthlyCoins = "Безлимитно",
+                            dailyLimit = "Без ограничений",
+                            targetUsage = "До 15 действий в день",
+                            features = new[] {
+                            "Безлимитное использование всех ИИ функций",
+                            "Без дневных лимитов",
+                            "Приоритетная поддержка",
+                            "Расширенная аналитика",
+                            "Все функции тарифа 'База'",
+                            "Эксклюзивные скины"
+                        }
+                        }
                     },
-                    completeWorkflow = new string[]
-                    {
-                        "1. POST /api/auth/send-code → Отправить код",
-                        "2. POST /api/auth/confirm-email → Получить токен",
-                        "3. PUT /api/user/profile → Заполнить профиль",
-                        "4. POST /api/ai/scan-food → ИИ анализ еды",
-                        "5. POST /api/ai/voice-workout → Голосовой ввод тренировки",
-                        "6. POST /api/ai/analyze-body → Анализ тела",
-                        "7. GET /api/mission → Проверить прогресс миссий",
-                        "8. GET /api/lw-coin/balance → Проверить баланс"
-                    }
-                },
 
-                costs = new
-                {
-                    description = "Стоимость использования ИИ функций",
-                    free = new string[]
+                    // ✅ ФИНАНСОВАЯ МОДЕЛЬ ЗАКАЗЧИКА
+                    financialProjection = new
                     {
-                        "📸 Анализ тела (без ограничений)",
+                        title = "💰 Финансовая модель на 10,000 пользователей",
+                        userDistribution = new
+                        {
+                            free = new { percentage = "93%", count = 9300, plan = "Бесплатный" },
+                            baseUsers = new { percentage = "6%", count = 600, plan = "База ($3)" },
+                            proUsers = new { percentage = "1%", count = 100, plan = "Pro ($8.99)" }
+                        },
+                        monthlyRevenue = new
+                        {
+                            fromBase = "$1,800 (600 × $3.00)",
+                            fromPro = "$899 (100 × $8.99)",
+                            total = "$2,699"
+                        },
+                        monthlyCosts = new
+                        {
+                            freeUsers = "$744 (9300 × $0.08)",
+                            baseUsers = "$338 (600 × $0.56)",
+                            proUsers = "$106 (100 × $1.06)",
+                            total = "$1,188"
+                        },
+                        monthlyProfit = "$1,511 ($2,699 - $1,188)",
+                        profitMargin = "56%"
+                    },
+
+                    costs = new
+                    {
+                        description = "Стоимость использования ИИ функций с новой моделью",
+                        free = new string[]
+                    {
+                        "💪 Анализ тела (безлимитно)",
+                        "🏃‍♂️ Отслеживание упражнений",
                         "📊 Просмотр статистики",
                         "🎯 Миссии и достижения"
                     },
-                    paid = new string[]
+                        paid = new string[]
                     {
-                        "🍎 Сканирование еды: 1 LW Coin",
-                        "🎤 Голосовой ввод тренировки: 1 LW Coin",
-                        "🗣️ Голосовой ввод питания: 1 LW Coin"
+                        "🍎 Фото-анализ еды: 2.5 LW Coins",
+                        "🎤 Голосовой ввод тренировки: 1.5 LW Coins",
+                        "🗣️ Голосовой ввод питания: 1.5 LW Coins",
+                        "📝 Текстовый анализ: 1.0 LW Coin"
                     },
-                    premium = new string[]
+                        limits = new string[]
                     {
-                        "👑 Премиум подписка: безлимитное использование всех ИИ функций",
-                        "💰 Стоимость: $8.99/месяц"
+                        "📅 Тариф 'База': 10 монет в день",
+                        "🎯 Целевое использование: 3 фото + 1 голос + 1 текст",
+                        "💎 Премиум: безлимитное использование"
                     }
-                },
+                    },
 
-                errorCodes = new
-                {
-                    BadRequest = "400 - Неверные данные или недостаточно LW Coins",
-                    Unauthorized = "401 - Требуется авторизация",
-                    NotFound = "404 - Ресурс не найден",
-                    ServiceUnavailable = "503 - ИИ сервис недоступен",
-                    InternalServerError = "500 - Ошибка сервера"
+                    migration = new
+                    {
+                        title = "🔄 Миграция на новую ценовую модель",
+                        steps = new string[]
+                    {
+                        "1. Выполнить SQL миграцию: migration_update_pricing.sql",
+                        "2. Обновить поля в базе данных (FractionalAmount, UsageDate)",
+                        "3. Перезапустить API сервис",
+                        "4. Проверить работу новых цен через /api/lw-coin/pricing",
+                        "5. Уведомить пользователей об изменениях"
+                    },
+                        backwardCompatibility = "Полная совместимость с существующими данными"
+                    },
+
+                    errorCodes = new
+                    {
+                        BadRequest = "400 - Неверные данные или превышен дневной лимит",
+                        Unauthorized = "401 - Требуется авторизация",
+                        NotFound = "404 - Ресурс не найден",
+                        ServiceUnavailable = "503 - ИИ сервис недоступен",
+                        InternalServerError = "500 - Ошибка сервера",
+                        DailyLimitExceeded = "400 - Превышен дневной лимит в 10 монет",
+                        InsufficientCoins = "400 - Недостаточно LW Coins"
+                    },
+
+                    changelog = new
+                    {
+                        version = "3.0.0",
+                        date = "2025-07-13",
+                        changes = new string[]
+                    {
+                        "✅ Новая ценовая модель: Фото 2.5, Голос 1.5, Текст 1.0 монеты",
+                        "✅ Дневные лимиты для тарифа 'База': 10 монет/день",
+                        "✅ Поддержка дробных монет (2.5, 1.5, 1.0)",
+                        "✅ Обновленная экономическая модель согласно требованиям",
+                        "✅ Новые миссии и достижения связанные с экономией",
+                        "✅ Расширенная аналитика использования монет",
+                        "✅ Улучшенная система уведомлений о лимитах"
+                    ]
                 }
-            };
+                    };
 
             return Ok(documentation);
         }

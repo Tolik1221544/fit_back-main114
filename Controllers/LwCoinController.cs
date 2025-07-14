@@ -7,7 +7,7 @@ using System.Security.Claims;
 namespace FitnessTracker.API.Controllers
 {
     /// <summary>
-    /// 💰 Управление LW Coins и подписками
+    /// 💰 Управление LW Coins и подписками с новой ценовой моделью
     /// </summary>
     [ApiController]
     [Route("api/lw-coin")]
@@ -22,16 +22,15 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
-        /// 💰 Получить баланс LW Coins
+        /// 💰 Получить баланс LW Coins с новыми дневными лимитами
         /// </summary>
-        /// <returns>Баланс и информация о подписке с уведомлениями</returns>
+        /// <returns>Баланс и информация о подписке с дневными лимитами</returns>
         /// <response code="200">Баланс успешно получен</response>
         /// <response code="401">Требуется авторизация</response>
         /// <remarks>
-        /// ✅ ОБНОВЛЕНО: Теперь включает уведомления о статусе премиум подписки:
-        /// - Предупреждения об истечении подписки
-        /// - Уведомления о переводе на стандартный план
-        /// - Автоматический откат при истечении подписки
+        /// - Дневной лимит: 10 монет (300 монет / 30 дней)
+        /// - Новые цены: Фото 2.5, Голос 1.5, Текст 1.0 монеты
+        /// - Дневное использование и остаток
         /// </remarks>
         [HttpGet("balance")]
         public async Task<IActionResult> GetBalance()
@@ -52,22 +51,25 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
-        /// 💸 Потратить LW Coins
+        /// 💸 Потратить LW Coins с новыми ценами
         /// </summary>
         /// <param name="request">Данные о трате монет</param>
         /// <returns>Результат траты</returns>
         /// <response code="200">Монеты успешно потрачены</response>
-        /// <response code="400">Недостаточно монет или неверный запрос</response>
+        /// <response code="400">Недостаточно монет или превышен дневной лимит</response>
         /// <response code="401">Требуется авторизация</response>
         /// <remarks>
-        /// ✅ ОБНОВЛЕНО: Добавлены поля price и period для отслеживания покупок.
-        /// Премиум пользователи тратят 0 монет, но использование логируется.
+        /// - Фото-анализ: 2.5 монеты
+        /// - Голосовой ввод: 1.5 монеты  
+        /// - Текстовый ввод: 1.0 монета
+        /// - Дневной лимит для тарифа "База": 10 монет/день
+        /// - Премиум пользователи: без лимитов
         /// </remarks>
         /// <example>
         /// {
         ///   "amount": 1,
-        ///   "type": "pack_50",
-        ///   "description": "Food scan",
+        ///   "type": "ai_scan",
+        ///   "description": "Food photo analysis",
         ///   "featureUsed": "photo",
         ///   "price": 0.50,
         ///   "period": "one-time"
@@ -86,7 +88,11 @@ namespace FitnessTracker.API.Controllers
                     userId, request.Amount, request.Type, request.Description, request.FeatureUsed);
 
                 if (!success)
-                    return BadRequest(new { error = "Insufficient LW Coins or invalid request" });
+                    return BadRequest(new
+                    {
+                        error = "Insufficient LW Coins or daily limit exceeded",
+                        message = "Недостаточно монет или превышен дневной лимит"
+                    });
 
                 return Ok(new { success = true });
             }
@@ -97,13 +103,12 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
-        /// 📊 Получить историю транзакций
+        /// 📊 Получить историю транзакций с дробными монетами
         /// </summary>
-        /// <returns>История транзакций с ценами и периодами</returns>
+        /// <returns>История транзакций с новыми ценами</returns>
         /// <response code="200">История успешно получена</response>
         /// <response code="401">Требуется авторизация</response>
         /// <remarks>
-        /// ✅ ОБНОВЛЕНО: Транзакции теперь включают информацию о ценах и периодах покупок.
         /// </remarks>
         [HttpGet("transactions")]
         public async Task<IActionResult> GetTransactions()
@@ -132,16 +137,8 @@ namespace FitnessTracker.API.Controllers
         /// <response code="400">Ошибка при покупке</response>
         /// <response code="401">Требуется авторизация</response>
         /// <remarks>
-        /// ✅ ОБНОВЛЕНО: Теперь поддерживает кастомные цены и периоды.
-        /// Автоматически отслеживает дату истечения и отправляет уведомления.
+        /// Премиум подписка снимает все лимиты и дает безлимитное использование AI функций.
         /// </remarks>
-        /// <example>
-        /// {
-        ///   "paymentTransactionId": "stripe_tx_123",
-        ///   "price": 8.99,
-        ///   "period": "monthly"
-        /// }
-        /// </example>
         [HttpPost("purchase-premium")]
         public async Task<IActionResult> PurchasePremium([FromBody] PurchasePremiumRequest request)
         {
@@ -168,17 +165,6 @@ namespace FitnessTracker.API.Controllers
         /// <response code="200">Пакет монет успешно куплен</response>
         /// <response code="400">Ошибка при покупке</response>
         /// <response code="401">Требуется авторизация</response>
-        /// <remarks>
-        /// ✅ ОБНОВЛЕНО: Поддерживает кастомные цены для разных пакетов.
-        /// </remarks>
-        /// <example>
-        /// {
-        ///   "packType": "pack_50",
-        ///   "paymentTransactionId": "stripe_tx_456",
-        ///   "price": 0.50,
-        ///   "period": "one-time"
-        /// }
-        /// </example>
         [HttpPost("purchase-coins")]
         public async Task<IActionResult> PurchaseCoins([FromBody] PurchaseCoinPackRequest request)
         {
@@ -198,12 +184,15 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
-        /// 📊 Проверить лимиты использования
+        /// 📊 Проверить лимиты использования с дневными ограничениями
         /// </summary>
         /// <param name="featureType">Тип функции для проверки</param>
         /// <returns>Информация о лимитах пользователя</returns>
         /// <response code="200">Лимиты успешно получены</response>
         /// <response code="401">Требуется авторизация</response>
+        /// <remarks>
+        /// ✅ НОВОЕ: Включает информацию о дневных лимитах для тарифа "База".
+        /// </remarks>
         [HttpGet("check-limit/{featureType}")]
         public async Task<IActionResult> CheckFeatureLimit(string featureType)
         {
@@ -223,12 +212,12 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
-        /// 💲 Получить прайс-лист
+        /// 💲 Получить обновленный прайс-лист
         /// </summary>
-        /// <returns>Актуальные цены на подписки и пакеты</returns>
+        /// <returns>Актуальные цены с новой ценовой моделью</returns>
         /// <response code="200">Прайс-лист получен</response>
         /// <remarks>
-        /// ✅ ОБНОВЛЕНО: Включает информацию о новых типах подписок и пакетов.
+        /// ✅ ОБНОВЛЕНО: Новая ценовая модель согласно требованиям заказчика.
         /// </remarks>
         [HttpGet("pricing")]
         [AllowAnonymous]
@@ -238,21 +227,50 @@ namespace FitnessTracker.API.Controllers
             {
                 lwCoinPricing = new
                 {
-                    photoCost = 1,
-                    voiceCost = 1,
-                    textCost = 1,
+                    photoCost = 2.5m,        // Фото-анализ: 2.5 монеты
+                    voiceCost = 1.5m,        // Голосовой ввод: 1.5 монеты
+                    textCost = 1.0m,         // Текстовый ввод: 1.0 монета
                     exerciseTrackingCost = 0,
-                    archiveCost = 0
+                    archiveCost = 0,
+                    bodyAnalysisCost = 0     // Анализ тела остается бесплатным
                 },
+
+                // ✅ НОВЫЕ ДНЕВНЫЕ ЛИМИТЫ
+                dailyLimits = new
+                {
+                    baseUserDailyLimit = 10.0m,  // 300 монет / 30 дней = 10 монет/день
+                    baseDailyUsageExample = new
+                    {
+                        photos = 3,     // 3 фото * 2.5 = 7.5 монеты
+                        voice = 1,      // 1 голос * 1.5 = 1.5 монеты  
+                        text = 2,       // 2 текста * 1.0 = 2.0 монеты
+                        total = 11.0m   // Итого: 11 монет (чуть больше лимита)
+                    },
+                    optimizedDailyUsage = new
+                    {
+                        photos = 3,     // 3 фото * 2.5 = 7.5 монеты
+                        voice = 1,      // 1 голос * 1.5 = 1.5 монеты
+                        text = 1,       // 1 текст * 1.0 = 1.0 монета
+                        total = 10.0m   // Итого: 10 монет (точно в лимите)
+                    }
+                },
+
                 subscriptions = new[]
                 {
                     new {
                         type = "premium",
                         price = 8.99m,
                         currency = "USD",
-                        description = "Unlimited usage",
+                        description = "Unlimited usage - no daily limits",
                         period = "monthly",
-                        features = new[] { "Unlimited photo scans", "No ads", "Priority support", "Advanced analytics" }
+                        features = new[] {
+                            "Unlimited photo scans",
+                            "Unlimited voice input",
+                            "Unlimited text analysis",
+                            "No daily limits",
+                            "Priority support",
+                            "Advanced analytics"
+                        }
                     }
                 },
                 coinPacks = new[]
@@ -263,7 +281,8 @@ namespace FitnessTracker.API.Controllers
                         currency = "USD",
                         description = "50 LW Coins",
                         period = "one-time",
-                        coins = 50
+                        coins = 50,
+                        additionalDays = "5 дней с новыми ценами"
                     },
                     new {
                         type = "pack_100",
@@ -271,7 +290,8 @@ namespace FitnessTracker.API.Controllers
                         currency = "USD",
                         description = "100 LW Coins",
                         period = "one-time",
-                        coins = 100
+                        coins = 100,
+                        additionalDays = "10 дней с новыми ценами"
                     }
                 },
                 freeFeatures = new[]
@@ -279,15 +299,67 @@ namespace FitnessTracker.API.Controllers
                     "Exercise tracking",
                     "Progress archive",
                     "Basic statistics",
-                    "Skin system with XP boost"
+                    "Skin system with XP boost",
+                    "Body analysis (unlimited)", // Остается бесплатным
+                    "Weekly body scans"
                 },
                 monthlyAllowance = new
                 {
                     freeUsers = 300,
                     trialBonus = 150,
-                    referralBonus = 150
+                    referralBonus = 150,
+                    dailyEquivalent = 10.0m  // 300 / 30 = 10 монет/день
+                },
+
+                // ✅ НОВАЯ СЕКЦИЯ: Экономическая модель
+                economicModel = new
+                {
+                    targetDailyUsage = new
+                    {
+                        photos = 3,
+                        voice = 1,
+                        text = 2,
+                        totalCost = 11.0m,
+                        note = "Пользователь тарифа 'База' может делать 3 фото, 1 голос и 2 текста в день"
+                    },
+                    costBreakdown = new
+                    {
+                        photoAnalysis = "2.5 монеты за анализ фото еды",
+                        voiceInput = "1.5 монеты за голосовой ввод тренировки/питания",
+                        textAnalysis = "1.0 монета за текстовый анализ",
+                        bodyAnalysis = "0 монет - бесплатно для всех",
+                        exerciseTracking = "0 монет - бесплатно для всех"
+                    }
                 }
             });
+        }
+
+        /// <summary>
+        /// 🔄 Принудительное обновление месячного пополнения
+        /// </summary>
+        /// <returns>Результат обновления</returns>
+        /// <response code="200">Пополнение выполнено</response>
+        /// <response code="401">Требуется авторизация</response>
+        [HttpPost("force-refill")]
+        public async Task<IActionResult> ForceMonthlyRefill()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                var success = await _lwCoinService.ProcessMonthlyRefillAsync(userId);
+                return Ok(new
+                {
+                    success,
+                    message = success ? "Monthly refill processed" : "Refill not due yet"
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
         }
     }
 }

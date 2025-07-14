@@ -10,6 +10,10 @@ namespace FitnessTracker.API.DTOs
         public DateTime? PremiumExpiresAt { get; set; }
         public DateTime NextRefillDate { get; set; }
 
+        public decimal DailyUsage { get; set; }
+        public decimal DailyLimit { get; set; }
+        public decimal DailyRemaining { get; set; }
+
         public PremiumNotificationDto? PremiumNotification { get; set; }
     }
 
@@ -28,6 +32,9 @@ namespace FitnessTracker.API.DTOs
     {
         public string Id { get; set; } = string.Empty;
         public int Amount { get; set; }
+
+        public decimal FractionalAmount { get; set; }
+
         public string Type { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public string FeatureUsed { get; set; } = string.Empty;
@@ -35,6 +42,8 @@ namespace FitnessTracker.API.DTOs
 
         public decimal? Price { get; set; }
         public string? Period { get; set; }
+
+        public string UsageDate { get; set; } = string.Empty;
     }
 
     public class PurchasePremiumRequest
@@ -59,6 +68,10 @@ namespace FitnessTracker.API.DTOs
         public int RemainingThisMonth { get; set; }
         public bool IsPremium { get; set; }
         public Dictionary<string, int> FeatureUsage { get; set; } = new Dictionary<string, int>();
+
+        public decimal DailyUsage { get; set; }
+        public decimal DailyLimit { get; set; }
+        public decimal DailyRemaining { get; set; }
     }
 
     public class PremiumNotificationDto

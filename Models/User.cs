@@ -8,7 +8,10 @@ namespace FitnessTracker.API.Models
         public string RegisteredVia { get; set; } = string.Empty; // "email", "google"
         public int Level { get; set; } = 1;
         public int Experience { get; set; } = 0;
-        public int LwCoins { get; set; } = 300; 
+        public int LwCoins { get; set; } = 300;
+
+        public double FractionalLwCoins { get; set; } = 300.0;
+
         public int Age { get; set; }
         public string Gender { get; set; } = string.Empty;
         public decimal Weight { get; set; }

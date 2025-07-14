@@ -22,8 +22,6 @@ namespace FitnessTracker.API.Data
         public DbSet<UserAchievement> UserAchievements { get; set; }
         public DbSet<Referral> Referrals { get; set; }
         public DbSet<Subscription> Subscriptions { get; set; }
-
-        // ✅ НОВЫЕ ТАБЛИЦЫ: Цели и прогресс
         public DbSet<Goal> Goals { get; set; }
         public DbSet<DailyGoalProgress> DailyGoalProgress { get; set; }
 
@@ -31,7 +29,6 @@ namespace FitnessTracker.API.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // User entity configuration
             modelBuilder.Entity<User>(entity =>
             {
                 entity.HasKey(e => e.Id);
@@ -39,6 +36,9 @@ namespace FitnessTracker.API.Data
                 entity.HasIndex(e => e.ReferralCode).IsUnique();
                 entity.Property(e => e.Weight).HasPrecision(5, 2);
                 entity.Property(e => e.Height).HasPrecision(5, 2);
+
+                // ✅ НОВОЕ: Конфигурация для дробных монет
+                entity.Property(e => e.FractionalLwCoins).HasPrecision(10, 2);
             });
 
             // FoodIntake entity configuration
@@ -91,7 +91,6 @@ namespace FitnessTracker.API.Data
                     .OnDelete(DeleteBehavior.Cascade);
             });
 
-            // LwCoinTransaction entity configuration
             modelBuilder.Entity<LwCoinTransaction>(entity =>
             {
                 entity.HasKey(e => e.Id);
@@ -99,6 +98,13 @@ namespace FitnessTracker.API.Data
                     .WithMany(u => u.LwCoinTransactions)
                     .HasForeignKey(e => e.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+
+                entity.Property(e => e.FractionalAmount).HasPrecision(10, 2);
+                entity.Property(e => e.Price).HasPrecision(10, 2);
+
+                entity.HasIndex(e => new { e.UserId, e.UsageDate });
+                entity.HasIndex(e => new { e.FeatureUsed, e.CreatedAt });
+                entity.HasIndex(e => e.FractionalAmount);
             });
 
             // ExperienceTransaction entity configuration
@@ -111,7 +117,7 @@ namespace FitnessTracker.API.Data
                     .OnDelete(DeleteBehavior.Cascade);
             });
 
-            // BodyScan entity configuration
+            // BodyScan entity configuration  
             modelBuilder.Entity<BodyScan>(entity =>
             {
                 entity.HasKey(e => e.Id);
@@ -192,7 +198,6 @@ namespace FitnessTracker.API.Data
                 entity.HasIndex(e => e.ReferralCode).IsUnique();
             });
 
-            // Subscription entity configuration
             modelBuilder.Entity<Subscription>(entity =>
             {
                 entity.HasKey(e => e.Id);
@@ -203,7 +208,6 @@ namespace FitnessTracker.API.Data
                 entity.Property(e => e.Price).HasPrecision(10, 2);
             });
 
-            // ✅ НОВЫЕ КОНФИГУРАЦИИ: Goal entity configuration
             modelBuilder.Entity<Goal>(entity =>
             {
                 entity.HasKey(e => e.Id);
@@ -220,7 +224,6 @@ namespace FitnessTracker.API.Data
                 entity.HasIndex(e => e.GoalType);
             });
 
-            // ✅ НОВЫЕ КОНФИГУРАЦИИ: DailyGoalProgress entity configuration
             modelBuilder.Entity<DailyGoalProgress>(entity =>
             {
                 entity.HasKey(e => e.Id);
@@ -284,7 +287,6 @@ namespace FitnessTracker.API.Data
                     Route = "/body_analyze",
                     IsActive = true
                 },
-                // ✅ НОВЫЕ МИССИИ для целей
                 new Mission
                 {
                     Id = "mission_daily_goal_80",
@@ -305,6 +307,28 @@ namespace FitnessTracker.API.Data
                     Type = "weekly_goal_streak",
                     TargetValue = 7,
                     Route = "/goals",
+                    IsActive = true
+                },
+                new Mission
+                {
+                    Id = "mission_smart_spending",
+                    Title = "Умная трата: уложись в дневной лимит",
+                    Icon = "💰",
+                    RewardExperience = 50,
+                    Type = "daily_limit_compliance",
+                    TargetValue = 1,
+                    Route = "/lw-coin",
+                    IsActive = true
+                },
+                new Mission
+                {
+                    Id = "mission_photo_master",
+                    Title = "Мастер фото: проанализируй 3 фото за день",
+                    Icon = "📸",
+                    RewardExperience = 75,
+                    Type = "daily_photo_scans",
+                    TargetValue = 3,
+                    Route = "/ai/scan-food",
                     IsActive = true
                 }
             );
@@ -339,6 +363,16 @@ namespace FitnessTracker.API.Data
                     Description = "Скин для сверхлюдей",
                     ExperienceBoost = 2.0m,
                     Tier = 3
+                },
+                new Skin
+                {
+                    Id = "skin_economist",
+                    Name = "Экономист",
+                    Cost = 300,
+                    ImageUrl = "https://example.com/skins/economist.png",
+                    Description = "Скин для тех, кто умеет экономить монеты",
+                    ExperienceBoost = 1.2m,
+                    Tier = 1
                 }
             );
 
@@ -393,7 +427,6 @@ namespace FitnessTracker.API.Data
                     RequiredValue = 10,
                     RewardExperience = 500
                 },
-                // ✅ НОВЫЕ ДОСТИЖЕНИЯ для целей
                 new Achievement
                 {
                     Id = "achievement_goal_setter",
@@ -423,6 +456,26 @@ namespace FitnessTracker.API.Data
                     Type = "goal_streak_days",
                     RequiredValue = 30,
                     RewardExperience = 500
+                },
+                new Achievement
+                {
+                    Id = "achievement_budget_master",
+                    Title = "Мастер бюджета",
+                    Icon = "💎",
+                    ImageUrl = "https://example.com/achievements/budget-master.png",
+                    Type = "daily_limit_streaks",
+                    RequiredValue = 7,
+                    RewardExperience = 200
+                },
+                new Achievement
+                {
+                    Id = "achievement_photo_expert",
+                    Title = "Эксперт фотоанализа",
+                    Icon = "📷",
+                    ImageUrl = "https://example.com/achievements/photo-expert.png",
+                    Type = "photo_scan_count",
+                    RequiredValue = 100,
+                    RewardExperience = 400
                 }
             );
         }
