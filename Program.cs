@@ -130,6 +130,7 @@ builder.Services.AddScoped<IAchievementService, AchievementService>();
 builder.Services.AddScoped<IExperienceService, ExperienceService>();
 builder.Services.AddScoped<IGoalService, GoalService>();
 builder.Services.AddScoped<IImageService, ImageService>();
+builder.Services.AddHostedService<AudioTestCleanupService>();
 
 // Repositories (без изменений)
 builder.Services.AddScoped<IUserRepository, UserRepository>();
