@@ -1,271 +1,298 @@
-[ApiController]
-[Route("api/audio-test")]
-[Authorize]
-public class AudioTestController : ControllerBase
+п»їusing Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+
+namespace FitnessTracker.API.Controllers
 {
-    private readonly IWebHostEnvironment _environment;
-    private readonly ILogger<AudioTestController> _logger;
-    private static readonly Dictionary<string, AudioTestFile> _files = new();
-
-    public AudioTestController(IWebHostEnvironment environment, ILogger<AudioTestController> logger)
+    [ApiController]
+    [Route("api/audio-test")]
+    [Authorize]
+    public class AudioTestController : ControllerBase
     {
-        _environment = environment;
-        _logger = logger;
-    }
+        private readonly IWebHostEnvironment _environment;
+        private readonly ILogger<AudioTestController> _logger;
+        private static readonly Dictionary<string, AudioTestFile> _files = new();
 
-    /// <summary>
-    /// ?? Загрузить аудио для тестирования (живет 1 час)
-    /// </summary>
-    [HttpPost("upload")]
-    public async Task<IActionResult> UploadAudio(IFormFile audioFile, [FromForm] string? description = null)
-    {
-        try
+        public AudioTestController(IWebHostEnvironment environment, ILogger<AudioTestController> logger)
+        {
+            _environment = environment;
+            _logger = logger;
+        }
+
+        /// <summary>
+        /// рџЋ¤ Р—Р°РіСЂСѓР·РёС‚СЊ Р°СѓРґРёРѕ РґР»СЏ С‚РµСЃС‚РёСЂРѕРІР°РЅРёСЏ (Р¶РёРІРµС‚ 1 С‡Р°СЃ)
+        /// </summary>
+        [HttpPost("upload")]
+        public async Task<IActionResult> UploadAudio(IFormFile audioFile, [FromForm] string? description = null)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                if (audioFile == null || audioFile.Length == 0)
+                    return BadRequest(new { error = "No audio file provided" });
+
+                // РЎРѕР·РґР°РµРј РїР°РїРєСѓ РґР»СЏ С‚РµСЃС‚РѕРІС‹С… Р°СѓРґРёРѕ
+                var testAudioDir = Path.Combine(_environment.WebRootPath ?? _environment.ContentRootPath, "test-audio");
+                Directory.CreateDirectory(testAudioDir);
+
+                // Р“РµРЅРµСЂРёСЂСѓРµРј СѓРЅРёРєР°Р»СЊРЅРѕРµ РёРјСЏ С„Р°Р№Р»Р°
+                var fileId = Guid.NewGuid().ToString("N")[..8]; // 8 СЃРёРјРІРѕР»РѕРІ РґР»СЏ РїСЂРѕСЃС‚РѕС‚С‹
+                var extension = Path.GetExtension(audioFile.FileName).ToLowerInvariant();
+                if (string.IsNullOrEmpty(extension))
+                    extension = ".wav";
+
+                var fileName = $"{fileId}_{DateTime.UtcNow:MMdd_HHmm}{extension}";
+                var filePath = Path.Combine(testAudioDir, fileName);
+
+                // РЎРѕС…СЂР°РЅСЏРµРј С„Р°Р№Р»
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await audioFile.CopyToAsync(stream);
+                }
+
+                // Р”РѕР±Р°РІР»СЏРµРј РІ РїР°РјСЏС‚СЊ
+                var testFile = new AudioTestFile
+                {
+                    Id = fileId,
+                    FileName = fileName,
+                    FilePath = filePath,
+                    OriginalName = audioFile.FileName,
+                    Description = description ?? "Test audio",
+                    UploadedBy = userId,
+                    UploadedAt = DateTime.UtcNow,
+                    ExpiresAt = DateTime.UtcNow.AddHours(1), // Р–РёРІРµС‚ 1 С‡Р°СЃ
+                    FileSize = audioFile.Length,
+                    ContentType = audioFile.ContentType
+                };
+
+                _files[fileId] = testFile;
+
+                _logger.LogInformation($"рџЋ¤ Uploaded test audio: {fileId} by {userId}");
+
+                return Ok(new
+                {
+                    fileId = fileId,
+                    fileName = fileName,
+                    originalName = audioFile.FileName,
+                    description = testFile.Description,
+                    uploadedAt = testFile.UploadedAt,
+                    expiresAt = testFile.ExpiresAt,
+                    fileSize = audioFile.Length,
+                    downloadUrl = $"/api/audio-test/download/{fileId}",
+                    testUrl = $"/api/audio-test/test/{fileId}"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"вќЊ Error uploading test audio: {ex.Message}");
+                return BadRequest(new { error = "Failed to upload audio" });
+            }
+        }
+
+        /// <summary>
+        /// рџ“‹ РЎРїРёСЃРѕРє Р·Р°РіСЂСѓР¶РµРЅРЅС‹С… Р°СѓРґРёРѕ С„Р°Р№Р»РѕРІ
+        /// </summary>
+        [HttpGet("list")]
+        public IActionResult ListAudioFiles()
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized();
 
-            if (audioFile == null || audioFile.Length == 0)
-                return BadRequest(new { error = "No audio file provided" });
+            // РћС‡РёС‰Р°РµРј РёСЃС‚РµРєС€РёРµ С„Р°Р№Р»С‹
+            CleanupExpiredFiles();
 
-            // Создаем папку для тестовых аудио
-            var testAudioDir = Path.Combine(_environment.WebRootPath ?? _environment.ContentRootPath, "test-audio");
-            Directory.CreateDirectory(testAudioDir);
+            var userFiles = _files.Values
+                .Where(f => f.UploadedBy == userId)
+                .OrderByDescending(f => f.UploadedAt)
+                .Select(f => new
+                {
+                    fileId = f.Id,
+                    fileName = f.FileName,
+                    originalName = f.OriginalName,
+                    description = f.Description,
+                    uploadedAt = f.UploadedAt,
+                    expiresAt = f.ExpiresAt,
+                    fileSize = f.FileSize,
+                    downloadUrl = $"/api/audio-test/download/{f.Id}",
+                    testUrl = $"/api/audio-test/test/{f.Id}",
+                    isExpired = f.ExpiresAt < DateTime.UtcNow
+                });
 
-            // Генерируем уникальное имя файла
-            var fileId = Guid.NewGuid().ToString("N")[..8]; // 8 символов для простоты
-            var extension = Path.GetExtension(audioFile.FileName).ToLowerInvariant();
-            if (string.IsNullOrEmpty(extension))
-                extension = ".wav";
-
-            var fileName = $"{fileId}_{DateTime.UtcNow:MMdd_HHmm}{extension}";
-            var filePath = Path.Combine(testAudioDir, fileName);
-
-            // Сохраняем файл
-            using (var stream = new FileStream(filePath, FileMode.Create))
+            return Ok(new
             {
-                await audioFile.CopyToAsync(stream);
+                files = userFiles,
+                totalFiles = userFiles.Count(),
+                note = "Р¤Р°Р№Р»С‹ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё СѓРґР°Р»СЏСЋС‚СЃСЏ С‡РµСЂРµР· 1 С‡Р°СЃ"
+            });
+        }
+
+        /// <summary>
+        /// рџ“Ґ РЎРєР°С‡Р°С‚СЊ Р°СѓРґРёРѕ С„Р°Р№Р»
+        /// </summary>
+        [HttpGet("download/{fileId}")]
+        public async Task<IActionResult> DownloadAudio(string fileId)
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            if (!_files.TryGetValue(fileId, out var testFile))
+                return NotFound(new { error = "File not found" });
+
+            if (testFile.UploadedBy != userId)
+                return Forbid();
+
+            if (testFile.ExpiresAt < DateTime.UtcNow)
+            {
+                CleanupExpiredFiles();
+                return StatusCode(410, new { error = "File expired and was deleted" }); // 410 Gone
             }
 
-            // Добавляем в память
-            var testFile = new AudioTestFile
-            {
-                Id = fileId,
-                FileName = fileName,
-                FilePath = filePath,
-                OriginalName = audioFile.FileName,
-                Description = description ?? "Test audio",
-                UploadedBy = userId,
-                UploadedAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddHours(1), // Живет 1 час
-                FileSize = audioFile.Length,
-                ContentType = audioFile.ContentType
-            };
+            if (!System.IO.File.Exists(testFile.FilePath))
+                return NotFound(new { error = "Physical file not found" });
 
-            _files[fileId] = testFile;
+            var fileBytes = await System.IO.File.ReadAllBytesAsync(testFile.FilePath);
 
-            _logger.LogInformation($"?? Uploaded test audio: {fileId} by {userId}");
+            _logger.LogInformation($"рџ“Ґ Downloaded test audio: {fileId} by {userId}");
+
+            return File(fileBytes, testFile.ContentType ?? "audio/wav", testFile.OriginalName);
+        }
+
+        /// <summary>
+        /// рџ§Є РўРµСЃС‚РёСЂРѕРІР°С‚СЊ Р°СѓРґРёРѕ (Р·Р°РіР»СѓС€РєР° РґР»СЏ Р±СѓРґСѓС‰РµРіРѕ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ)
+        /// </summary>
+        [HttpPost("test/{fileId}")]
+        public IActionResult TestAudio(string fileId, [FromBody] TestAudioRequest request)
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            if (!_files.TryGetValue(fileId, out var testFile))
+                return NotFound(new { error = "File not found" });
+
+            if (testFile.UploadedBy != userId)
+                return Forbid();
+
+            if (testFile.ExpiresAt < DateTime.UtcNow)
+                return StatusCode(410, new { error = "File expired" }); // 410 Gone
 
             return Ok(new
             {
                 fileId = fileId,
-                fileName = fileName,
-                originalName = audioFile.FileName,
-                description = testFile.Description,
-                uploadedAt = testFile.UploadedAt,
-                expiresAt = testFile.ExpiresAt,
-                fileSize = audioFile.Length,
+                testType = request.TestType,
+                message = "РўРµСЃС‚РёСЂРѕРІР°РЅРёРµ Р°СѓРґРёРѕ РїРѕРєР° РЅРµРґРѕСЃС‚СѓРїРЅРѕ. Р¤Р°Р№Р» СЃРѕС…СЂР°РЅРµРЅ Рё РјРѕР¶РµС‚ Р±С‹С‚СЊ СЃРєР°С‡Р°РЅ РґР»СЏ РІРЅРµС€РЅРµРіРѕ С‚РµСЃС‚РёСЂРѕРІР°РЅРёСЏ.",
                 downloadUrl = $"/api/audio-test/download/{fileId}",
-                testUrl = $"/api/audio-test/test/{fileId}"
+                expiresAt = testFile.ExpiresAt,
+                note = "Р“РѕР»РѕСЃРѕРІС‹Рµ С„СѓРЅРєС†РёРё РІСЂРµРјРµРЅРЅРѕ РѕС‚РєР»СЋС‡РµРЅС‹. РСЃРїРѕР»СЊР·СѓР№С‚Рµ С„РѕС‚Рѕ-Р°РЅР°Р»РёР·."
             });
         }
-        catch (Exception ex)
+
+        /// <summary>
+        /// рџ—‘пёЏ РЈРґР°Р»РёС‚СЊ Р°СѓРґРёРѕ С„Р°Р№Р»
+        /// </summary>
+        [HttpDelete("delete/{fileId}")]
+        public IActionResult DeleteAudio(string fileId)
         {
-            _logger.LogError($"? Error uploading test audio: {ex.Message}");
-            return BadRequest(new { error = "Failed to upload audio" });
-        }
-    }
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-    /// <summary>
-    /// ?? Список загруженных аудио файлов
-    /// </summary>
-    [HttpGet("list")]
-    public IActionResult ListAudioFiles()
-    {
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
+            if (!_files.TryGetValue(fileId, out var testFile))
+                return NotFound(new { error = "File not found" });
 
-        // Очищаем истекшие файлы
-        CleanupExpiredFiles();
+            if (testFile.UploadedBy != userId)
+                return Forbid();
 
-        var userFiles = _files.Values
-            .Where(f => f.UploadedBy == userId)
-            .OrderByDescending(f => f.UploadedAt)
-            .Select(f => new
-            {
-                fileId = f.Id,
-                fileName = f.FileName,
-                originalName = f.OriginalName,
-                description = f.Description,
-                uploadedAt = f.UploadedAt,
-                expiresAt = f.ExpiresAt,
-                fileSize = f.FileSize,
-                downloadUrl = $"/api/audio-test/download/{f.Id}",
-                testUrl = $"/api/audio-test/test/{f.Id}",
-                isExpired = f.ExpiresAt < DateTime.UtcNow
-            });
-
-        return Ok(new
-        {
-            files = userFiles,
-            totalFiles = userFiles.Count(),
-            note = "Файлы автоматически удаляются через 1 час"
-        });
-    }
-
-    /// <summary>
-    /// ?? Скачать аудио файл
-    /// </summary>
-    [HttpGet("download/{fileId}")]
-    public async Task<IActionResult> DownloadAudio(string fileId)
-    {
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        if (!_files.TryGetValue(fileId, out var testFile))
-            return NotFound(new { error = "File not found" });
-
-        if (testFile.UploadedBy != userId)
-            return Forbid();
-
-        if (testFile.ExpiresAt < DateTime.UtcNow)
-        {
-            CleanupExpiredFiles();
-            return Gone(new { error = "File expired and was deleted" });
-        }
-
-        if (!System.IO.File.Exists(testFile.FilePath))
-            return NotFound(new { error = "Physical file not found" });
-
-        var fileBytes = await System.IO.File.ReadAllBytesAsync(testFile.FilePath);
-
-        _logger.LogInformation($"?? Downloaded test audio: {fileId} by {userId}");
-
-        return File(fileBytes, testFile.ContentType ?? "audio/wav", testFile.OriginalName);
-    }
-
-    /// <summary>
-    /// ?? Тестировать аудио (заглушка для будущего использования)
-    /// </summary>
-    [HttpPost("test/{fileId}")]
-    public async Task<IActionResult> TestAudio(string fileId, [FromBody] TestAudioRequest request)
-    {
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        if (!_files.TryGetValue(fileId, out var testFile))
-            return NotFound(new { error = "File not found" });
-
-        if (testFile.UploadedBy != userId)
-            return Forbid();
-
-        if (testFile.ExpiresAt < DateTime.UtcNow)
-            return Gone(new { error = "File expired" });
-
-        return Ok(new
-        {
-            fileId = fileId,
-            testType = request.TestType,
-            message = "Тестирование аудио пока недоступно. Файл сохранен и может быть скачан для внешнего тестирования.",
-            downloadUrl = $"/api/audio-test/download/{fileId}",
-            expiresAt = testFile.ExpiresAt,
-            note = "Голосовые функции временно отключены. Используйте фото-анализ."
-        });
-    }
-
-    /// <summary>
-    /// ??? Удалить аудио файл
-    /// </summary>
-    [HttpDelete("delete/{fileId}")]
-    public IActionResult DeleteAudio(string fileId)
-    {
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        if (!_files.TryGetValue(fileId, out var testFile))
-            return NotFound(new { error = "File not found" });
-
-        if (testFile.UploadedBy != userId)
-            return Forbid();
-
-        // Удаляем файл
-        if (System.IO.File.Exists(testFile.FilePath))
-        {
-            try
-            {
-                System.IO.File.Delete(testFile.FilePath);
-                _logger.LogInformation($"??? Deleted test audio file: {testFile.FilePath}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"? Error deleting file: {ex.Message}");
-            }
-        }
-
-        // Удаляем из памяти
-        _files.Remove(fileId);
-
-        return Ok(new { deleted = true, fileId = fileId });
-    }
-
-    /// <summary>
-    /// ?? Очистить истекшие файлы (админ функция)
-    /// </summary>
-    [HttpPost("cleanup")]
-    public IActionResult CleanupFiles()
-    {
-        var deletedCount = CleanupExpiredFiles();
-        return Ok(new
-        {
-            cleaned = true,
-            deletedFiles = deletedCount,
-            remainingFiles = _files.Count
-        });
-    }
-
-    // Вспомогательный метод для очистки
-    private int CleanupExpiredFiles()
-    {
-        var expiredFiles = _files.Where(kvp => kvp.Value.ExpiresAt < DateTime.UtcNow).ToList();
-
-        foreach (var (fileId, testFile) in expiredFiles)
-        {
-            // Удаляем физический файл
+            // РЈРґР°Р»СЏРµРј С„Р°Р№Р»
             if (System.IO.File.Exists(testFile.FilePath))
             {
                 try
                 {
                     System.IO.File.Delete(testFile.FilePath);
+                    _logger.LogInformation($"рџ—‘пёЏ Deleted test audio file: {testFile.FilePath}");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError($"? Error deleting expired file: {ex.Message}");
+                    _logger.LogError($"вќЊ Error deleting file: {ex.Message}");
                 }
             }
 
-            // Удаляем из памяти
+            // РЈРґР°Р»СЏРµРј РёР· РїР°РјСЏС‚Рё
             _files.Remove(fileId);
+
+            return Ok(new { deleted = true, fileId = fileId });
         }
 
-        if (expiredFiles.Count > 0)
+        /// <summary>
+        /// рџ§№ РћС‡РёСЃС‚РёС‚СЊ РёСЃС‚РµРєС€РёРµ С„Р°Р№Р»С‹ (Р°РґРјРёРЅ С„СѓРЅРєС†РёСЏ)
+        /// </summary>
+        [HttpPost("cleanup")]
+        public IActionResult CleanupFiles()
         {
-            _logger.LogInformation($"?? Cleaned up {expiredFiles.Count} expired test audio files");
+            var deletedCount = CleanupExpiredFiles();
+            return Ok(new
+            {
+                cleaned = true,
+                deletedFiles = deletedCount,
+                remainingFiles = _files.Count
+            });
         }
 
-        return expiredFiles.Count;
+        // Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Р№ РјРµС‚РѕРґ РґР»СЏ РѕС‡РёСЃС‚РєРё
+        private int CleanupExpiredFiles()
+        {
+            var expiredFiles = _files.Where(kvp => kvp.Value.ExpiresAt < DateTime.UtcNow).ToList();
+
+            foreach (var (fileId, testFile) in expiredFiles)
+            {
+                // РЈРґР°Р»СЏРµРј С„РёР·РёС‡РµСЃРєРёР№ С„Р°Р№Р»
+                if (System.IO.File.Exists(testFile.FilePath))
+                {
+                    try
+                    {
+                        System.IO.File.Delete(testFile.FilePath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"вќЊ Error deleting expired file: {ex.Message}");
+                    }
+                }
+
+                // РЈРґР°Р»СЏРµРј РёР· РїР°РјСЏС‚Рё
+                _files.Remove(fileId);
+            }
+
+            if (expiredFiles.Count > 0)
+            {
+                _logger.LogInformation($"рџ§№ Cleaned up {expiredFiles.Count} expired test audio files");
+            }
+
+            return expiredFiles.Count;
+        }
+    }
+
+    public class AudioTestFile
+    {
+        public string Id { get; set; } = string.Empty;
+        public string FileName { get; set; } = string.Empty;
+        public string FilePath { get; set; } = string.Empty;
+        public string OriginalName { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string UploadedBy { get; set; } = string.Empty;
+        public DateTime UploadedAt { get; set; }
+        public DateTime ExpiresAt { get; set; }
+        public long FileSize { get; set; }
+        public string? ContentType { get; set; }
+    }
+
+    public class TestAudioRequest
+    {
+        public string TestType { get; set; } = "voice_recognition";
+        public string? Parameters { get; set; }
     }
 }
