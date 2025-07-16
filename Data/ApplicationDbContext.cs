@@ -366,32 +366,12 @@ namespace FitnessTracker.API.Data
                 },
                 new Skin
                 {
-                    Id = "skin_machine",
-                    Name = "Машина",
-                    Cost = 700,
-                    ImageUrl = "https://example.com/skins/machine.png",
-                    Description = "Для тех, кто работает как машина в тренировках и питании",
-                    ExperienceBoost = 1.4m, // 40% буст опыта
-                    Tier = 2
-                },
-                new Skin
-                {
                     Id = "skin_strategist",
                     Name = "Стратег",
                     Cost = 1000,
                     ImageUrl = "https://example.com/skins/strategist.png",
                     Description = "Мастер планирования и долгосрочных целей. Венец экономической мудрости.",
                     ExperienceBoost = 1.5m, // 50% буст опыта
-                    Tier = 3
-                },
-                new Skin
-                {
-                    Id = "skin_superhuman",
-                    Name = "Сверхчеловек",
-                    Cost = 2000,
-                    ImageUrl = "https://example.com/skins/superhuman.png",
-                    Description = "Для истинных легенд фитнеса, которые достигли невозможного",
-                    ExperienceBoost = 2.0m, // 100% буст опыта (ДВОЙНОЙ ОПЫТ!)
                     Tier = 3
                 }
             );
