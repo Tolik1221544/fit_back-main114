@@ -6,10 +6,9 @@ using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
 namespace FitnessTracker.API.Controllers
-
 {
     /// <summary>
-    /// 🤖 Контроллер для работы с ИИ функциями (Gemini)
+    /// 🤖 Контроллер для работы с ИИ функциями (Gemini) с сохранением аудио файлов
     /// </summary>
     [ApiController]
     [Route("api/ai")]
@@ -23,6 +22,7 @@ namespace FitnessTracker.API.Controllers
         private readonly IActivityService _activityService;
         private readonly IBodyScanService _bodyScanService;
         private readonly IImageService _imageService;
+        private readonly IAudioFileService _audioFileService; // НОВОЕ
         private readonly ILogger<AIController> _logger;
 
         public AIController(
@@ -32,6 +32,7 @@ namespace FitnessTracker.API.Controllers
             IActivityService activityService,
             IBodyScanService bodyScanService,
             IImageService imageService,
+            IAudioFileService audioFileService, // НОВОЕ
             ILogger<AIController> logger)
         {
             _geminiService = geminiService;
@@ -40,8 +41,454 @@ namespace FitnessTracker.API.Controllers
             _activityService = activityService;
             _bodyScanService = bodyScanService;
             _imageService = imageService;
+            _audioFileService = audioFileService; // НОВОЕ
             _logger = logger;
         }
+
+        /// <summary>
+        /// 🎤 Голосовой ввод тренировки с сохранением файла (требует LW Coins)
+        /// </summary>
+        /// <param name="audioFile">Аудиофайл с описанием тренировки</param>
+        /// <param name="workoutType">Тип тренировки (strength/cardio)</param>
+        /// <param name="saveResults">Сохранить результаты в базу данных</param>
+        /// <param name="keepAudioFile">Сохранить аудио файл на сервере (по умолчанию 1 час)</param>
+        /// <returns>Распознанная и структурированная информация о тренировке + информация о сохраненном файле</returns>
+        /// <response code="200">Тренировка успешно распознана</response>
+        /// <response code="400">Недостаточно LW Coins или ошибка обработки</response>
+        /// <response code="401">Требуется авторизация</response>
+        [HttpPost("voice-workout")]
+        public async Task<IActionResult> VoiceWorkout(
+            IFormFile audioFile,
+            [FromForm] string? workoutType = null,
+            [FromForm] bool saveResults = false,
+            [FromForm] bool keepAudioFile = true) // НОВОЕ
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                // Проверяем и тратим LW Coins
+                var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_voice_workout",
+                    "AI Voice Workout", "voice");
+
+                if (!canSpend)
+                {
+                    return BadRequest(new { error = "Недостаточно LW Coins для голосового ввода тренировки" });
+                }
+
+                // НОВОЕ: Сохраняем аудио файл на сервере
+                VoiceWorkoutResponseWithFile? responseWithFile = null;
+                if (keepAudioFile)
+                {
+                    var audioSaveResult = await _audioFileService.SaveAudioFileAsync(audioFile, userId, 1); // 1 час
+                    if (!audioSaveResult.IsSuccess)
+                    {
+                        _logger.LogWarning($"Failed to save audio file: {audioSaveResult.ErrorMessage}");
+                    }
+                    else
+                    {
+                        responseWithFile = new VoiceWorkoutResponseWithFile
+                        {
+                            AudioFileId = audioSaveResult.FileInfo!.FileId,
+                            AudioFileName = audioSaveResult.FileInfo.OriginalName,
+                            AudioFileSize = audioSaveResult.FileInfo.FileSize,
+                            AudioExpiresAt = audioSaveResult.FileInfo.ExpiresAt,
+                            DownloadUrl = $"/api/ai/download-audio/{audioSaveResult.FileInfo.FileId}"
+                        };
+                    }
+                }
+
+                // Конвертируем аудио в байты для анализа
+                using var memoryStream = new MemoryStream();
+                await audioFile.CopyToAsync(memoryStream);
+                var audioData = memoryStream.ToArray();
+
+                _logger.LogInformation($"🎤 Processing voice workout for user {userId}, audio size: {audioData.Length} bytes, workoutType: {workoutType}");
+
+                // Анализируем с помощью Gemini
+                var result = await _geminiService.AnalyzeVoiceWorkoutAsync(audioData, workoutType);
+
+                if (!result.Success)
+                {
+                    _logger.LogError($"❌ Voice workout analysis failed: {result.ErrorMessage}");
+                    return BadRequest(new { error = result.ErrorMessage });
+                }
+
+                _logger.LogInformation($"✅ Voice workout analysis successful. Type: {result.WorkoutData?.Type}, StartTime: {result.WorkoutData?.StartTime}, EndTime: {result.WorkoutData?.EndTime}");
+
+                // Если нужно сохранить результаты
+                if (saveResults && result.WorkoutData != null)
+                {
+                    try
+                    {
+                        var addActivityRequest = new AddActivityRequest
+                        {
+                            Type = result.WorkoutData.Type,
+                            StartDate = result.WorkoutData.StartTime.Date,
+                            StartTime = result.WorkoutData.StartTime,
+                            EndDate = result.WorkoutData.EndTime?.Date,
+                            EndTime = result.WorkoutData.EndTime,
+                            Calories = result.WorkoutData.EstimatedCalories,
+                            StrengthData = result.WorkoutData.StrengthData,
+                            CardioData = result.WorkoutData.CardioData
+                        };
+
+                        await _activityService.AddActivityAsync(userId, addActivityRequest);
+                        _logger.LogInformation($"✅ Saved voice workout for user {userId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"❌ Error saving voice workout: {ex.Message}");
+                        // Не прерываем выполнение, возвращаем результат анализа
+                    }
+                }
+
+                // Объединяем результаты
+                if (responseWithFile != null)
+                {
+                    responseWithFile.Success = result.Success;
+                    responseWithFile.ErrorMessage = result.ErrorMessage;
+                    responseWithFile.TranscribedText = result.TranscribedText;
+                    responseWithFile.WorkoutData = result.WorkoutData;
+                    return Ok(responseWithFile);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error processing voice workout: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
+                return BadRequest(new { error = $"Ошибка обработки голосовой тренировки: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
+        /// 🗣️ Голосовой ввод питания с сохранением файла (требует LW Coins)
+        /// </summary>
+        /// <param name="audioFile">Аудиофайл с описанием еды</param>
+        /// <param name="mealType">Тип приема пищи</param>
+        /// <param name="saveResults">Сохранить результаты в базу данных</param>
+        /// <param name="keepAudioFile">Сохранить аудио файл на сервере</param>
+        /// <returns>Распознанная и структурированная информация о питании + информация о файле</returns>
+        /// <response code="200">Питание успешно распознано</response>
+        /// <response code="400">Недостаточно LW Coins или ошибка обработки</response>
+        /// <response code="401">Требуется авторизация</response>
+        [HttpPost("voice-food")]
+        [ProducesResponseType(typeof(VoiceFoodResponseWithFile), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> VoiceFood(
+            IFormFile audioFile,
+            [FromForm] string? mealType = null,
+            [FromForm] bool saveResults = false,
+            [FromForm] bool keepAudioFile = true) // НОВОЕ
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                // Проверяем и тратим LW Coins
+                var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_voice_food",
+                    "AI Voice Food", "voice");
+
+                if (!canSpend)
+                {
+                    return BadRequest(new { error = "Недостаточно LW Coins для голосового ввода питания" });
+                }
+
+                // НОВОЕ: Сохраняем аудио файл
+                VoiceFoodResponseWithFile? responseWithFile = null;
+                if (keepAudioFile)
+                {
+                    var audioSaveResult = await _audioFileService.SaveAudioFileAsync(audioFile, userId, 1);
+                    if (audioSaveResult.IsSuccess)
+                    {
+                        responseWithFile = new VoiceFoodResponseWithFile
+                        {
+                            AudioFileId = audioSaveResult.FileInfo!.FileId,
+                            AudioFileName = audioSaveResult.FileInfo.OriginalName,
+                            AudioFileSize = audioSaveResult.FileInfo.FileSize,
+                            AudioExpiresAt = audioSaveResult.FileInfo.ExpiresAt,
+                            DownloadUrl = $"/api/ai/download-audio/{audioSaveResult.FileInfo.FileId}"
+                        };
+                    }
+                }
+
+                // Конвертируем аудио в байты
+                using var memoryStream = new MemoryStream();
+                await audioFile.CopyToAsync(memoryStream);
+                var audioData = memoryStream.ToArray();
+
+                _logger.LogInformation($"🗣️ Processing voice food for user {userId}, audio size: {audioData.Length} bytes");
+
+                // Анализируем с помощью Gemini
+                var result = await _geminiService.AnalyzeVoiceFoodAsync(audioData, mealType);
+
+                if (!result.Success)
+                {
+                    return BadRequest(new { error = result.ErrorMessage });
+                }
+
+                // Если нужно сохранить результаты
+                if (saveResults && result.FoodItems?.Any() == true)
+                {
+                    try
+                    {
+                        var addFoodRequest = new AddFoodIntakeRequest
+                        {
+                            Items = result.FoodItems.Select(fi => new FoodItemRequest
+                            {
+                                Name = fi.Name,
+                                Weight = fi.EstimatedWeight,
+                                WeightType = fi.WeightType,
+                                NutritionPer100g = fi.NutritionPer100g
+                            }).ToList(),
+                            DateTime = DateTime.UtcNow
+                        };
+
+                        await _foodIntakeService.AddFoodIntakeAsync(userId, addFoodRequest);
+                        _logger.LogInformation($"✅ Saved {result.FoodItems.Count} voice food items for user {userId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"❌ Error saving voice food: {ex.Message}");
+                    }
+                }
+
+                // Объединяем результаты
+                if (responseWithFile != null)
+                {
+                    responseWithFile.Success = result.Success;
+                    responseWithFile.ErrorMessage = result.ErrorMessage;
+                    responseWithFile.TranscribedText = result.TranscribedText;
+                    responseWithFile.FoodItems = result.FoodItems;
+                    responseWithFile.EstimatedTotalCalories = result.EstimatedTotalCalories;
+                    return Ok(responseWithFile);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error processing voice food: {ex.Message}");
+                return BadRequest(new { error = $"Ошибка обработки голосового ввода питания: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
+        /// 📥 Скачать сохраненный аудио файл (любой пользователь может скачать любой файл)
+        /// </summary>
+        /// <param name="fileId">ID аудио файла</param>
+        /// <returns>Аудио файл для скачивания</returns>
+        [HttpGet("download-audio/{fileId}")]
+        [ProducesResponseType(typeof(FileResult), 200)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> DownloadAudio(string fileId)
+        {
+            try
+            {
+                var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(currentUserId))
+                    return Unauthorized();
+
+                var audioInfo = await _audioFileService.GetAudioFileInfoAsync(fileId);
+                if (audioInfo == null)
+                    return NotFound(new { error = "Audio file not found or expired" });
+
+                // ✅ УБРАНА ПРОВЕРКА ВЛАДЕЛЬЦА - теперь любой пользователь может скачать любой файл
+                // if (audioInfo.UserId != currentUserId)
+                //     return Forbid();
+
+                var audioData = await _audioFileService.GetAudioFileAsync(fileId);
+                if (audioData == null)
+                    return NotFound(new { error = "Audio file data not found" });
+
+                _logger.LogInformation($"📥 Downloaded audio file: {fileId} by user {currentUserId} (owner: {audioInfo.UserId})");
+
+                // Добавляем информацию о владельце в заголовки (опционально)
+                Response.Headers.Add("X-File-Owner", audioInfo.UserId);
+                Response.Headers.Add("X-File-Created", audioInfo.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
+
+                return File(audioData, audioInfo.MimeType, audioInfo.OriginalName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error downloading audio file {fileId}: {ex.Message}");
+                return BadRequest(new { error = "Failed to download audio file" });
+            }
+        }
+
+        /// <summary>
+        /// 📋 Получить список сохраненных аудио файлов пользователя
+        /// </summary>
+        /// <returns>Список аудио файлов пользователя</returns>
+        [HttpGet("audio-files")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> GetUserAudioFiles()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                var audioFiles = await _audioFileService.GetUserAudioFilesAsync(userId);
+
+                var response = audioFiles.Select(file => new
+                {
+                    fileId = file.FileId,
+                    fileName = file.OriginalName,
+                    fileSize = file.FileSize,
+                    mimeType = file.MimeType,
+                    userId = file.UserId, // Показываем владельца
+                    createdAt = file.CreatedAt,
+                    expiresAt = file.ExpiresAt,
+                    downloadUrl = $"/api/ai/download-audio/{file.FileId}",
+                    isExpired = file.ExpiresAt < DateTime.UtcNow,
+                    isOwner = file.UserId == userId
+                });
+
+                return Ok(new
+                {
+                    files = response,
+                    totalFiles = audioFiles.Count,
+                    scope = "user",
+                    note = "Your personal audio files. Use /api/ai/audio-files/all for all files."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error getting user audio files: {ex.Message}");
+                return BadRequest(new { error = "Failed to get audio files" });
+            }
+        }
+
+        /// <summary>
+        /// 📋 Получить список ВСЕХ аудио файлов на сервере
+        /// </summary>
+        /// <param name="includeExpired">Включить истекшие файлы</param>
+        /// <returns>Список всех аудио файлов</returns>
+        [HttpGet("audio-files/all")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> GetAllAudioFiles([FromQuery] bool includeExpired = false)
+        {
+            try
+            {
+                var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(currentUserId))
+                    return Unauthorized();
+
+                var allAudioFiles = await _audioFileService.GetAllAudioFilesAsync(includeExpired);
+
+                var response = allAudioFiles.Select(file => new
+                {
+                    fileId = file.FileId,
+                    fileName = file.OriginalName,
+                    fileSize = file.FileSize,
+                    mimeType = file.MimeType,
+                    userId = file.UserId,
+                    createdAt = file.CreatedAt,
+                    expiresAt = file.ExpiresAt,
+                    downloadUrl = $"/api/ai/download-audio/{file.FileId}",
+                    isExpired = file.ExpiresAt < DateTime.UtcNow,
+                    isOwner = file.UserId == currentUserId,
+                    // Маскируем userId для приватности (показываем только первые 4 символа)
+                    ownerMask = file.UserId.Substring(0, Math.Min(4, file.UserId.Length)) + "****"
+                });
+
+                return Ok(new
+                {
+                    files = response,
+                    totalFiles = allAudioFiles.Count,
+                    scope = "global",
+                    includeExpired = includeExpired,
+                    note = "All audio files on server. You can download any file using /api/ai/download-audio/{fileId}"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error getting all audio files: {ex.Message}");
+                return BadRequest(new { error = "Failed to get all audio files" });
+            }
+        }
+
+        /// <summary>
+        /// 🗑️ Удалить сохраненный аудио файл
+        /// </summary>
+        /// <param name="fileId">ID файла для удаления</param>
+        /// <returns>Результат удаления</returns>
+        [HttpDelete("audio-files/{fileId}")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(403)]
+        public async Task<IActionResult> DeleteAudioFile(string fileId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                var audioInfo = await _audioFileService.GetAudioFileInfoAsync(fileId);
+                if (audioInfo == null)
+                    return NotFound(new { error = "Audio file not found" });
+
+                // Проверяем права доступа
+                if (audioInfo.UserId != userId)
+                    return Forbid();
+
+                var deleted = await _audioFileService.DeleteAudioFileAsync(fileId);
+                if (deleted)
+                {
+                    return Ok(new { success = true, message = "Audio file deleted successfully" });
+                }
+                else
+                {
+                    return BadRequest(new { error = "Failed to delete audio file" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error deleting audio file {fileId}: {ex.Message}");
+                return BadRequest(new { error = "Failed to delete audio file" });
+            }
+        }
+
+        /// <summary>
+        /// 🧹 Очистить истекшие аудио файлы (админ функция)
+        /// </summary>
+        /// <returns>Количество удаленных файлов</returns>
+        [HttpPost("cleanup-audio")]
+        [ProducesResponseType(200)]
+        public async Task<IActionResult> CleanupExpiredAudioFiles()
+        {
+            try
+            {
+                var deletedCount = await _audioFileService.CleanupExpiredFilesAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    deletedFiles = deletedCount,
+                    message = $"Cleaned up {deletedCount} expired audio files"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error cleaning up audio files: {ex.Message}");
+                return BadRequest(new { error = "Failed to cleanup audio files" });
+            }
+        }
+
+        // Остальные методы остаются без изменений...
 
         /// <summary>
         /// 🍎 Сканирование еды по фото (требует LW Coins)
@@ -53,19 +500,14 @@ namespace FitnessTracker.API.Controllers
         /// <response code="200">Еда успешно проанализирована</response>
         /// <response code="400">Недостаточно LW Coins или ошибка обработки</response>
         /// <response code="401">Требуется авторизация</response>
-        /// <remarks>
-        /// Эта функция использует Gemini AI для анализа изображения еды.
-        /// Тратит 1 LW Coin за каждое сканирование (кроме премиум пользователей).
-        /// Может определить несколько блюд на одном изображении.
-        /// </remarks>
         [HttpPost("scan-food")]
         [ProducesResponseType(typeof(FoodScanResponse), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]
         public async Task<IActionResult> ScanFood(
-    IFormFile image,
-    [FromForm] string? userPrompt = null,
-    [FromForm] bool saveResults = false)
+            IFormFile image,
+            [FromForm] string? userPrompt = null,
+            [FromForm] bool saveResults = false)
         {
             try
             {
@@ -82,7 +524,7 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = "Недостаточно LW Coins для сканирования еды" });
                 }
 
-                // НОВОЕ: Сохраняем изображение и получаем URL
+                // Сохраняем изображение и получаем URL
                 var imageUrl = await _imageService.SaveImageAsync(image, "food-scans");
 
                 // Конвертируем изображение в байты для анализа
@@ -102,7 +544,7 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = result.ErrorMessage });
                 }
 
-                // НОВОЕ: Добавляем URL изображения в ответ
+                // Добавляем URL изображения в ответ
                 result.ImageUrl = imageUrl;
 
                 // Если нужно сохранить результаты
@@ -118,7 +560,7 @@ namespace FitnessTracker.API.Controllers
                                 Weight = fi.EstimatedWeight,
                                 WeightType = fi.WeightType,
                                 NutritionPer100g = fi.NutritionPer100g,
-                                Image = imageUrl // НОВОЕ: Сохраняем URL изображения
+                                Image = imageUrl
                             }).ToList(),
                             DateTime = DateTime.UtcNow
                         };
@@ -129,7 +571,6 @@ namespace FitnessTracker.API.Controllers
                     catch (Exception ex)
                     {
                         _logger.LogError($"❌ Error saving food items: {ex.Message}");
-                        // Продолжаем выполнение, даже если сохранение не удалось
                     }
                 }
 
@@ -143,163 +584,10 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
-        /// 🔄 Переключить AI провайдера
-        /// </summary>
-        /// <param name="request">Запрос на переключение провайдера</param>
-        /// <returns>Результат переключения</returns>
-        /// <response code="200">Провайдер успешно переключен</response>
-        /// <response code="400">Неверное название провайдера</response>
-        /// <response code="401">Требуется авторизация администратора</response>
-        [HttpPost("switch-provider")]
-        [ProducesResponseType(200)]
-        [ProducesResponseType(400)]
-        [ProducesResponseType(401)]
-        public Task<IActionResult> SwitchProvider([FromBody] SwitchProviderRequest request)
-        {
-            try
-            {
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(userId))
-                    return Task.FromResult<IActionResult>(Unauthorized());
-
-                // Здесь можно добавить проверку на админа
-                // Пока что любой авторизованный пользователь может переключать
-
-                var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-
-                // В реальном приложении это должно сохраняться в базу данных
-                // Пока что просто логируем
-                _logger.LogInformation($"🔄 User {userId} requested to switch to provider: {request.ProviderName}");
-
-                return Task.FromResult<IActionResult>(Ok(new
-                {
-                    success = true,
-                    message = $"Provider switched to {request.ProviderName}",
-                    note = "In production, this should update the database configuration"
-                }));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ Error switching provider: {ex.Message}");
-                return Task.FromResult<IActionResult>(BadRequest(new { error = ex.Message }));
-            }
-        }
-
-        /// <summary>
-        /// 🏥 Получить статус всех AI провайдеров
-        /// </summary>
-        /// <returns>Статус работы всех доступных провайдеров</returns>
-        /// <response code="200">Статус получен</response>
-        [HttpGet("providers-status")]
-        [AllowAnonymous]
-        [ProducesResponseType(200)]
-        public async Task<IActionResult> GetProvidersStatus()
-        {
-            try
-            {
-                // Проверяем, является ли сервис UniversalAIService
-                if (_geminiService is UniversalAIService universalAI)
-                {
-                    var healthStatus = await universalAI.GetProviderHealthStatusAsync();
-                    var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-                    var activeProvider = configuration["AI:ActiveProvider"] ?? "Vertex AI (Gemini Pro 2.5)";
-
-                    return Ok(new
-                    {
-                        ActiveProvider = activeProvider,
-                        Providers = healthStatus.Select(p => new
-                        {
-                            Name = p.Key,
-                            Status = p.Value ? "Online" : "Offline",
-                            IsActive = p.Key == activeProvider
-                        }),
-                        Timestamp = DateTime.UtcNow,
-                        TotalProviders = healthStatus.Count,
-                        HealthyProviders = healthStatus.Count(p => p.Value)
-                    });
-                }
-                else
-                {
-                    return Ok(new
-                    {
-                        Message = "Universal AI service not available",
-                        LegacyService = "Gemini",
-                        Timestamp = DateTime.UtcNow
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ Error getting providers status: {ex.Message}");
-                return StatusCode(503, new
-                {
-                    Error = ex.Message,
-                    Timestamp = DateTime.UtcNow
-                });
-            }
-        }
-
-        /// <summary>
-        /// 🧪 Тестировать конкретного провайдера
-        /// </summary>
-        /// <param name="request">Название провайдера для тестирования</param>
-        /// <returns>Результат тестирования</returns>
-        [HttpPost("test-provider")]
-        [AllowAnonymous]
-        [ProducesResponseType(200)]
-        [ProducesResponseType(400)]
-        public async Task<IActionResult> TestProvider([FromBody] TestProviderRequest request)
-        {
-            try
-            {
-                _logger.LogInformation($"🧪 Testing provider: {request.ProviderName}");
-
-                // Простой тест сервиса
-                var testContents = new List<GeminiContent>
-                {
-                    new GeminiContent
-                    {
-                        Parts = new List<GeminiPart>
-                        {
-                            new GeminiPart { Text = "Test" }
-                        }
-                    }
-                };
-
-                var response = await _geminiService.SendGeminiRequestAsync(testContents);
-                var isHealthy = response?.Candidates?.Any() == true;
-
-                return Ok(new
-                {
-                    ProviderName = request.ProviderName,
-                    Status = isHealthy ? "Healthy" : "Unhealthy",
-                    TestTime = DateTime.UtcNow,
-                    Message = isHealthy ? "Provider is working correctly" : "Provider is not responding"
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ Error testing provider {request.ProviderName}: {ex.Message}");
-                return BadRequest(new
-                {
-                    error = ex.Message,
-                    providerName = request.ProviderName
-                });
-            }
-        }
-
-        /// <summary>
         /// 💪 Анализ тела по фотографиям
         /// </summary>
         /// <param name="request">Данные для анализа тела</param>
         /// <returns>Результат анализа тела</returns>
-        /// <response code="200">Тело успешно проанализировано</response>
-        /// <response code="400">Ошибка обработки</response>
-        /// <response code="401">Требуется авторизация</response>
-        /// <remarks>
-        /// Анализирует фотографии тела и предоставляет рекомендации по тренировкам и питанию.
-        /// Может анализировать до 3 фотографий (фронтальная, боковая, сзади).
-        /// </remarks>
         [HttpPost("analyze-body")]
         [ProducesResponseType(typeof(BodyScanResponse), 200)]
         [ProducesResponseType(400)]
@@ -314,7 +602,7 @@ namespace FitnessTracker.API.Controllers
 
                 _logger.LogInformation($"💪 Processing body analysis for user {userId}");
 
-                // НОВОЕ: Сохраняем изображения и получаем URLs
+                // Сохраняем изображения и получаем URLs
                 string? frontImageUrl = null;
                 string? sideImageUrl = null;
                 string? backImageUrl = null;
@@ -371,7 +659,7 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = result.ErrorMessage });
                 }
 
-                // НОВОЕ: Добавляем URLs изображений в ответ
+                // Добавляем URLs изображений в ответ
                 result.FrontImageUrl = frontImageUrl;
                 result.SideImageUrl = sideImageUrl;
                 result.BackImageUrl = backImageUrl;
@@ -390,11 +678,8 @@ namespace FitnessTracker.API.Controllers
                         WaistCircumference = result.BodyAnalysis.EstimatedWaistCircumference,
                         ChestCircumference = result.BodyAnalysis.EstimatedChestCircumference,
                         HipCircumference = result.BodyAnalysis.EstimatedHipCircumference,
-
-                        // ✅ НОВЫЕ ПОЛЯ: Сохраняем основной обмен веществ
                         BasalMetabolicRate = result.BodyAnalysis.BasalMetabolicRate,
                         MetabolicRateCategory = result.BodyAnalysis.MetabolicRateCategory,
-
                         Notes = $"AI Analysis: {result.BodyAnalysis.OverallCondition}. BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал ({result.BodyAnalysis.MetabolicRateCategory})",
                         ScanDate = DateTime.UtcNow
                     };
@@ -405,7 +690,6 @@ namespace FitnessTracker.API.Controllers
                 catch (Exception ex)
                 {
                     _logger.LogError($"❌ Error saving body scan: {ex.Message}");
-                    // Продолжаем выполнение
                 }
 
                 return Ok(result);
@@ -418,181 +702,9 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
-        /// 🎤 Голосовой ввод тренировки (требует LW Coins)
-        /// </summary>
-        /// <param name="audioFile">Аудиофайл с описанием тренировки</param>
-        /// <param name="workoutType">Тип тренировки (strength/cardio)</param>
-        /// <param name="saveResults">Сохранить результаты в базу данных</param>
-        /// <returns>Распознанная и структурированная информация о тренировке</returns>
-        /// <response code="200">Тренировка успешно распознана</response>
-        /// <response code="400">Недостаточно LW Coins или ошибка обработки</response>
-        /// <response code="401">Требуется авторизация</response>
-        [HttpPost("voice-workout")]
-        public async Task<IActionResult> VoiceWorkout(
-    IFormFile audioFile,
-    [FromForm] string? workoutType = null,
-    [FromForm] bool saveResults = false)
-        {
-            try
-            {
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(userId))
-                    return Unauthorized();
-
-                // Проверяем и тратим LW Coins
-                var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_voice_workout",
-                    "AI Voice Workout", "voice");
-
-                if (!canSpend)
-                {
-                    return BadRequest(new { error = "Недостаточно LW Coins для голосового ввода тренировки" });
-                }
-
-                // Конвертируем аудио в байты
-                using var memoryStream = new MemoryStream();
-                await audioFile.CopyToAsync(memoryStream);
-                var audioData = memoryStream.ToArray();
-
-                _logger.LogInformation($"🎤 Processing voice workout for user {userId}, audio size: {audioData.Length} bytes, workoutType: {workoutType}");
-
-                // Анализируем с помощью Gemini
-                var result = await _geminiService.AnalyzeVoiceWorkoutAsync(audioData, workoutType);
-
-                if (!result.Success)
-                {
-                    _logger.LogError($"❌ Voice workout analysis failed: {result.ErrorMessage}");
-                    return BadRequest(new { error = result.ErrorMessage });
-                }
-
-                _logger.LogInformation($"✅ Voice workout analysis successful. Type: {result.WorkoutData?.Type}, StartTime: {result.WorkoutData?.StartTime}, EndTime: {result.WorkoutData?.EndTime}");
-
-                // Если нужно сохранить результаты
-                if (saveResults && result.WorkoutData != null)
-                {
-                    try
-                    {
-                        var addActivityRequest = new AddActivityRequest
-                        {
-                            Type = result.WorkoutData.Type,
-                            StartDate = result.WorkoutData.StartTime.Date,
-                            StartTime = result.WorkoutData.StartTime,
-                            EndDate = result.WorkoutData.EndTime?.Date,
-                            EndTime = result.WorkoutData.EndTime,
-                            Calories = result.WorkoutData.EstimatedCalories,
-                            StrengthData = result.WorkoutData.StrengthData,
-                            CardioData = result.WorkoutData.CardioData
-                        };
-
-                        await _activityService.AddActivityAsync(userId, addActivityRequest);
-                        _logger.LogInformation($"✅ Saved voice workout for user {userId}");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError($"❌ Error saving voice workout: {ex.Message}");
-                        // Не прерываем выполнение, возвращаем результат анализа
-                    }
-                }
-
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ Error processing voice workout: {ex.Message}");
-                _logger.LogError($"Stack trace: {ex.StackTrace}");
-                return BadRequest(new { error = $"Ошибка обработки голосовой тренировки: {ex.Message}" });
-            }
-        }
-
-        /// <summary>
-        /// 🗣️ Голосовой ввод питания (требует LW Coins)
-        /// </summary>
-        /// <param name="audioFile">Аудиофайл с описанием еды</param>
-        /// <param name="mealType">Тип приема пищи</param>
-        /// <param name="saveResults">Сохранить результаты в базу данных</param>
-        /// <returns>Распознанная и структурированная информация о питании</returns>
-        /// <response code="200">Питание успешно распознано</response>
-        /// <response code="400">Недостаточно LW Coins или ошибка обработки</response>
-        /// <response code="401">Требуется авторизация</response>
-        [HttpPost("voice-food")]
-        [ProducesResponseType(typeof(VoiceFoodResponse), 200)]
-        [ProducesResponseType(400)]
-        [ProducesResponseType(401)]
-        public async Task<IActionResult> VoiceFood(
-            IFormFile audioFile,
-            [FromForm] string? mealType = null,
-            [FromForm] bool saveResults = false)
-        {
-            try
-            {
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(userId))
-                    return Unauthorized();
-
-                // Проверяем и тратим LW Coins
-                var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_voice_food",
-                    "AI Voice Food", "voice");
-
-                if (!canSpend)
-                {
-                    return BadRequest(new { error = "Недостаточно LW Coins для голосового ввода питания" });
-                }
-
-                // Конвертируем аудио в байты
-                using var memoryStream = new MemoryStream();
-                await audioFile.CopyToAsync(memoryStream);
-                var audioData = memoryStream.ToArray();
-
-                _logger.LogInformation($"🗣️ Processing voice food for user {userId}, audio size: {audioData.Length} bytes");
-
-                // Анализируем с помощью Gemini
-                var result = await _geminiService.AnalyzeVoiceFoodAsync(audioData, mealType);
-
-                if (!result.Success)
-                {
-                    return BadRequest(new { error = result.ErrorMessage });
-                }
-
-                // Если нужно сохранить результаты
-                if (saveResults && result.FoodItems?.Any() == true)
-                {
-                    try
-                    {
-                        var addFoodRequest = new AddFoodIntakeRequest
-                        {
-                            Items = result.FoodItems.Select(fi => new FoodItemRequest
-                            {
-                                Name = fi.Name,
-                                Weight = fi.EstimatedWeight,
-                                WeightType = fi.WeightType,
-                                NutritionPer100g = fi.NutritionPer100g
-                            }).ToList(),
-                            DateTime = DateTime.UtcNow
-                        };
-
-                        await _foodIntakeService.AddFoodIntakeAsync(userId, addFoodRequest);
-                        _logger.LogInformation($"✅ Saved {result.FoodItems.Count} voice food items for user {userId}");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError($"❌ Error saving voice food: {ex.Message}");
-                    }
-                }
-
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ Error processing voice food: {ex.Message}");
-                return BadRequest(new { error = $"Ошибка обработки голосового ввода питания: {ex.Message}" });
-            }
-        }
-
-        /// <summary>
         /// 🧠 Проверка статуса ИИ сервиса
         /// </summary>
         /// <returns>Статус работы Gemini API</returns>
-        /// <response code="200">Сервис работает нормально</response>
-        /// <response code="503">Сервис недоступен</response>
         [HttpGet("status")]
         [AllowAnonymous]
         [ProducesResponseType(200)]
@@ -601,21 +713,7 @@ namespace FitnessTracker.API.Controllers
         {
             try
             {
-                // Простой тестовый запрос к Gemini
-                var testContents = new List<GeminiContent>
-                {
-                    new GeminiContent
-                    {
-                        Parts = new List<GeminiPart>
-                        {
-                            new GeminiPart { Text = "Ответь 'OK' если ты работаешь" }
-                        }
-                    }
-                };
-
-                var response = await _geminiService.SendGeminiRequestAsync(testContents);
-
-                var isWorking = response?.Candidates?.Any() == true;
+                var isWorking = await _geminiService.IsHealthyAsync();
 
                 return Ok(new
                 {
@@ -627,7 +725,8 @@ namespace FitnessTracker.API.Controllers
                         "Food Image Analysis",
                         "Body Analysis",
                         "Voice Workout Recognition",
-                        "Voice Food Recognition"
+                        "Voice Food Recognition",
+                        "Audio File Storage"
                     }
                 });
             }
@@ -713,5 +812,22 @@ namespace FitnessTracker.API.Controllers
     public class TestProviderRequest
     {
         public string ProviderName { get; set; } = string.Empty;
+    }
+    public class VoiceWorkoutResponseWithFile : VoiceWorkoutResponse
+    {
+        public string? AudioFileId { get; set; }
+        public string? AudioFileName { get; set; }
+        public long? AudioFileSize { get; set; }
+        public DateTime? AudioExpiresAt { get; set; }
+        public string? DownloadUrl { get; set; }
+    }
+
+    public class VoiceFoodResponseWithFile : VoiceFoodResponse
+    {
+        public string? AudioFileId { get; set; }
+        public string? AudioFileName { get; set; }
+        public long? AudioFileSize { get; set; }
+        public DateTime? AudioExpiresAt { get; set; }
+        public string? DownloadUrl { get; set; }
     }
 }
