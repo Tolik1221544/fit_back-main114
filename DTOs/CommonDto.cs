@@ -56,12 +56,13 @@ namespace FitnessTracker.API.DTOs
         public int Cost { get; set; }
         public string ImageUrl { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
-        public bool IsOwned { get; set; }
-
 
         public decimal ExperienceBoost { get; set; } = 1.0m;
         public int Tier { get; set; } = 1;
-        public bool IsActive { get; set; } = false; // Активен ли скин у пользователя
+
+        // Статус владения и активации
+        public bool IsOwned { get; set; } = false;
+        public bool IsActive { get; set; } = false;
     }
 
     public class PurchaseSkinRequest

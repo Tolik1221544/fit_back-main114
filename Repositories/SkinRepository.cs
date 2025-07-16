@@ -15,7 +15,10 @@ namespace FitnessTracker.API.Repositories
 
         public async Task<IEnumerable<Skin>> GetAllSkinsAsync()
         {
-            return await _context.Skins.OrderBy(s => s.Tier).ThenBy(s => s.Cost).ToListAsync();
+            return await _context.Skins
+                .OrderBy(s => s.Tier)        // Сначала по уровню (1, 2, 3)
+                .ThenBy(s => s.Cost)         // Затем по цене внутри уровня
+                .ToListAsync();
         }
 
         public async Task<Skin?> GetSkinByIdAsync(string id)
@@ -28,8 +31,8 @@ namespace FitnessTracker.API.Repositories
             return await _context.UserSkins
                 .Include(us => us.Skin)
                 .Where(us => us.UserId == userId)
-                .OrderBy(us => us.Skin.Tier)
-                .ThenBy(us => us.Skin.Cost)
+                .OrderBy(us => us.Skin.Tier)    
+                .ThenBy(us => us.Skin.Cost)      // Затем по цене
                 .ToListAsync();
         }
 

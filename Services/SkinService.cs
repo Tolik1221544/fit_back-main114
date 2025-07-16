@@ -34,7 +34,11 @@ namespace FitnessTracker.API.Services
                 skinDto.IsActive = skinDto.Id == activeSkinId;
             }
 
-            return skinDtos.OrderBy(s => s.Tier).ThenBy(s => s.Cost);
+            // ✅ ИСПРАВЛЕНО: Правильный порядок сортировки
+            return skinDtos
+                .OrderBy(s => s.Tier)           // Сначала по уровню (1, 2, 3)
+                .ThenBy(s => s.Cost)            // Затем по цене (100, 200, 400...)
+                .ThenBy(s => s.Name);           // И по имени для стабильности
         }
 
         public async Task<bool> PurchaseSkinAsync(string userId, PurchaseSkinRequest request)
@@ -52,10 +56,11 @@ namespace FitnessTracker.API.Services
                 return false;
             }
 
-            if (!await _lwCoinService.SpendLwCoinsAsync(userId, skin.Cost, "purchase",
+            // ✅ ИСПРАВЛЕНО: Используем правильную стоимость и систему трат
+            if (!await _lwCoinService.SpendLwCoinsAsync(userId, skin.Cost, "skin_purchase",
                 $"Purchased skin: {skin.Name}", "skin"))
             {
-                _logger.LogWarning($"User {userId} doesn't have enough LW Coins for skin {request.SkinId}");
+                _logger.LogWarning($"User {userId} doesn't have enough LW Coins for skin {request.SkinId}. Required: {skin.Cost}");
                 return false;
             }
 
@@ -63,12 +68,12 @@ namespace FitnessTracker.API.Services
             {
                 UserId = userId,
                 SkinId = request.SkinId,
-                IsActive = false // �� ��������� �� �������
+                IsActive = false // По умолчанию не активен
             };
 
             await _skinRepository.PurchaseSkinAsync(userSkin);
 
-            _logger.LogInformation($"User {userId} purchased skin {skin.Name} (Tier {skin.Tier}, {skin.ExperienceBoost}x XP boost)");
+            _logger.LogInformation($"✅ User {userId} purchased skin '{skin.Name}' (Tier {skin.Tier}, {skin.ExperienceBoost}x XP boost) for {skin.Cost} coins");
             return true;
         }
 
@@ -83,28 +88,31 @@ namespace FitnessTracker.API.Services
                 return dto;
             });
 
-            return skinDtos.OrderBy(s => s.Tier).ThenBy(s => s.Cost);
+            return skinDtos
+                .OrderBy(s => s.Tier)
+                .ThenBy(s => s.Cost)
+                .ThenBy(s => s.Name);
         }
 
         public async Task<bool> ActivateSkinAsync(string userId, ActivateSkinRequest request)
         {
-            // ���������, ��� ������������ ������� ������
+            // Проверяем, что пользователь владеет скином
             if (!await _skinRepository.UserOwnsSkinAsync(userId, request.SkinId))
             {
                 _logger.LogWarning($"User {userId} doesn't own skin {request.SkinId}");
                 return false;
             }
 
-            // ������������ ��� ����� ������������
+            // Деактивируем все скины пользователя
             await _skinRepository.DeactivateAllUserSkinsAsync(userId);
 
-            // ���������� ��������� ����
+            // Активируем выбранный скин
             var success = await _skinRepository.ActivateUserSkinAsync(userId, request.SkinId);
 
             if (success)
             {
                 var skin = await _skinRepository.GetSkinByIdAsync(request.SkinId);
-                _logger.LogInformation($"User {userId} activated skin {skin?.Name} with {skin?.ExperienceBoost}x XP boost");
+                _logger.LogInformation($"✅ User {userId} activated skin '{skin?.Name}' with {skin?.ExperienceBoost}x XP boost");
             }
 
             return success;
