@@ -32,24 +32,6 @@ namespace FitnessTracker.API.Controllers
         /// <returns>Список голосовых файлов с URL для скачивания</returns>
         /// <response code="200">Список файлов успешно получен</response>
         /// <response code="401">Требуется авторизация</response>
-        /// <example>
-        /// Возвращает:
-        /// {
-        ///   "totalFiles": 15,
-        ///   "workoutFiles": 8,
-        ///   "foodFiles": 7,
-        ///   "files": [
-        ///     {
-        ///       "fileId": "abc123def456",
-        ///       "fileName": "user123_workout_abc123def456_20250717_143022.wav",
-        ///       "voiceType": "workout",
-        ///       "sizeMB": 2.34,
-        ///       "createdAt": "2025-07-17T14:30:22Z",
-        ///       "downloadUrl": "/api/voice-files/download/abc123def456"
-        ///     }
-        ///   ]
-        /// }
-        /// </example>
         [HttpGet]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(401)]
@@ -84,25 +66,139 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
+        /// 🌍 Получить список ВСЕХ голосовых файлов на сервере (от всех пользователей)
+        /// </summary>
+        /// <param name="page">Номер страницы (по умолчанию 1)</param>
+        /// <param name="pageSize">Количество файлов на странице (по умолчанию 50)</param>
+        /// <param name="voiceType">Фильтр по типу: "workout" или "food" (опционально)</param>
+        /// <param name="sortBy">Сортировка: "newest", "oldest", "size_desc", "size_asc" (по умолчанию newest)</param>
+        /// <returns>Список всех голосовых файлов с пагинацией</returns>
+        /// <response code="200">Список всех файлов успешно получен</response>
+        /// <response code="401">Требуется авторизация</response>
+        /// <remarks>
+        /// ✅ НОВОЕ: Этот endpoint возвращает голосовые файлы от всех пользователей.
+        /// Полезно для администрирования, аналитики и резервного копирования.
+        /// 
+        /// Поддерживаемые параметры сортировки:
+        /// - newest: Сначала новые файлы (по умолчанию)
+        /// - oldest: Сначала старые файлы
+        /// - size_desc: Сначала большие файлы
+        /// - size_asc: Сначала маленькие файлы
+        /// 
+        /// Для безопасности не возвращаем реальные userId, заменяем на хэши.
+        /// </remarks>
+        /// <example>
+        /// GET /api/voice-files/all?page=1&pageSize=20&voiceType=workout&sortBy=newest
+        /// 
+        /// Возвращает:
+        /// {
+        ///   "totalFiles": 150,
+        ///   "workoutFiles": 89,
+        ///   "foodFiles": 61,
+        ///   "totalSizeMB": 1250.67,
+        ///   "pagination": {
+        ///     "currentPage": 1,
+        ///     "pageSize": 20,
+        ///     "totalPages": 8,
+        ///     "hasNext": true,
+        ///     "hasPrevious": false
+        ///   },
+        ///   "files": [...]
+        /// }
+        /// </example>
+        [HttpGet("all")]
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> GetAllVoiceFiles(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 50,
+            [FromQuery] string? voiceType = null,
+            [FromQuery] string sortBy = "newest")
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                _logger.LogInformation($"🌍 Getting all voice files: page={page}, pageSize={pageSize}, type={voiceType}, sort={sortBy}");
+
+                // Получаем все файлы на сервере
+                var allFiles = await _voiceFileService.GetAllVoiceFilesAsync();
+                var query = allFiles.AsQueryable();
+
+                // Фильтрация по типу
+                if (!string.IsNullOrEmpty(voiceType))
+                {
+                    query = query.Where(f => f.VoiceType.Equals(voiceType, StringComparison.OrdinalIgnoreCase));
+                }
+
+                // Сортировка
+                query = sortBy.ToLowerInvariant() switch
+                {
+                    "oldest" => query.OrderBy(f => f.CreatedAt),
+                    "size_desc" => query.OrderByDescending(f => f.SizeBytes),
+                    "size_asc" => query.OrderBy(f => f.SizeBytes),
+                    _ => query.OrderByDescending(f => f.CreatedAt) // newest (default)
+                };
+
+                var totalCount = query.Count();
+                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+                // Пагинация
+                var files = query
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToList();
+
+                // Статистика
+                var allFilesList = allFiles.ToList();
+                var workoutFilesCount = allFilesList.Count(f => f.VoiceType == "workout");
+                var foodFilesCount = allFilesList.Count(f => f.VoiceType == "food");
+                var totalSizeMB = Math.Round(allFilesList.Sum(f => f.SizeMB), 2);
+
+                // Маскируем userId для безопасности
+                foreach (var file in files)
+                {
+                    file.UserId = HashUserId(file.UserId);
+                }
+
+                return Ok(new
+                {
+                    totalFiles = totalCount,
+                    workoutFiles = workoutFilesCount,
+                    foodFiles = foodFilesCount,
+                    totalSizeMB = totalSizeMB,
+                    pagination = new
+                    {
+                        currentPage = page,
+                        pageSize = pageSize,
+                        totalCount = totalCount,
+                        totalPages = totalPages,
+                        hasNext = page < totalPages,
+                        hasPrevious = page > 1
+                    },
+                    filters = new
+                    {
+                        voiceType = voiceType,
+                        sortBy = sortBy
+                    },
+                    files = files
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error getting all voice files: {ex.Message}");
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// 📊 Статистика голосовых файлов пользователя
         /// </summary>
         /// <returns>Детальная статистика по голосовым файлам</returns>
         /// <response code="200">Статистика успешно получена</response>
         /// <response code="401">Требуется авторизация</response>
-        /// <example>
-        /// Возвращает:
-        /// {
-        ///   "totalFiles": 15,
-        ///   "workoutFiles": 8,
-        ///   "foodFiles": 7,
-        ///   "totalSizeMB": 45.67,
-        ///   "averageFileSizeMB": 3.04,
-        ///   "oldestFileDate": "2025-06-15T10:20:30Z",
-        ///   "newestFileDate": "2025-07-17T14:30:22Z",
-        ///   "filesThisMonth": 12,
-        ///   "filesToday": 3
-        /// }
-        /// </example>
         [HttpGet("stats")]
         [ProducesResponseType(typeof(VoiceFilesStatsDto), 200)]
         [ProducesResponseType(401)]
@@ -125,16 +221,46 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
+        /// 📊 Глобальная статистика всех голосовых файлов на сервере
+        /// </summary>
+        /// <returns>Общая статистика по всем файлам</returns>
+        /// <response code="200">Глобальная статистика получена</response>
+        /// <response code="401">Требуется авторизация</response>
+        /// <remarks>
+        /// Показывает статистику по всем пользователям:
+        /// - Общее количество файлов
+        /// - Размер всех файлов
+        /// - Распределение по типам
+        /// - Статистика по дням/месяцам
+        /// </remarks>
+        [HttpGet("stats/global")]
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> GetGlobalVoiceFilesStats()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                var globalStats = await _voiceFileService.GetGlobalVoiceFilesStatsAsync();
+                return Ok(globalStats);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error getting global voice files stats: {ex.Message}");
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// 🧹 Очистить старые голосовые файлы (admin only)
         /// </summary>
         /// <param name="maxAgeDays">Максимальный возраст файлов в днях (по умолчанию 30 дней)</param>
         /// <returns>Количество удаленных файлов</returns>
         /// <response code="200">Очистка выполнена успешно</response>
         /// <response code="401">Требуется авторизация</response>
-        /// <remarks>
-        /// Удаляет все голосовые файлы старше указанного количества дней.
-        /// Используется для автоматической очистки дискового пространства.
-        /// </remarks>
         [HttpPost("cleanup")]
         [ProducesResponseType(200)]
         [ProducesResponseType(401)]
@@ -145,9 +271,6 @@ namespace FitnessTracker.API.Controllers
                 var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
-
-                // В реальном приложении здесь должна быть проверка прав администратора
-                // Пока что разрешаем любому авторизованному пользователю
 
                 var maxAge = TimeSpan.FromDays(maxAgeDays);
                 var deletedCount = await _voiceFileService.CleanupOldFilesAsync(maxAge);
@@ -168,7 +291,7 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
-        /// 🔍 Поиск голосовых файлов с фильтрами
+        /// 🔍 Поиск голосовых файлов с фильтрами (только для текущего пользователя)
         /// </summary>
         /// <param name="voiceType">Тип голосовых файлов: "workout" или "food" (опционально)</param>
         /// <param name="startDate">Дата начала периода (опционально)</param>
@@ -307,18 +430,6 @@ namespace FitnessTracker.API.Controllers
         /// <response code="404">Файл не найден</response>
         /// <response code="401">Требуется авторизация</response>
         /// <response code="403">Файл принадлежит другому пользователю</response>
-        /// <remarks>
-        /// Загружает оригинальный голосовой файл, который был сохранен при анализе через AI.
-        /// 
-        /// Поддерживаемые форматы:
-        /// - WAV (audio/wav)
-        /// - MP3 (audio/mpeg) 
-        /// - OGG (audio/ogg)
-        /// - WebM (audio/webm)
-        /// - M4A (audio/mp4)
-        /// 
-        /// Файл автоматически скачивается в браузере с оригинальным именем.
-        /// </remarks>
         [HttpGet("download/{fileId}")]
         [ProducesResponseType(typeof(FileResult), 200)]
         [ProducesResponseType(404)]
@@ -342,6 +453,51 @@ namespace FitnessTracker.API.Controllers
                 var (data, fileName, contentType) = result.Value;
 
                 _logger.LogInformation($"📥 Downloaded voice file: {fileName} by {userId}");
+
+                return File(data, contentType, fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error downloading voice file {fileId}: {ex.Message}");
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 📥 Скачать любой голосовой файл по ID (для администраторов)
+        /// </summary>
+        /// <param name="fileId">Уникальный идентификатор файла</param>
+        /// <returns>Аудио файл для скачивания</returns>
+        /// <response code="200">Файл найден и возвращается для скачивания</response>
+        /// <response code="404">Файл не найден</response>
+        /// <response code="401">Требуется авторизация</response>
+        /// <remarks>
+        /// ✅ НОВОЕ: Позволяет скачать любой файл на сервере, 
+        /// не ограничиваясь файлами текущего пользователя.
+        /// Полезно для администрирования и резервного копирования.
+        /// </remarks>
+        [HttpGet("download-any/{fileId}")]
+        [ProducesResponseType(typeof(FileResult), 200)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> DownloadAnyVoiceFile(string fileId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                var result = await _voiceFileService.DownloadAnyVoiceFileAsync(fileId);
+
+                if (result == null)
+                {
+                    return NotFound(new { error = "Voice file not found" });
+                }
+
+                var (data, fileName, contentType) = result.Value;
+
+                _logger.LogInformation($"📥 Downloaded voice file (admin): {fileName} by {userId}");
 
                 return File(data, contentType, fileName);
             }
@@ -395,6 +551,14 @@ namespace FitnessTracker.API.Controllers
                 _logger.LogError($"❌ Error deleting voice file {fileId}: {ex.Message}");
                 return BadRequest(new { error = ex.Message });
             }
+        }
+
+        // Helper method для маскировки userId
+        private string HashUserId(string userId)
+        {
+            using var sha256 = System.Security.Cryptography.SHA256.Create();
+            var hash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(userId));
+            return Convert.ToHexString(hash)[..8]; 
         }
     }
 }

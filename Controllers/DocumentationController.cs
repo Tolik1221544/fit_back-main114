@@ -16,7 +16,6 @@ namespace FitnessTracker.API.Controllers
                 description = "Complete API documentation for Fitness Tracker with updated LW Coin pricing system and Gemini AI integration",
                 baseUrl = "https://your-api.com",
 
-                // ✅ НОВАЯ СЕКЦИЯ: Экономическая модель
                 economicModel = new
                 {
                     title = "💰 Новая ценовая модель LW Coins",
@@ -335,7 +334,6 @@ namespace FitnessTracker.API.Controllers
                     }
                 },
 
-                // ✅ ОБНОВЛЕННЫЕ ПРИМЕРЫ ИСПОЛЬЗОВАНИЯ
                 examples = new
                 {
                     newEconomicWorkflow = new string[]
@@ -372,7 +370,6 @@ namespace FitnessTracker.API.Controllers
                     }
                 },
 
-                // ✅ ОБНОВЛЕННЫЕ ТАРИФНЫЕ ПЛАНЫ
                 pricingTiers = new
                 {
                     free = new
