@@ -123,17 +123,14 @@ namespace FitnessTracker.API.Controllers
 
                 _logger.LogInformation($"🌍 Getting all voice files: page={page}, pageSize={pageSize}, type={voiceType}, sort={sortBy}");
 
-                // Получаем все файлы на сервере
                 var allFiles = await _voiceFileService.GetAllVoiceFilesAsync();
                 var query = allFiles.AsQueryable();
 
-                // Фильтрация по типу
                 if (!string.IsNullOrEmpty(voiceType))
                 {
                     query = query.Where(f => f.VoiceType.Equals(voiceType, StringComparison.OrdinalIgnoreCase));
                 }
 
-                // Сортировка
                 query = sortBy.ToLowerInvariant() switch
                 {
                     "oldest" => query.OrderBy(f => f.CreatedAt),
@@ -145,19 +142,16 @@ namespace FitnessTracker.API.Controllers
                 var totalCount = query.Count();
                 var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
 
-                // Пагинация
                 var files = query
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)
                     .ToList();
 
-                // Статистика
                 var allFilesList = allFiles.ToList();
                 var workoutFilesCount = allFilesList.Count(f => f.VoiceType == "workout");
                 var foodFilesCount = allFilesList.Count(f => f.VoiceType == "food");
                 var totalSizeMB = Math.Round(allFilesList.Sum(f => f.SizeMB), 2);
 
-                // Маскируем userId для безопасности
                 foreach (var file in files)
                 {
                     file.UserId = HashUserId(file.UserId);

@@ -20,20 +20,20 @@ namespace FitnessTracker.API.Controllers
         private readonly IMissionService _missionService;
         private readonly IGeminiService _geminiService;
         private readonly ILwCoinService _lwCoinService;
-        private readonly IImageService _imageService; // НОВОЕ
+        private readonly IImageService _imageService; 
 
         public FoodIntakeController(
             IFoodIntakeService foodIntakeService,
             IMissionService missionService,
             IGeminiService geminiService,
             ILwCoinService lwCoinService,
-            IImageService imageService) // НОВОЕ
+            IImageService imageService) 
         {
             _foodIntakeService = foodIntakeService;
             _missionService = missionService;
             _geminiService = geminiService;
             _lwCoinService = lwCoinService;
-            _imageService = imageService; // НОВОЕ
+            _imageService = imageService; 
         }
 
         /// <summary>
@@ -195,7 +195,6 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
-                // Проверяем и тратим LW Coins
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "food_scan",
                     "Food scan with Gemini AI", "photo");
 
@@ -204,15 +203,12 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = "Недостаточно LW Coins для сканирования еды" });
                 }
 
-                // НОВОЕ: Сохраняем изображение
                 var imageUrl = await _imageService.SaveImageAsync(image, "food-scans");
 
-                // Конвертируем изображение в байты
                 using var memoryStream = new MemoryStream();
                 await image.CopyToAsync(memoryStream);
                 var imageData = memoryStream.ToArray();
 
-                // Анализируем с помощью Gemini AI
                 var result = await _geminiService.AnalyzeFoodImageAsync(imageData, userPrompt);
 
                 if (!result.Success)
@@ -221,7 +217,6 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = result.ErrorMessage });
                 }
 
-                // Преобразуем ответ в старый формат для совместимости + добавляем URL
                 var legacyResponse = new ScanFoodResponseWithImage
                 {
                     Items = result.FoodItems?.Select(fi => new FoodIntakeDto
@@ -270,7 +265,6 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
-                // Проверяем и тратим LW Coins
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_food_scan",
                     "Advanced AI food scan", "photo");
 
@@ -279,15 +273,12 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = "Недостаточно LW Coins для ИИ сканирования еды" });
                 }
 
-                // НОВОЕ: Сохраняем изображение
                 var imageUrl = await _imageService.SaveImageAsync(image, "food-scans");
 
-                // Конвертируем изображение в байты
                 using var memoryStream = new MemoryStream();
                 await image.CopyToAsync(memoryStream);
                 var imageData = memoryStream.ToArray();
 
-                // Анализируем с помощью Gemini AI
                 var result = await _geminiService.AnalyzeFoodImageAsync(imageData, userPrompt);
 
                 if (!result.Success)
@@ -296,10 +287,8 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = result.ErrorMessage });
                 }
 
-                // НОВОЕ: Добавляем URL изображения в ответ
                 result.ImageUrl = imageUrl;
 
-                // Если нужно сохранить результаты
                 if (saveResults && result.FoodItems?.Any() == true)
                 {
                     try
@@ -319,12 +308,10 @@ namespace FitnessTracker.API.Controllers
 
                         await _foodIntakeService.AddFoodIntakeAsync(userId, addFoodRequest);
 
-                        // Обновляем прогресс миссий
                         await _missionService.UpdateMissionProgressAsync(userId, "food_intake", result.FoodItems.Count);
                     }
                     catch (Exception ex)
                     {
-                        // Логируем ошибку, но продолжаем выполнение
                         Console.WriteLine($"Error saving AI food scan results: {ex.Message}");
                     }
                 }

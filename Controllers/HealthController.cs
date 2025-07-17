@@ -22,13 +22,10 @@ namespace FitnessTracker.API.Controllers
         {
             try
             {
-                // Проверка подключения к БД
                 var canConnect = await _context.Database.CanConnectAsync();
 
-                // Проверка количества пользователей
                 var userCount = await _context.Users.CountAsync();
 
-                // Проверка последней активности
                 var lastActivity = await _context.Activities
                     .OrderByDescending(a => a.CreatedAt)
                     .Select(a => a.CreatedAt)
