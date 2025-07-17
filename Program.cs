@@ -1,7 +1,7 @@
 ﻿using FitnessTracker.API.Data;
 using FitnessTracker.API.Services;
-using FitnessTracker.API.Services.AI; 
-using FitnessTracker.API.Services.AI.Providers; 
+using FitnessTracker.API.Services.AI;
+using FitnessTracker.API.Services.AI.Providers;
 using FitnessTracker.API.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -16,6 +16,18 @@ using Microsoft.Extensions.FileProviders;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpContextAccessor();
+
+// ✅ НОВОЕ: Улучшенное логирование для AI запросов
+builder.Services.AddLogging(logging =>
+{
+    logging.ClearProviders();
+    logging.AddConsole();
+    logging.SetMinimumLevel(LogLevel.Information);
+
+    // Специальные правила для AI сервисов
+    logging.AddFilter("FitnessTracker.API.Services.AI", LogLevel.Debug);
+    logging.AddFilter("FitnessTracker.API.Controllers.AIController", LogLevel.Debug);
+});
 
 builder.Services.AddControllers(options =>
 {
@@ -358,8 +370,8 @@ else
 var uploadsPath = Path.Combine(app.Environment.WebRootPath ?? app.Environment.ContentRootPath, "uploads");
 Directory.CreateDirectory(Path.Combine(uploadsPath, "food-scans"));
 Directory.CreateDirectory(Path.Combine(uploadsPath, "body-scans"));
-Directory.CreateDirectory(Path.Combine(uploadsPath, "voice-workouts")); 
-Directory.CreateDirectory(Path.Combine(uploadsPath, "voice-food"));     
+Directory.CreateDirectory(Path.Combine(uploadsPath, "voice-workouts"));
+Directory.CreateDirectory(Path.Combine(uploadsPath, "voice-food"));
 
 app.UseStaticFiles();
 app.UseStaticFiles(new StaticFileOptions
@@ -384,10 +396,14 @@ app.Use(async (context, next) =>
         logger.LogDebug($"🔑 Request with auth: {context.Request.Method} {context.Request.Path}");
     }
 
-    // Логируем ИИ запросы отдельно
     if (context.Request.Path.StartsWithSegments("/api/ai"))
     {
-        logger.LogInformation($"🤖 AI Request: {context.Request.Method} {context.Request.Path}");
+        var contentLength = context.Request.ContentLength ?? 0;
+        logger.LogInformation($"🤖 AI Request: {context.Request.Method} {context.Request.Path} (Size: {contentLength} bytes)");
+
+        var userAgent = context.Request.Headers["User-Agent"].FirstOrDefault();
+        var contentType = context.Request.Headers["Content-Type"].FirstOrDefault();
+        logger.LogDebug($"🤖 AI Request headers - Content-Type: {contentType}, User-Agent: {userAgent}");
     }
 
     try
@@ -397,20 +413,37 @@ app.Use(async (context, next) =>
     catch (Exception ex)
     {
         logger.LogError($"❌ Request failed: {context.Request.Method} {context.Request.Path} - {ex.Message}");
+
+        if (context.Request.Path.StartsWithSegments("/api/ai"))
+        {
+            logger.LogError($"🤖 AI Request failed - Path: {context.Request.Path}, Error: {ex.Message}");
+            logger.LogError($"🤖 AI Request stack trace: {ex.StackTrace}");
+            if (ex.InnerException != null)
+            {
+                logger.LogError($"🤖 AI Request inner exception: {ex.InnerException.Message}");
+            }
+        }
         throw;
     }
     finally
     {
         var elapsed = DateTime.UtcNow - start;
+
         if (elapsed.TotalMilliseconds > 1000)
         {
             logger.LogWarning($"⏰ Slow request: {context.Request.Method} {context.Request.Path} took {elapsed.TotalMilliseconds}ms");
         }
 
-        // Логируем время ИИ запросов
         if (context.Request.Path.StartsWithSegments("/api/ai"))
         {
-            logger.LogInformation($"🤖 AI Request completed in {elapsed.TotalMilliseconds}ms");
+            var statusCode = context.Response.StatusCode;
+            var statusEmoji = statusCode >= 200 && statusCode < 300 ? "✅" : "❌";
+            logger.LogInformation($"🤖 AI Request completed {statusEmoji} - Status: {statusCode}, Time: {elapsed.TotalMilliseconds}ms");
+
+            if (elapsed.TotalSeconds > 30)
+            {
+                logger.LogWarning($"🤖⏰ Very slow AI request: {context.Request.Path} took {elapsed.TotalSeconds:F1} seconds");
+            }
         }
     }
 });
