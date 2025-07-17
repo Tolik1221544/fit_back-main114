@@ -2,10 +2,6 @@
 
 namespace FitnessTracker.API.DTOs
 {
-    // ==========================================
-    // 🤖 GEMINI AI REQUEST/RESPONSE CLASSES
-    // ==========================================
-
     /// <summary>
     /// 🍎 Ответ на анализ еды
     /// </summary>
@@ -75,7 +71,6 @@ namespace FitnessTracker.API.DTOs
         public decimal EstimatedChestCircumference { get; set; }
         public decimal EstimatedHipCircumference { get; set; }
 
-        // ✅ НОВЫЕ ПОЛЯ для основного обмена
         public int BasalMetabolicRate { get; set; } // Основной обмен в ккал (например: 1200)
         public string MetabolicRateCategory { get; set; } = string.Empty; // "Низкий", "Нормальный", "Высокий"
 
@@ -121,9 +116,6 @@ namespace FitnessTracker.API.DTOs
         public int EstimatedTotalCalories { get; set; }
     }
 
-    // ==========================================
-    // 🔧 GEMINI API INFRASTRUCTURE CLASSES
-    // ==========================================
 
     /// <summary>
     /// 📤 Запрос к Gemini API
@@ -265,10 +257,6 @@ namespace FitnessTracker.API.DTOs
         [JsonPropertyName("totalTokenCount")]
         public int TotalTokenCount { get; set; }
     }
-
-    // ==========================================
-    // 📝 СПЕЦИАЛЬНЫЕ ЗАПРОСЫ
-    // ==========================================
 
     /// <summary>
     /// 📸 Запрос на анализ тела

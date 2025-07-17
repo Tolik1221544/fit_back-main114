@@ -22,7 +22,7 @@ namespace FitnessTracker.API.Controllers
         private readonly IActivityService _activityService;
         private readonly IBodyScanService _bodyScanService;
         private readonly IImageService _imageService;
-        private readonly IAudioFileService _audioFileService; // НОВОЕ
+        private readonly IVoiceFileService _voiceFileService; 
         private readonly ILogger<AIController> _logger;
 
         public AIController(
@@ -32,7 +32,7 @@ namespace FitnessTracker.API.Controllers
             IActivityService activityService,
             IBodyScanService bodyScanService,
             IImageService imageService,
-            IAudioFileService audioFileService, // НОВОЕ
+            IVoiceFileService voiceFileService, 
             ILogger<AIController> logger)
         {
             _geminiService = geminiService;
@@ -41,27 +41,30 @@ namespace FitnessTracker.API.Controllers
             _activityService = activityService;
             _bodyScanService = bodyScanService;
             _imageService = imageService;
-            _audioFileService = audioFileService; // НОВОЕ
+            _voiceFileService = voiceFileService; 
             _logger = logger;
         }
 
         /// <summary>
-        /// 🎤 Голосовой ввод тренировки с сохранением файла (требует LW Coins)
+        /// 🎤 Голосовой ввод тренировки (требует LW Coins) + сохранение аудио
         /// </summary>
         /// <param name="audioFile">Аудиофайл с описанием тренировки</param>
         /// <param name="workoutType">Тип тренировки (strength/cardio)</param>
         /// <param name="saveResults">Сохранить результаты в базу данных</param>
-        /// <param name="keepAudioFile">Сохранить аудио файл на сервере (по умолчанию 1 час)</param>
-        /// <returns>Распознанная и структурированная информация о тренировке + информация о сохраненном файле</returns>
+        /// <param name="saveAudio">Сохранить аудио файл на сервере</param>
+        /// <returns>Распознанная и структурированная информация о тренировке + URL аудио</returns>
         /// <response code="200">Тренировка успешно распознана</response>
         /// <response code="400">Недостаточно LW Coins или ошибка обработки</response>
         /// <response code="401">Требуется авторизация</response>
         [HttpPost("voice-workout")]
+        [ProducesResponseType(typeof(VoiceWorkoutResponseWithAudio), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
         public async Task<IActionResult> VoiceWorkout(
             IFormFile audioFile,
             [FromForm] string? workoutType = null,
             [FromForm] bool saveResults = false,
-            [FromForm] bool keepAudioFile = true) // НОВОЕ
+            [FromForm] bool saveAudio = true) 
         {
             try
             {
@@ -69,7 +72,6 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
-                // Проверяем и тратим LW Coins
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_voice_workout",
                     "AI Voice Workout", "voice");
 
@@ -78,47 +80,59 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = "Недостаточно LW Coins для голосового ввода тренировки" });
                 }
 
-                // НОВОЕ: Сохраняем аудио файл на сервере
-                VoiceWorkoutResponseWithFile? responseWithFile = null;
-                if (keepAudioFile)
+                string? audioFileId = null;
+                string? audioUrl = null;
+                double audioSizeMB = 0;
+
+                if (saveAudio)
                 {
-                    var audioSaveResult = await _audioFileService.SaveAudioFileAsync(audioFile, userId, 1); // 1 час
-                    if (!audioSaveResult.IsSuccess)
+                    try
                     {
-                        _logger.LogWarning($"Failed to save audio file: {audioSaveResult.ErrorMessage}");
+                        audioFileId = await _voiceFileService.SaveVoiceFileAsync(audioFile, userId, "workout");
+                        audioUrl = _voiceFileService.GetDownloadUrl(audioFileId);
+                        audioSizeMB = Math.Round(audioFile.Length / (1024.0 * 1024.0), 2);
+                        _logger.LogInformation($"🎤 Audio saved: {audioFileId} (Size: {audioSizeMB} MB)");
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        responseWithFile = new VoiceWorkoutResponseWithFile
-                        {
-                            AudioFileId = audioSaveResult.FileInfo!.FileId,
-                            AudioFileName = audioSaveResult.FileInfo.OriginalName,
-                            AudioFileSize = audioSaveResult.FileInfo.FileSize,
-                            AudioExpiresAt = audioSaveResult.FileInfo.ExpiresAt,
-                            DownloadUrl = $"/api/ai/download-audio/{audioSaveResult.FileInfo.FileId}"
-                        };
+                        _logger.LogError($"❌ Failed to save audio: {ex.Message}");
                     }
                 }
 
-                // Конвертируем аудио в байты для анализа
                 using var memoryStream = new MemoryStream();
                 await audioFile.CopyToAsync(memoryStream);
                 var audioData = memoryStream.ToArray();
 
                 _logger.LogInformation($"🎤 Processing voice workout for user {userId}, audio size: {audioData.Length} bytes, workoutType: {workoutType}");
 
-                // Анализируем с помощью Gemini
                 var result = await _geminiService.AnalyzeVoiceWorkoutAsync(audioData, workoutType);
 
                 if (!result.Success)
                 {
                     _logger.LogError($"❌ Voice workout analysis failed: {result.ErrorMessage}");
+
+                    if (!string.IsNullOrEmpty(audioFileId))
+                    {
+                        await _voiceFileService.DeleteVoiceFileAsync(userId, audioFileId);
+                    }
+
                     return BadRequest(new { error = result.ErrorMessage });
                 }
 
-                _logger.LogInformation($"✅ Voice workout analysis successful. Type: {result.WorkoutData?.Type}, StartTime: {result.WorkoutData?.StartTime}, EndTime: {result.WorkoutData?.EndTime}");
+                var response = new VoiceWorkoutResponseWithAudio
+                {
+                    Success = result.Success,
+                    TranscribedText = result.TranscribedText,
+                    WorkoutData = result.WorkoutData,
 
-                // Если нужно сохранить результаты
+                    AudioUrl = audioUrl,
+                    AudioFileId = audioFileId,
+                    AudioSaved = !string.IsNullOrEmpty(audioFileId),
+                    AudioSizeMB = audioSizeMB
+                };
+
+                _logger.LogInformation($"✅ Voice workout analysis successful. Type: {result.WorkoutData?.Type}, AudioSaved: {!string.IsNullOrEmpty(audioFileId)}");
+
                 if (saveResults && result.WorkoutData != null)
                 {
                     try
@@ -141,21 +155,10 @@ namespace FitnessTracker.API.Controllers
                     catch (Exception ex)
                     {
                         _logger.LogError($"❌ Error saving voice workout: {ex.Message}");
-                        // Не прерываем выполнение, возвращаем результат анализа
                     }
                 }
 
-                // Объединяем результаты
-                if (responseWithFile != null)
-                {
-                    responseWithFile.Success = result.Success;
-                    responseWithFile.ErrorMessage = result.ErrorMessage;
-                    responseWithFile.TranscribedText = result.TranscribedText;
-                    responseWithFile.WorkoutData = result.WorkoutData;
-                    return Ok(responseWithFile);
-                }
-
-                return Ok(result);
+                return Ok(response);
             }
             catch (Exception ex)
             {
@@ -166,25 +169,25 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
-        /// 🗣️ Голосовой ввод питания с сохранением файла (требует LW Coins)
+        /// 🗣️ Голосовой ввод питания (требует LW Coins) + сохранение аудио
         /// </summary>
         /// <param name="audioFile">Аудиофайл с описанием еды</param>
         /// <param name="mealType">Тип приема пищи</param>
         /// <param name="saveResults">Сохранить результаты в базу данных</param>
-        /// <param name="keepAudioFile">Сохранить аудио файл на сервере</param>
-        /// <returns>Распознанная и структурированная информация о питании + информация о файле</returns>
+        /// <param name="saveAudio">Сохранить аудио файл на сервере</param>
+        /// <returns>Распознанная и структурированная информация о питании + URL аудио</returns>
         /// <response code="200">Питание успешно распознано</response>
         /// <response code="400">Недостаточно LW Coins или ошибка обработки</response>
         /// <response code="401">Требуется авторизация</response>
         [HttpPost("voice-food")]
-        [ProducesResponseType(typeof(VoiceFoodResponseWithFile), 200)]
+        [ProducesResponseType(typeof(VoiceFoodResponseWithAudio), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]
         public async Task<IActionResult> VoiceFood(
             IFormFile audioFile,
             [FromForm] string? mealType = null,
             [FromForm] bool saveResults = false,
-            [FromForm] bool keepAudioFile = true) // НОВОЕ
+            [FromForm] bool saveAudio = true) 
         {
             try
             {
@@ -192,7 +195,6 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
-                // Проверяем и тратим LW Coins
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_voice_food",
                     "AI Voice Food", "voice");
 
@@ -201,40 +203,56 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = "Недостаточно LW Coins для голосового ввода питания" });
                 }
 
-                // НОВОЕ: Сохраняем аудио файл
-                VoiceFoodResponseWithFile? responseWithFile = null;
-                if (keepAudioFile)
+                string? audioFileId = null;
+                string? audioUrl = null;
+                double audioSizeMB = 0;
+
+                if (saveAudio)
                 {
-                    var audioSaveResult = await _audioFileService.SaveAudioFileAsync(audioFile, userId, 1);
-                    if (audioSaveResult.IsSuccess)
+                    try
                     {
-                        responseWithFile = new VoiceFoodResponseWithFile
-                        {
-                            AudioFileId = audioSaveResult.FileInfo!.FileId,
-                            AudioFileName = audioSaveResult.FileInfo.OriginalName,
-                            AudioFileSize = audioSaveResult.FileInfo.FileSize,
-                            AudioExpiresAt = audioSaveResult.FileInfo.ExpiresAt,
-                            DownloadUrl = $"/api/ai/download-audio/{audioSaveResult.FileInfo.FileId}"
-                        };
+                        audioFileId = await _voiceFileService.SaveVoiceFileAsync(audioFile, userId, "food");
+                        audioUrl = _voiceFileService.GetDownloadUrl(audioFileId);
+                        audioSizeMB = Math.Round(audioFile.Length / (1024.0 * 1024.0), 2);
+                        _logger.LogInformation($"🗣️ Audio saved: {audioFileId} (Size: {audioSizeMB} MB)");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"❌ Failed to save audio: {ex.Message}");
                     }
                 }
 
-                // Конвертируем аудио в байты
                 using var memoryStream = new MemoryStream();
                 await audioFile.CopyToAsync(memoryStream);
                 var audioData = memoryStream.ToArray();
 
                 _logger.LogInformation($"🗣️ Processing voice food for user {userId}, audio size: {audioData.Length} bytes");
 
-                // Анализируем с помощью Gemini
                 var result = await _geminiService.AnalyzeVoiceFoodAsync(audioData, mealType);
 
                 if (!result.Success)
                 {
+                    if (!string.IsNullOrEmpty(audioFileId))
+                    {
+                        await _voiceFileService.DeleteVoiceFileAsync(userId, audioFileId);
+                    }
+
                     return BadRequest(new { error = result.ErrorMessage });
                 }
 
-                // Если нужно сохранить результаты
+                var response = new VoiceFoodResponseWithAudio
+                {
+                    Success = result.Success,
+                    TranscribedText = result.TranscribedText,
+                    FoodItems = result.FoodItems,
+                    EstimatedTotalCalories = result.EstimatedTotalCalories,
+
+                    AudioUrl = audioUrl,
+                    AudioFileId = audioFileId,
+                    AudioSaved = !string.IsNullOrEmpty(audioFileId),
+                    AudioSizeMB = audioSizeMB
+                };
+
                 if (saveResults && result.FoodItems?.Any() == true)
                 {
                     try
@@ -260,18 +278,7 @@ namespace FitnessTracker.API.Controllers
                     }
                 }
 
-                // Объединяем результаты
-                if (responseWithFile != null)
-                {
-                    responseWithFile.Success = result.Success;
-                    responseWithFile.ErrorMessage = result.ErrorMessage;
-                    responseWithFile.TranscribedText = result.TranscribedText;
-                    responseWithFile.FoodItems = result.FoodItems;
-                    responseWithFile.EstimatedTotalCalories = result.EstimatedTotalCalories;
-                    return Ok(responseWithFile);
-                }
-
-                return Ok(result);
+                return Ok(response);
             }
             catch (Exception ex)
             {
@@ -279,216 +286,6 @@ namespace FitnessTracker.API.Controllers
                 return BadRequest(new { error = $"Ошибка обработки голосового ввода питания: {ex.Message}" });
             }
         }
-
-        /// <summary>
-        /// 📥 Скачать сохраненный аудио файл (любой пользователь может скачать любой файл)
-        /// </summary>
-        /// <param name="fileId">ID аудио файла</param>
-        /// <returns>Аудио файл для скачивания</returns>
-        [HttpGet("download-audio/{fileId}")]
-        [ProducesResponseType(typeof(FileResult), 200)]
-        [ProducesResponseType(404)]
-        [ProducesResponseType(401)]
-        public async Task<IActionResult> DownloadAudio(string fileId)
-        {
-            try
-            {
-                var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(currentUserId))
-                    return Unauthorized();
-
-                var audioInfo = await _audioFileService.GetAudioFileInfoAsync(fileId);
-                if (audioInfo == null)
-                    return NotFound(new { error = "Audio file not found or expired" });
-
-                // ✅ УБРАНА ПРОВЕРКА ВЛАДЕЛЬЦА - теперь любой пользователь может скачать любой файл
-                // if (audioInfo.UserId != currentUserId)
-                //     return Forbid();
-
-                var audioData = await _audioFileService.GetAudioFileAsync(fileId);
-                if (audioData == null)
-                    return NotFound(new { error = "Audio file data not found" });
-
-                _logger.LogInformation($"📥 Downloaded audio file: {fileId} by user {currentUserId} (owner: {audioInfo.UserId})");
-
-                // Добавляем информацию о владельце в заголовки (опционально)
-                Response.Headers.Add("X-File-Owner", audioInfo.UserId);
-                Response.Headers.Add("X-File-Created", audioInfo.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
-
-                return File(audioData, audioInfo.MimeType, audioInfo.OriginalName);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ Error downloading audio file {fileId}: {ex.Message}");
-                return BadRequest(new { error = "Failed to download audio file" });
-            }
-        }
-
-        /// <summary>
-        /// 📋 Получить список сохраненных аудио файлов пользователя
-        /// </summary>
-        /// <returns>Список аудио файлов пользователя</returns>
-        [HttpGet("audio-files")]
-        [ProducesResponseType(200)]
-        [ProducesResponseType(401)]
-        public async Task<IActionResult> GetUserAudioFiles()
-        {
-            try
-            {
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(userId))
-                    return Unauthorized();
-
-                var audioFiles = await _audioFileService.GetUserAudioFilesAsync(userId);
-
-                var response = audioFiles.Select(file => new
-                {
-                    fileId = file.FileId,
-                    fileName = file.OriginalName,
-                    fileSize = file.FileSize,
-                    mimeType = file.MimeType,
-                    userId = file.UserId, // Показываем владельца
-                    createdAt = file.CreatedAt,
-                    expiresAt = file.ExpiresAt,
-                    downloadUrl = $"/api/ai/download-audio/{file.FileId}",
-                    isExpired = file.ExpiresAt < DateTime.UtcNow,
-                    isOwner = file.UserId == userId
-                });
-
-                return Ok(new
-                {
-                    files = response,
-                    totalFiles = audioFiles.Count,
-                    scope = "user",
-                    note = "Your personal audio files. Use /api/ai/audio-files/all for all files."
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ Error getting user audio files: {ex.Message}");
-                return BadRequest(new { error = "Failed to get audio files" });
-            }
-        }
-
-        /// <summary>
-        /// 📋 Получить список ВСЕХ аудио файлов на сервере
-        /// </summary>
-        /// <param name="includeExpired">Включить истекшие файлы</param>
-        /// <returns>Список всех аудио файлов</returns>
-        [HttpGet("audio-files/all")]
-        [ProducesResponseType(200)]
-        [ProducesResponseType(401)]
-        public async Task<IActionResult> GetAllAudioFiles([FromQuery] bool includeExpired = false)
-        {
-            try
-            {
-                var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(currentUserId))
-                    return Unauthorized();
-
-                var allAudioFiles = await _audioFileService.GetAllAudioFilesAsync(includeExpired);
-
-                var response = allAudioFiles.Select(file => new
-                {
-                    fileId = file.FileId,
-                    fileName = file.OriginalName,
-                    fileSize = file.FileSize,
-                    mimeType = file.MimeType,
-                    userId = file.UserId,
-                    createdAt = file.CreatedAt,
-                    expiresAt = file.ExpiresAt,
-                    downloadUrl = $"/api/ai/download-audio/{file.FileId}",
-                    isExpired = file.ExpiresAt < DateTime.UtcNow,
-                    isOwner = file.UserId == currentUserId,
-                    // Маскируем userId для приватности (показываем только первые 4 символа)
-                    ownerMask = file.UserId.Substring(0, Math.Min(4, file.UserId.Length)) + "****"
-                });
-
-                return Ok(new
-                {
-                    files = response,
-                    totalFiles = allAudioFiles.Count,
-                    scope = "global",
-                    includeExpired = includeExpired,
-                    note = "All audio files on server. You can download any file using /api/ai/download-audio/{fileId}"
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ Error getting all audio files: {ex.Message}");
-                return BadRequest(new { error = "Failed to get all audio files" });
-            }
-        }
-
-        /// <summary>
-        /// 🗑️ Удалить сохраненный аудио файл
-        /// </summary>
-        /// <param name="fileId">ID файла для удаления</param>
-        /// <returns>Результат удаления</returns>
-        [HttpDelete("audio-files/{fileId}")]
-        [ProducesResponseType(200)]
-        [ProducesResponseType(404)]
-        [ProducesResponseType(403)]
-        public async Task<IActionResult> DeleteAudioFile(string fileId)
-        {
-            try
-            {
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(userId))
-                    return Unauthorized();
-
-                var audioInfo = await _audioFileService.GetAudioFileInfoAsync(fileId);
-                if (audioInfo == null)
-                    return NotFound(new { error = "Audio file not found" });
-
-                // Проверяем права доступа
-                if (audioInfo.UserId != userId)
-                    return Forbid();
-
-                var deleted = await _audioFileService.DeleteAudioFileAsync(fileId);
-                if (deleted)
-                {
-                    return Ok(new { success = true, message = "Audio file deleted successfully" });
-                }
-                else
-                {
-                    return BadRequest(new { error = "Failed to delete audio file" });
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ Error deleting audio file {fileId}: {ex.Message}");
-                return BadRequest(new { error = "Failed to delete audio file" });
-            }
-        }
-
-        /// <summary>
-        /// 🧹 Очистить истекшие аудио файлы (админ функция)
-        /// </summary>
-        /// <returns>Количество удаленных файлов</returns>
-        [HttpPost("cleanup-audio")]
-        [ProducesResponseType(200)]
-        public async Task<IActionResult> CleanupExpiredAudioFiles()
-        {
-            try
-            {
-                var deletedCount = await _audioFileService.CleanupExpiredFilesAsync();
-
-                return Ok(new
-                {
-                    success = true,
-                    deletedFiles = deletedCount,
-                    message = $"Cleaned up {deletedCount} expired audio files"
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ Error cleaning up audio files: {ex.Message}");
-                return BadRequest(new { error = "Failed to cleanup audio files" });
-            }
-        }
-
-        // Остальные методы остаются без изменений...
 
         /// <summary>
         /// 🍎 Сканирование еды по фото (требует LW Coins)
@@ -515,7 +312,6 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
-                // Проверяем и тратим LW Coins
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_food_scan",
                     "AI Food Scan", "photo");
 
@@ -524,30 +320,24 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = "Недостаточно LW Coins для сканирования еды" });
                 }
 
-                // Сохраняем изображение и получаем URL
                 var imageUrl = await _imageService.SaveImageAsync(image, "food-scans");
 
-                // Конвертируем изображение в байты для анализа
                 using var memoryStream = new MemoryStream();
                 await image.CopyToAsync(memoryStream);
                 var imageData = memoryStream.ToArray();
 
                 _logger.LogInformation($"🍎 Processing food scan for user {userId}, image size: {imageData.Length} bytes, saved at: {imageUrl}");
 
-                // Анализируем с помощью Gemini
                 var result = await _geminiService.AnalyzeFoodImageAsync(imageData, userPrompt);
 
                 if (!result.Success)
                 {
-                    // Удаляем сохраненное изображение при ошибке
                     await _imageService.DeleteImageAsync(imageUrl);
                     return BadRequest(new { error = result.ErrorMessage });
                 }
 
-                // Добавляем URL изображения в ответ
                 result.ImageUrl = imageUrl;
 
-                // Если нужно сохранить результаты
                 if (saveResults && result.FoodItems?.Any() == true)
                 {
                     try
@@ -602,7 +392,6 @@ namespace FitnessTracker.API.Controllers
 
                 _logger.LogInformation($"💪 Processing body analysis for user {userId}");
 
-                // Сохраняем изображения и получаем URLs
                 string? frontImageUrl = null;
                 string? sideImageUrl = null;
                 string? backImageUrl = null;
@@ -635,7 +424,6 @@ namespace FitnessTracker.API.Controllers
                     backImageData = ms.ToArray();
                 }
 
-                // Анализируем с помощью Gemini
                 var result = await _geminiService.AnalyzeBodyImagesAsync(
                     frontImageData,
                     sideImageData,
@@ -648,7 +436,6 @@ namespace FitnessTracker.API.Controllers
 
                 if (!result.Success)
                 {
-                    // Удаляем сохраненные изображения при ошибке
                     if (!string.IsNullOrEmpty(frontImageUrl))
                         await _imageService.DeleteImageAsync(frontImageUrl);
                     if (!string.IsNullOrEmpty(sideImageUrl))
@@ -659,12 +446,10 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = result.ErrorMessage });
                 }
 
-                // Добавляем URLs изображений в ответ
                 result.FrontImageUrl = frontImageUrl;
                 result.SideImageUrl = sideImageUrl;
                 result.BackImageUrl = backImageUrl;
 
-                // Сохраняем результат как body scan
                 try
                 {
                     var addBodyScanRequest = new AddBodyScanRequest
@@ -726,7 +511,7 @@ namespace FitnessTracker.API.Controllers
                         "Body Analysis",
                         "Voice Workout Recognition",
                         "Voice Food Recognition",
-                        "Audio File Storage"
+                        "Voice File Storage & Management"
                     }
                 });
             }
@@ -760,7 +545,6 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
-                // Получаем статистику использования LW Coins для ИИ функций
                 var transactions = await _lwCoinService.GetUserLwCoinTransactionsAsync(userId);
                 var aiTransactions = transactions.Where(t => t.FeatureUsed.StartsWith("ai_") ||
                                                            t.FeatureUsed == "photo" ||
@@ -771,6 +555,8 @@ namespace FitnessTracker.API.Controllers
 
                 var monthlyUsage = aiTransactions.Where(t => t.CreatedAt.Month == currentMonth &&
                                                            t.CreatedAt.Year == currentYear).ToList();
+
+                var voiceFilesStats = await _voiceFileService.GetVoiceFilesStatsAsync(userId);
 
                 var stats = new
                 {
@@ -789,6 +575,15 @@ namespace FitnessTracker.API.Controllers
                         VoiceWorkouts = monthlyUsage.Count(t => t.FeatureUsed == "ai_voice_workout"),
                         VoiceFood = monthlyUsage.Count(t => t.FeatureUsed == "ai_voice_food"),
                         BodyAnalysis = monthlyUsage.Count(t => t.FeatureUsed == "ai_body_scan")
+                    },
+                    VoiceFiles = new
+                    {
+                        TotalFiles = voiceFilesStats.TotalFiles,
+                        WorkoutFiles = voiceFilesStats.WorkoutFiles,
+                        FoodFiles = voiceFilesStats.FoodFiles,
+                        TotalSizeMB = voiceFilesStats.TotalSizeMB,
+                        FilesToday = voiceFilesStats.FilesToday,
+                        FilesThisMonth = voiceFilesStats.FilesThisMonth
                     },
                     LastUsed = aiTransactions.OrderByDescending(t => t.CreatedAt).FirstOrDefault()?.CreatedAt,
                     TotalCoinsSpent = Math.Abs(aiTransactions.Sum(t => t.Amount))

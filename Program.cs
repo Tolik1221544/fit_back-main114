@@ -96,21 +96,17 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     }
 });
 
-// AutoMapper
 builder.Services.AddAutoMapper(typeof(Program));
 
-// ✅ НОВОЕ: Настройка HTTP клиентов для AI провайдеров
 builder.Services.AddHttpClient<VertexAIProvider>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(120);
     client.DefaultRequestHeaders.Add("User-Agent", "FitnessTracker-API/3.0.0");
 });
 
-// ✅ НОВОЕ: AI Services
 builder.Services.AddScoped<IGoogleCloudTokenService, GoogleCloudTokenService>();
 builder.Services.AddScoped<IAIProvider, VertexAIProvider>();
 
-// ✅ НОВОЕ: Заменяем старый GeminiService на UniversalAIService
 builder.Services.AddScoped<IGeminiService, UniversalAIService>();
 
 // Основные сервисы
@@ -130,8 +126,7 @@ builder.Services.AddScoped<IAchievementService, AchievementService>();
 builder.Services.AddScoped<IExperienceService, ExperienceService>();
 builder.Services.AddScoped<IGoalService, GoalService>();
 builder.Services.AddScoped<IImageService, ImageService>();
-builder.Services.AddHostedService<AudioTestCleanupService>();
-
+builder.Services.AddScoped<IVoiceFileService, VoiceFileService>();
 // Repositories (без изменений)
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IFoodIntakeRepository, FoodIntakeRepository>();
@@ -146,7 +141,6 @@ builder.Services.AddScoped<IExperienceRepository, ExperienceRepository>();
 builder.Services.AddScoped<IStepsRepository, StepsRepository>();
 builder.Services.AddScoped<IGoalRepository, GoalRepository>();
 
-// JWT Authentication (без изменений)
 const string JWT_SECRET_KEY = "fitness-tracker-super-secret-key-that-is-definitely-long-enough-for-security-2024";
 var key = Encoding.UTF8.GetBytes(JWT_SECRET_KEY);
 
@@ -256,7 +250,6 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine($"   Google Cloud Location: {configuration["GoogleCloud:Location"] ?? "us-central1"}");
         Console.WriteLine($"   Google Cloud Model: {configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro"}");
 
-        // Проверяем доступность сервисного аккаунта
         var tokenService = scope.ServiceProvider.GetRequiredService<IGoogleCloudTokenService>();
         var isValidServiceAccount = await tokenService.ValidateServiceAccountAsync();
 
@@ -269,7 +262,6 @@ using (var scope = app.Services.CreateScope())
             Console.WriteLine("⚠️ WARNING: Google Cloud service account validation failed!");
         }
 
-        // Проверяем здоровье всех провайдеров
         if (universalAI != null)
         {
             var healthStatus = await universalAI.GetProviderHealthStatusAsync();
@@ -363,12 +355,12 @@ else
     app.UseCors("AllowAll");
 }
 
-// Создаем папки для загрузок если их нет
 var uploadsPath = Path.Combine(app.Environment.WebRootPath ?? app.Environment.ContentRootPath, "uploads");
 Directory.CreateDirectory(Path.Combine(uploadsPath, "food-scans"));
 Directory.CreateDirectory(Path.Combine(uploadsPath, "body-scans"));
+Directory.CreateDirectory(Path.Combine(uploadsPath, "voice-workouts")); 
+Directory.CreateDirectory(Path.Combine(uploadsPath, "voice-food"));     
 
-// Настройка статических файлов для изображений
 app.UseStaticFiles();
 app.UseStaticFiles(new StaticFileOptions
 {
