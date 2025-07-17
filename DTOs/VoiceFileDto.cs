@@ -1,14 +1,14 @@
 ﻿namespace FitnessTracker.API.DTOs
 {
-    /// <summary>
-    /// 🎤 Информация о голосовом файле
-    /// </summary>
     public class VoiceFileDto
     {
         public string FileId { get; set; } = string.Empty;
         public string FileName { get; set; } = string.Empty;
         public string OriginalFileName { get; set; } = string.Empty;
         public string VoiceType { get; set; } = string.Empty; // "workout", "food"
+
+        public string UserId { get; set; } = string.Empty;
+
         public long SizeBytes { get; set; }
         public double SizeMB { get; set; }
         public DateTime CreatedAt { get; set; }
@@ -21,9 +21,6 @@
         public bool IsAnalyzed { get; set; }
     }
 
-    /// <summary>
-    /// 📊 Статистика голосовых файлов пользователя
-    /// </summary>
     public class VoiceFilesStatsDto
     {
         public int TotalFiles { get; set; }
@@ -37,9 +34,6 @@
         public int FilesToday { get; set; }
     }
 
-    /// <summary>
-    /// 🔍 Запрос на поиск голосовых файлов
-    /// </summary>
     public class VoiceFilesSearchRequest
     {
         public string? VoiceType { get; set; } // "workout", "food"
@@ -50,9 +44,6 @@
         public string SortBy { get; set; } = "created_desc"; // "created_desc", "size_desc", "name_asc"
     }
 
-    /// <summary>
-    /// 🎤 Ответ на голосовой анализ с URL аудио
-    /// </summary>
     public class VoiceWorkoutResponseWithAudio
     {
         public bool Success { get; set; }
@@ -66,9 +57,6 @@
         public double AudioSizeMB { get; set; }
     }
 
-    /// <summary>
-    /// 🗣️ Ответ на голосовой анализ питания с URL аудио
-    /// </summary>
     public class VoiceFoodResponseWithAudio
     {
         public bool Success { get; set; }

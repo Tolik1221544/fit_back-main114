@@ -134,6 +134,80 @@ namespace FitnessTracker.API.Services
             }
         }
 
+        /// <summary>
+        /// 🌍 НОВОЕ: Получить ВСЕ голосовые файлы на сервере (от всех пользователей)
+        /// </summary>
+        public async Task<IEnumerable<VoiceFileDto>> GetAllVoiceFilesAsync()
+        {
+            try
+            {
+                var allFiles = new List<VoiceFileDto>();
+
+                // Получаем файлы из папки voice-workouts
+                var workoutFiles = await GetAllFilesFromFolder("voice-workouts", "workout");
+                allFiles.AddRange(workoutFiles);
+
+                // Получаем файлы из папки voice-food
+                var foodFiles = await GetAllFilesFromFolder("voice-food", "food");
+                allFiles.AddRange(foodFiles);
+
+                _logger.LogInformation($"🌍 Retrieved {allFiles.Count} voice files from server");
+
+                return allFiles.OrderByDescending(f => f.CreatedAt);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error getting all voice files: {ex.Message}");
+                return new List<VoiceFileDto>();
+            }
+        }
+
+        /// <summary>
+        /// 🌍 НОВОЕ: Получить все файлы из папки (от всех пользователей)
+        /// </summary>
+        private async Task<List<VoiceFileDto>> GetAllFilesFromFolder(string folderName, string voiceType)
+        {
+            var files = new List<VoiceFileDto>();
+            var folderPath = Path.Combine(GetUploadsPath(), folderName);
+
+            if (!Directory.Exists(folderPath))
+                return files;
+
+            var allFiles = Directory.GetFiles(folderPath, "*.*");
+
+            foreach (var filePath in allFiles)
+            {
+                try
+                {
+                    var fileInfo = new FileInfo(filePath);
+                    var fileName = Path.GetFileNameWithoutExtension(fileInfo.Name);
+                    var fileId = ExtractFileId(fileName);
+                    var userId = ExtractUserIdFromFileName(fileName);
+
+                    files.Add(new VoiceFileDto
+                    {
+                        FileId = fileId,
+                        FileName = fileInfo.Name,
+                        OriginalFileName = fileInfo.Name,
+                        VoiceType = voiceType,
+                        UserId = userId, // Добавляем UserId для идентификации владельца
+                        SizeBytes = fileInfo.Length,
+                        SizeMB = Math.Round(fileInfo.Length / (1024.0 * 1024.0), 2),
+                        CreatedAt = fileInfo.CreationTime,
+                        Extension = fileInfo.Extension,
+                        DownloadUrl = GetDownloadUrl(fileId),
+                        ContentType = GetAudioContentType(fileInfo.Name)
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"❌ Error processing file {filePath}: {ex.Message}");
+                }
+            }
+
+            return files;
+        }
+
         public async Task<(byte[] data, string fileName, string contentType)?> DownloadVoiceFileAsync(string userId, string fileId)
         {
             try
@@ -158,6 +232,37 @@ namespace FitnessTracker.API.Services
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Error downloading voice file {fileId} for user {userId}: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 🌍 НОВОЕ: Скачать любой голосовой файл по ID (для администраторов)
+        /// </summary>
+        public async Task<(byte[] data, string fileName, string contentType)?> DownloadAnyVoiceFileAsync(string fileId)
+        {
+            try
+            {
+                // Ищем файл по ID во всех папках
+                var filePath = FindAnyFile(fileId);
+
+                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+                {
+                    _logger.LogWarning($"Voice file not found: {fileId}");
+                    return null;
+                }
+
+                var fileBytes = await File.ReadAllBytesAsync(filePath);
+                var fileName = Path.GetFileName(filePath);
+                var contentType = GetAudioContentType(fileName);
+
+                _logger.LogInformation($"📥 Downloaded voice file (admin): {fileName}");
+
+                return (fileBytes, fileName, contentType);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error downloading voice file {fileId}: {ex.Message}");
                 return null;
             }
         }
@@ -214,6 +319,82 @@ namespace FitnessTracker.API.Services
             {
                 _logger.LogError($"❌ Error getting voice files stats for user {userId}: {ex.Message}");
                 return new VoiceFilesStatsDto();
+            }
+        }
+
+        /// <summary>
+        /// 🌍 НОВОЕ: Получить глобальную статистику всех голосовых файлов
+        /// </summary>
+        public async Task<object> GetGlobalVoiceFilesStatsAsync()
+        {
+            try
+            {
+                var allFiles = await GetAllVoiceFilesAsync();
+                var filesList = allFiles.ToList();
+
+                var workoutFiles = filesList.Where(f => f.VoiceType == "workout").ToList();
+                var foodFiles = filesList.Where(f => f.VoiceType == "food").ToList();
+
+                var today = DateTime.UtcNow.Date;
+                var startOfMonth = new DateTime(today.Year, today.Month, 1);
+                var startOfWeek = today.AddDays(-(int)today.DayOfWeek);
+
+                // Статистика по пользователям
+                var userStats = filesList
+                    .GroupBy(f => f.UserId)
+                    .Select(g => new
+                    {
+                        UserId = g.Key,
+                        FileCount = g.Count(),
+                        TotalSizeMB = g.Sum(f => f.SizeMB),
+                        WorkoutFiles = g.Count(f => f.VoiceType == "workout"),
+                        FoodFiles = g.Count(f => f.VoiceType == "food")
+                    })
+                    .OrderByDescending(u => u.FileCount)
+                    .Take(10)
+                    .ToList();
+
+                var stats = new
+                {
+                    GlobalStats = new
+                    {
+                        TotalFiles = filesList.Count,
+                        WorkoutFiles = workoutFiles.Count,
+                        FoodFiles = foodFiles.Count,
+                        TotalSizeMB = Math.Round(filesList.Sum(f => f.SizeMB), 2),
+                        AverageFileSizeMB = filesList.Any() ? Math.Round(filesList.Average(f => f.SizeMB), 2) : 0,
+                        UniqueUsers = filesList.Select(f => f.UserId).Distinct().Count()
+                    },
+                    TimeBasedStats = new
+                    {
+                        FilesToday = filesList.Count(f => f.CreatedAt.Date == today),
+                        FilesThisWeek = filesList.Count(f => f.CreatedAt.Date >= startOfWeek),
+                        FilesThisMonth = filesList.Count(f => f.CreatedAt >= startOfMonth),
+                        SizeGrowthThisMonth = Math.Round(filesList.Where(f => f.CreatedAt >= startOfMonth).Sum(f => f.SizeMB), 2)
+                    },
+                    TopUsers = userStats,
+                    StorageInfo = new
+                    {
+                        TotalStorageUsedMB = Math.Round(filesList.Sum(f => f.SizeMB), 2),
+                        TotalStorageUsedGB = Math.Round(filesList.Sum(f => f.SizeMB) / 1024, 2),
+                        AverageFileSize = filesList.Any() ? Math.Round(filesList.Average(f => f.SizeMB), 2) : 0,
+                        LargestFile = filesList.Any() ? filesList.Max(f => f.SizeMB) : 0,
+                        SmallestFile = filesList.Any() ? filesList.Min(f => f.SizeMB) : 0
+                    }
+                };
+
+                _logger.LogInformation($"🌍 Global stats: {stats.GlobalStats.TotalFiles} files, {stats.GlobalStats.TotalSizeMB} MB");
+
+                return stats;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error getting global voice files stats: {ex.Message}");
+                return new
+                {
+                    Error = ex.Message,
+                    GlobalStats = new { TotalFiles = 0, TotalSizeMB = 0 }
+                };
             }
         }
 
@@ -298,6 +479,7 @@ namespace FitnessTracker.API.Services
                         FileName = fileInfo.Name,
                         OriginalFileName = fileInfo.Name,
                         VoiceType = voiceType,
+                        UserId = userId,
                         SizeBytes = fileInfo.Length,
                         SizeMB = Math.Round(fileInfo.Length / (1024.0 * 1024.0), 2),
                         CreatedAt = fileInfo.CreationTime,
@@ -333,6 +515,27 @@ namespace FitnessTracker.API.Services
             return null;
         }
 
+        /// <summary>
+        /// 🌍 НОВОЕ: Найти любой файл по ID
+        /// </summary>
+        private string? FindAnyFile(string fileId)
+        {
+            var folders = new[] { "voice-workouts", "voice-food" };
+
+            foreach (var folder in folders)
+            {
+                var folderPath = Path.Combine(GetUploadsPath(), folder);
+                if (!Directory.Exists(folderPath))
+                    continue;
+
+                var files = Directory.GetFiles(folderPath, $"*{fileId}*.*");
+                if (files.Any())
+                    return files.First();
+            }
+
+            return null;
+        }
+
         private string ExtractFileId(string fileName)
         {
             // Формат: userId_voiceType_fileId_timestamp
@@ -341,6 +544,19 @@ namespace FitnessTracker.API.Services
                 return parts[2]; // fileId
 
             return fileName.Substring(0, Math.Min(12, fileName.Length));
+        }
+
+        /// <summary>
+        /// 🌍 НОВОЕ: Извлечь UserId из имени файла
+        /// </summary>
+        private string ExtractUserIdFromFileName(string fileName)
+        {
+            // Формат: userId_voiceType_fileId_timestamp
+            var parts = fileName.Split('_');
+            if (parts.Length >= 1)
+                return parts[0]; // userId
+
+            return "unknown";
         }
 
         private string GetAudioExtension(string fileName, string contentType)
