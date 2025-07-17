@@ -48,14 +48,6 @@ namespace FitnessTracker.API.Controllers
         /// <summary>
         /// 🎤 Голосовой ввод тренировки (требует LW Coins) + сохранение аудио
         /// </summary>
-        /// <param name="audioFile">Аудиофайл с описанием тренировки</param>
-        /// <param name="workoutType">Тип тренировки (strength/cardio)</param>
-        /// <param name="saveResults">Сохранить результаты в базу данных</param>
-        /// <param name="saveAudio">Сохранить аудио файл на сервере</param>
-        /// <returns>Распознанная и структурированная информация о тренировке + URL аудио</returns>
-        /// <response code="200">Тренировка успешно распознана</response>
-        /// <response code="400">Недостаточно LW Coins или ошибка обработки</response>
-        /// <response code="401">Требуется авторизация</response>
         [HttpPost("voice-workout")]
         [ProducesResponseType(typeof(VoiceWorkoutResponseWithAudio), 200)]
         [ProducesResponseType(400)]
@@ -64,13 +56,23 @@ namespace FitnessTracker.API.Controllers
             IFormFile audioFile,
             [FromForm] string? workoutType = null,
             [FromForm] bool saveResults = false,
-            [FromForm] bool saveAudio = true) 
+            [FromForm] bool saveAudio = true)
         {
             try
             {
                 var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
+
+                if (audioFile == null || audioFile.Length == 0)
+                {
+                    return BadRequest(new { error = "Аудио файл не предоставлен" });
+                }
+
+                if (audioFile.Length > 50 * 1024 * 1024) // 50MB
+                {
+                    return BadRequest(new { error = "Размер аудио файла не должен превышать 50MB" });
+                }
 
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_voice_workout",
                     "AI Voice Workout", "voice");
@@ -82,7 +84,7 @@ namespace FitnessTracker.API.Controllers
 
                 string? audioFileId = null;
                 string? audioUrl = null;
-                double audioSizeMB = 0;
+                double audioSizeMB = Math.Round(audioFile.Length / (1024.0 * 1024.0), 2);
 
                 if (saveAudio)
                 {
@@ -90,7 +92,6 @@ namespace FitnessTracker.API.Controllers
                     {
                         audioFileId = await _voiceFileService.SaveVoiceFileAsync(audioFile, userId, "workout");
                         audioUrl = _voiceFileService.GetDownloadUrl(audioFileId);
-                        audioSizeMB = Math.Round(audioFile.Length / (1024.0 * 1024.0), 2);
                         _logger.LogInformation($"🎤 Audio saved: {audioFileId} (Size: {audioSizeMB} MB)");
                     }
                     catch (Exception ex)
@@ -105,7 +106,29 @@ namespace FitnessTracker.API.Controllers
 
                 _logger.LogInformation($"🎤 Processing voice workout for user {userId}, audio size: {audioData.Length} bytes, workoutType: {workoutType}");
 
-                var result = await _geminiService.AnalyzeVoiceWorkoutAsync(audioData, workoutType);
+                VoiceWorkoutResponse result;
+                try
+                {
+                    result = await _geminiService.AnalyzeVoiceWorkoutAsync(audioData, workoutType);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"❌ Voice workout analysis failed: {ex.Message}");
+
+                    if (!string.IsNullOrEmpty(audioFileId))
+                    {
+                        try
+                        {
+                            await _voiceFileService.DeleteVoiceFileAsync(userId, audioFileId);
+                        }
+                        catch (Exception deleteEx)
+                        {
+                            _logger.LogError($"❌ Failed to delete audio file after error: {deleteEx.Message}");
+                        }
+                    }
+
+                    return BadRequest(new { error = "Не удалось обработать аудио. Попробуйте еще раз или проверьте качество записи." });
+                }
 
                 if (!result.Success)
                 {
@@ -113,10 +136,21 @@ namespace FitnessTracker.API.Controllers
 
                     if (!string.IsNullOrEmpty(audioFileId))
                     {
-                        await _voiceFileService.DeleteVoiceFileAsync(userId, audioFileId);
+                        try
+                        {
+                            await _voiceFileService.DeleteVoiceFileAsync(userId, audioFileId);
+                        }
+                        catch (Exception deleteEx)
+                        {
+                            _logger.LogError($"❌ Failed to delete audio file after analysis failure: {deleteEx.Message}");
+                        }
                     }
 
-                    return BadRequest(new { error = result.ErrorMessage });
+                    return BadRequest(new
+                    {
+                        error = result.ErrorMessage ?? "Не удалось распознать тренировку в аудио записи",
+                        suggestion = "Попробуйте говорить четче или запишите аудио заново"
+                    });
                 }
 
                 var response = new VoiceWorkoutResponseWithAudio
@@ -124,7 +158,6 @@ namespace FitnessTracker.API.Controllers
                     Success = result.Success,
                     TranscribedText = result.TranscribedText,
                     WorkoutData = result.WorkoutData,
-
                     AudioUrl = audioUrl,
                     AudioFileId = audioFileId,
                     AudioSaved = !string.IsNullOrEmpty(audioFileId),
@@ -150,11 +183,11 @@ namespace FitnessTracker.API.Controllers
                         };
 
                         await _activityService.AddActivityAsync(userId, addActivityRequest);
-                        _logger.LogInformation($"✅ Saved voice workout for user {userId}");
+                        _logger.LogInformation($"✅ Saved voice workout to database for user {userId}");
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError($"❌ Error saving voice workout: {ex.Message}");
+                        _logger.LogError($"❌ Error saving voice workout to database: {ex.Message}");
                     }
                 }
 
@@ -162,9 +195,14 @@ namespace FitnessTracker.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError($"❌ Error processing voice workout: {ex.Message}");
+                _logger.LogError($"❌ Unexpected error processing voice workout: {ex.Message}");
                 _logger.LogError($"Stack trace: {ex.StackTrace}");
-                return BadRequest(new { error = $"Ошибка обработки голосовой тренировки: {ex.Message}" });
+
+                return BadRequest(new
+                {
+                    error = "Произошла системная ошибка при обработке голосовой тренировки",
+                    message = "Попробуйте еще раз через несколько минут"
+                });
             }
         }
 

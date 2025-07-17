@@ -270,11 +270,59 @@ namespace FitnessTracker.API.Services.AI.Providers
         {
             try
             {
+                // Валидация входных данных
+                if (audioData == null || audioData.Length == 0)
+                {
+                    return new VoiceWorkoutResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Audio data is empty",
+                        TranscribedText = "Пустые аудио данные"
+                    };
+                }
+
+                if (audioData.Length > 50 * 1024 * 1024) // 50MB
+                {
+                    return new VoiceWorkoutResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Audio file too large",
+                        TranscribedText = "Файл слишком большой"
+                    };
+                }
+
+                // Проверка конфигурации
                 var projectId = _configuration["GoogleCloud:ProjectId"];
                 var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
                 var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
 
-                var accessToken = await _tokenService.GetAccessTokenAsync();
+                if (string.IsNullOrEmpty(projectId))
+                {
+                    _logger.LogError("❌ GoogleCloud:ProjectId not configured");
+                    return new VoiceWorkoutResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "AI service not configured",
+                        TranscribedText = "Сервис ИИ не настроен"
+                    };
+                }
+
+                string accessToken;
+                try
+                {
+                    accessToken = await _tokenService.GetAccessTokenAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"❌ Failed to get access token: {ex.Message}");
+                    return new VoiceWorkoutResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Authentication failed",
+                        TranscribedText = "Ошибка аутентификации"
+                    };
+                }
+
                 var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
 
                 var base64Audio = Convert.ToBase64String(audioData);
@@ -288,18 +336,18 @@ namespace FitnessTracker.API.Services.AI.Providers
 ВАЖНЫЕ ПРАВИЛА:
 1. Если время НЕ указано явно - используй текущее время как startTime
 2. Если указано только время начала - добавь 45 минут для endTime
-3. Время указывай в ISO формате: ""2025-07-13T17:00:00Z""
-4. Если время указано как ""17:00"" - преобразуй в ""2025-07-13T17:00:00Z""
+3. Время указывай в ISO формате: ""2025-07-17T17:00:00Z""
+4. Если время указано как ""17:00"" - преобразуй в ""2025-07-17T17:00:00Z""
 5. Если время указано как ""в 17:00"" или ""начало в 17:00"" - это startTime
 6. Если время указано как ""до 17:30"" или ""окончание в 17:30"" - это endTime
 
-Верни ТОЛЬКО валидный JSON без дополнительного текста:
+ОБЯЗАТЕЛЬНО верни ВАЛИДНЫЙ JSON в следующем формате:
 {{
   ""transcribedText"": ""точный распознанный текст"",
   ""workoutData"": {{
     ""type"": ""strength"",
-    ""startTime"": ""2025-07-13T17:00:00Z"",
-    ""endTime"": ""2025-07-13T17:30:00Z"",
+    ""startTime"": ""2025-07-17T17:00:00Z"",
+    ""endTime"": ""2025-07-17T17:30:00Z"",
     ""estimatedCalories"": 200,
     ""strengthData"": {{
       ""name"": ""Жим штанги лежа"",
@@ -322,10 +370,8 @@ namespace FitnessTracker.API.Services.AI.Providers
   }}
 }}
 
-ПРИМЕРЫ:
-- ""Штанга 25 кг"" → startTime: текущее время, endTime: +45 минут
-- ""Штанга 25 кг начало в 17:00"" → startTime: ""2025-07-13T17:00:00Z"", endTime: ""2025-07-13T17:45:00Z""
-- ""Штанга 25 кг начало в 17:00, окончание в 17:30"" → startTime: ""2025-07-13T17:00:00Z"", endTime: ""2025-07-13T17:30:00Z""";
+Если не можешь распознать точные данные, используй разумные значения по умолчанию.
+ВАЖНО: ответ должен быть только JSON, без дополнительного текста до или после.";
 
                 var request = new
                 {
@@ -353,7 +399,30 @@ namespace FitnessTracker.API.Services.AI.Providers
                         temperature = 0.1,
                         max_output_tokens = 2048,
                         top_p = 1.0
-                    }
+                    },
+                    safety_settings = new[]
+                    {
+                new
+                {
+                    category = "HARM_CATEGORY_HARASSMENT",
+                    threshold = "BLOCK_NONE"
+                },
+                new
+                {
+                    category = "HARM_CATEGORY_HATE_SPEECH",
+                    threshold = "BLOCK_NONE"
+                },
+                new
+                {
+                    category = "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    threshold = "BLOCK_NONE"
+                },
+                new
+                {
+                    category = "HARM_CATEGORY_DANGEROUS_CONTENT",
+                    threshold = "BLOCK_NONE"
+                }
+            }
                 };
 
                 _httpClient.DefaultRequestHeaders.Clear();
@@ -362,21 +431,88 @@ namespace FitnessTracker.API.Services.AI.Providers
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PostAsync(url, content);
+                HttpResponseMessage response;
+                try
+                {
+                    response = await _httpClient.PostAsync(url, content);
+                }
+                catch (HttpRequestException ex)
+                {
+                    _logger.LogError($"❌ HTTP request failed: {ex.Message}");
+                    return new VoiceWorkoutResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Network error",
+                        TranscribedText = "Ошибка сети"
+                    };
+                }
+                catch (TaskCanceledException ex)
+                {
+                    _logger.LogError($"❌ Request timeout: {ex.Message}");
+                    return new VoiceWorkoutResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Request timeout",
+                        TranscribedText = "Превышено время ожидания"
+                    };
+                }
+
                 var responseText = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogError($"Vertex AI API error: {response.StatusCode} - {responseText}");
-                    return new VoiceWorkoutResponse { Success = false, ErrorMessage = $"API error: {response.StatusCode}" };
+                    _logger.LogError($"❌ Vertex AI API error: {response.StatusCode} - {responseText}");
+
+                    // Анализируем тип ошибки
+                    if (response.StatusCode == HttpStatusCode.Unauthorized)
+                    {
+                        return new VoiceWorkoutResponse
+                        {
+                            Success = false,
+                            ErrorMessage = "API authentication failed",
+                            TranscribedText = "Ошибка аутентификации API"
+                        };
+                    }
+                    else if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                    {
+                        return new VoiceWorkoutResponse
+                        {
+                            Success = false,
+                            ErrorMessage = "API rate limit exceeded",
+                            TranscribedText = "Превышен лимит запросов"
+                        };
+                    }
+                    else if (response.StatusCode == HttpStatusCode.BadRequest)
+                    {
+                        return new VoiceWorkoutResponse
+                        {
+                            Success = false,
+                            ErrorMessage = "Invalid audio format",
+                            TranscribedText = "Неподдерживаемый формат аудио"
+                        };
+                    }
+
+                    return new VoiceWorkoutResponse
+                    {
+                        Success = false,
+                        ErrorMessage = $"API error: {response.StatusCode}",
+                        TranscribedText = "Ошибка API сервиса"
+                    };
                 }
 
                 return ParseVoiceWorkoutResponse(responseText);
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error analyzing voice workout: {ex.Message}");
-                return new VoiceWorkoutResponse { Success = false, ErrorMessage = ex.Message };
+                _logger.LogError($"❌ Unexpected error in voice workout analysis: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
+
+                return new VoiceWorkoutResponse
+                {
+                    Success = false,
+                    ErrorMessage = ex.Message,
+                    TranscribedText = "Системная ошибка обработки"
+                };
             }
         }
 
@@ -673,6 +809,8 @@ namespace FitnessTracker.API.Services.AI.Providers
         {
             try
             {
+                _logger.LogInformation($"🎤 Raw Gemini response: {responseText}");
+
                 using var document = JsonDocument.Parse(responseText);
 
                 if (document.RootElement.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
@@ -685,17 +823,41 @@ namespace FitnessTracker.API.Services.AI.Providers
                         if (textPart.TryGetProperty("text", out var textElement))
                         {
                             var responseContent = textElement.GetString() ?? "";
+                            _logger.LogInformation($"🎤 Extracted text content: {responseContent.Substring(0, Math.Min(200, responseContent.Length))}...");
                             return ParseVoiceWorkoutJsonResponse(responseContent);
                         }
                     }
                 }
 
-                return new VoiceWorkoutResponse { Success = false, ErrorMessage = "Invalid response format" };
+                _logger.LogError($"❌ Invalid Gemini response structure: {responseText.Substring(0, Math.Min(500, responseText.Length))}");
+                return new VoiceWorkoutResponse
+                {
+                    Success = false,
+                    ErrorMessage = "Invalid response format from AI service",
+                    TranscribedText = "Не удалось распознать речь"
+                };
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError($"❌ JSON parsing error in voice workout response: {ex.Message}");
+                _logger.LogError($"Response content: {responseText.Substring(0, Math.Min(1000, responseText.Length))}");
+
+                return new VoiceWorkoutResponse
+                {
+                    Success = false,
+                    ErrorMessage = "Failed to parse AI response",
+                    TranscribedText = "Ошибка распознавания речи"
+                };
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error parsing voice workout response: {ex.Message}");
-                return new VoiceWorkoutResponse { Success = false, ErrorMessage = "Failed to parse response" };
+                _logger.LogError($"❌ Unexpected error parsing voice workout response: {ex.Message}");
+                return new VoiceWorkoutResponse
+                {
+                    Success = false,
+                    ErrorMessage = "Unexpected error during response processing",
+                    TranscribedText = "Системная ошибка"
+                };
             }
         }
 
@@ -867,7 +1029,7 @@ namespace FitnessTracker.API.Services.AI.Providers
         {
             try
             {
-                _logger.LogInformation($"🎤 Parsing voice workout JSON: {jsonText}");
+                _logger.LogInformation($"🎤 Parsing voice workout JSON: {jsonText.Substring(0, Math.Min(300, jsonText.Length))}...");
 
                 var startIndex = jsonText.IndexOf('{');
                 var lastIndex = jsonText.LastIndexOf('}');
@@ -875,6 +1037,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                 if (startIndex >= 0 && lastIndex > startIndex)
                 {
                     var cleanJson = jsonText.Substring(startIndex, lastIndex - startIndex + 1);
+                    _logger.LogInformation($"🎤 Extracted JSON: {cleanJson.Substring(0, Math.Min(200, cleanJson.Length))}...");
 
                     using var document = JsonDocument.Parse(cleanJson);
                     var root = document.RootElement;
@@ -882,8 +1045,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                     var response = new VoiceWorkoutResponse
                     {
                         Success = true,
-                        TranscribedText = root.TryGetProperty("transcribedText", out var transcribed)
-                            ? transcribed.GetString() : "Не удалось распознать текст"
+                        TranscribedText = SafeGetString(root, "transcribedText", "Не удалось распознать текст")
                     };
 
                     if (root.TryGetProperty("workoutData", out var workoutData))
@@ -899,97 +1061,247 @@ namespace FitnessTracker.API.Services.AI.Providers
                         if (workoutData.TryGetProperty("strengthData", out var strengthData) &&
                             strengthData.ValueKind != JsonValueKind.Null)
                         {
-                            response.WorkoutData.StrengthData = new StrengthDataDto
-                            {
-                                Name = SafeGetString(strengthData, "name", "Упражнение"),
-                                MuscleGroup = SafeGetString(strengthData, "muscleGroup", "Не указано"),
-                                Equipment = SafeGetString(strengthData, "equipment", "Не указано"),
-                                WorkingWeight = SafeGetDecimal(strengthData, "workingWeight", 0),
-                                RestTimeSeconds = SafeGetInt(strengthData, "restTimeSeconds", 120)
-                            };
-
-                            // Парсим подходы
-                            if (strengthData.TryGetProperty("sets", out var setsArray) &&
-                                setsArray.ValueKind == JsonValueKind.Array)
-                            {
-                                var sets = new List<StrengthSetDto>();
-                                foreach (var setElement in setsArray.EnumerateArray())
-                                {
-                                    sets.Add(new StrengthSetDto
-                                    {
-                                        SetNumber = SafeGetInt(setElement, "setNumber", sets.Count + 1),
-                                        Weight = SafeGetDecimal(setElement, "weight", response.WorkoutData.StrengthData.WorkingWeight),
-                                        Reps = SafeGetInt(setElement, "reps", 10),
-                                        IsCompleted = SafeGetBool(setElement, "isCompleted", true),
-                                        Notes = SafeGetString(setElement, "notes", "")
-                                    });
-                                }
-                                response.WorkoutData.StrengthData.Sets = sets;
-                            }
-                            else
-                            {
-                                // Создаем один подход по умолчанию
-                                response.WorkoutData.StrengthData.Sets = new List<StrengthSetDto>
-                        {
-                            new StrengthSetDto
-                            {
-                                SetNumber = 1,
-                                Weight = response.WorkoutData.StrengthData.WorkingWeight,
-                                Reps = 10,
-                                IsCompleted = true,
-                                Notes = "Подход из голосового ввода"
-                            }
-                        };
-                            }
+                            response.WorkoutData.StrengthData = ParseStrengthData(strengthData);
                         }
 
                         if (workoutData.TryGetProperty("cardioData", out var cardioData) &&
                             cardioData.ValueKind != JsonValueKind.Null)
                         {
-                            response.WorkoutData.CardioData = new CardioDataDto
-                            {
-                                CardioType = SafeGetString(cardioData, "cardioType", "Кардио"),
-                                DistanceKm = SafeGetNullableDecimal(cardioData, "distanceKm"),
-                                AvgPulse = SafeGetNullableInt(cardioData, "avgPulse"),
-                                MaxPulse = SafeGetNullableInt(cardioData, "maxPulse"),
-                                AvgPace = SafeGetString(cardioData, "avgPace", "")
-                            };
+                            response.WorkoutData.CardioData = ParseCardioData(cardioData);
                         }
 
-                        // Парсим заметки
-                        if (workoutData.TryGetProperty("notes", out var notes) &&
-                            notes.ValueKind == JsonValueKind.Array)
-                        {
-                            response.WorkoutData.Notes = notes.EnumerateArray()
-                                .Select(x => x.GetString() ?? "").Where(x => !string.IsNullOrEmpty(x)).ToList();
-                        }
-                        else
-                        {
-                            response.WorkoutData.Notes = new List<string> { "Тренировка добавлена голосом" };
-                        }
+                        response.WorkoutData.Notes = ParseNotes(workoutData);
 
-                        // Автоматически устанавливаем endTime если не указан
                         if (response.WorkoutData.EndTime <= response.WorkoutData.StartTime)
                         {
                             response.WorkoutData.EndTime = response.WorkoutData.StartTime.AddMinutes(45);
                         }
+                    }
+                    else
+                    {
+                        response.WorkoutData = CreateDefaultWorkoutData(response.TranscribedText);
                     }
 
                     _logger.LogInformation($"✅ Voice workout parsed successfully: {response.WorkoutData?.Type}");
                     return response;
                 }
 
-                _logger.LogError("❌ Invalid JSON format in voice workout response");
-                return new VoiceWorkoutResponse { Success = false, ErrorMessage = "Invalid JSON format" };
+                _logger.LogError($"❌ No valid JSON found in response: {jsonText.Substring(0, Math.Min(200, jsonText.Length))}");
+                return CreateFallbackResponse(jsonText);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError($"❌ JSON parsing error: {ex.Message}");
+                _logger.LogError($"Problematic JSON: {jsonText.Substring(0, Math.Min(500, jsonText.Length))}");
+                return CreateFallbackResponse(jsonText);
             }
             catch (Exception ex)
             {
-                _logger.LogError($"❌ Error parsing voice workout JSON: {ex.Message}");
-                _logger.LogError($"JSON content: {jsonText}");
-                return new VoiceWorkoutResponse { Success = false, ErrorMessage = "Failed to parse workout data" };
+                _logger.LogError($"❌ Unexpected error parsing voice workout JSON: {ex.Message}");
+                return CreateFallbackResponse(jsonText);
             }
         }
+        private StrengthDataDto ParseStrengthData(JsonElement strengthData)
+        {
+            var strengthDto = new StrengthDataDto
+            {
+                Name = SafeGetString(strengthData, "name", "Упражнение"),
+                MuscleGroup = SafeGetString(strengthData, "muscleGroup", "Не указано"),
+                Equipment = SafeGetString(strengthData, "equipment", "Не указано"),
+                WorkingWeight = SafeGetDecimal(strengthData, "workingWeight", 0),
+                RestTimeSeconds = SafeGetInt(strengthData, "restTimeSeconds", 120)
+            };
 
+            if (strengthData.TryGetProperty("sets", out var setsArray) &&
+                setsArray.ValueKind == JsonValueKind.Array)
+            {
+                var sets = new List<StrengthSetDto>();
+                foreach (var setElement in setsArray.EnumerateArray())
+                {
+                    sets.Add(new StrengthSetDto
+                    {
+                        SetNumber = SafeGetInt(setElement, "setNumber", sets.Count + 1),
+                        Weight = SafeGetDecimal(setElement, "weight", strengthDto.WorkingWeight),
+                        Reps = SafeGetInt(setElement, "reps", 10),
+                        IsCompleted = SafeGetBool(setElement, "isCompleted", true),
+                        Notes = SafeGetString(setElement, "notes", "")
+                    });
+                }
+                strengthDto.Sets = sets;
+            }
+            else
+            {
+               
+                strengthDto.Sets = new List<StrengthSetDto>
+        {
+            new StrengthSetDto
+            {
+                SetNumber = 1,
+                Weight = strengthDto.WorkingWeight,
+                Reps = 10,
+                IsCompleted = true,
+                Notes = "Подход из голосового ввода"
+            }
+        };
+            }
+
+            return strengthDto;
+        }
+
+        private CardioDataDto ParseCardioData(JsonElement cardioData)
+        {
+            return new CardioDataDto
+            {
+                CardioType = SafeGetString(cardioData, "cardioType", "Кардио"),
+                DistanceKm = SafeGetNullableDecimal(cardioData, "distanceKm"),
+                AvgPulse = SafeGetNullableInt(cardioData, "avgPulse"),
+                MaxPulse = SafeGetNullableInt(cardioData, "maxPulse"),
+                AvgPace = SafeGetString(cardioData, "avgPace", "")
+            };
+        }
+
+        private List<string> ParseNotes(JsonElement workoutData)
+        {
+            if (workoutData.TryGetProperty("notes", out var notes) &&
+                notes.ValueKind == JsonValueKind.Array)
+            {
+                return notes.EnumerateArray()
+                    .Select(x => x.GetString() ?? "")
+                    .Where(x => !string.IsNullOrEmpty(x))
+                    .ToList();
+            }
+
+            return new List<string> { "Тренировка добавлена голосом" };
+        }
+
+        private WorkoutDataResponse CreateDefaultWorkoutData(string transcribedText)
+        {
+            var type = ExtractWorkoutTypeFromText(transcribedText);
+            var estimatedCalories = ExtractCaloriesFromText(transcribedText);
+
+            return new WorkoutDataResponse
+            {
+                Type = type,
+                StartTime = DateTime.UtcNow,
+                EndTime = DateTime.UtcNow.AddMinutes(30),
+                EstimatedCalories = estimatedCalories,
+                StrengthData = type == "strength" ? CreateDefaultStrengthData(transcribedText) : null,
+                CardioData = type == "cardio" ? CreateDefaultCardioData(transcribedText) : null,
+                Notes = new List<string> { "Данные извлечены из голосового ввода", transcribedText }
+            };
+        }
+        private string ExtractWorkoutTypeFromText(string text)
+        {
+            var lowerText = text.ToLowerInvariant();
+
+            var strengthKeywords = new[] { "жим", "тяга", "приседания", "подтягивания", "отжимания", "штанга", "гантели", "кг", "повторений", "подходов" };
+            var cardioKeywords = new[] { "бег", "ходьба", "велосипед", "плавание", "кардио", "км", "минут бега", "пробежка" };
+
+            var strengthMatches = strengthKeywords.Count(keyword => lowerText.Contains(keyword));
+            var cardioMatches = cardioKeywords.Count(keyword => lowerText.Contains(keyword));
+
+            return strengthMatches >= cardioMatches ? "strength" : "cardio";
+        }
+
+        private int ExtractCaloriesFromText(string text)
+        {
+        
+            var lowerText = text.ToLowerInvariant();
+
+            if (lowerText.Contains("интенсивн") || lowerText.Contains("тяжел"))
+                return 350;
+            if (lowerText.Contains("легк") || lowerText.Contains("разминка"))
+                return 150;
+
+            return 250; 
+        }
+
+        private StrengthDataDto CreateDefaultStrengthData(string text)
+        {
+            var exerciseName = ExtractExerciseNameFromText(text);
+            var weight = ExtractWeightFromText(text);
+
+            return new StrengthDataDto
+            {
+                Name = exerciseName,
+                MuscleGroup = "Не указано",
+                Equipment = "Не указано",
+                WorkingWeight = weight,
+                RestTimeSeconds = 120,
+                Sets = new List<StrengthSetDto>
+        {
+            new StrengthSetDto
+            {
+                SetNumber = 1,
+                Weight = weight,
+                Reps = 10,
+                IsCompleted = true,
+                Notes = "Из голосового ввода"
+            }
+        }
+            };
+        }
+
+        private CardioDataDto CreateDefaultCardioData(string text)
+        {
+            var cardioType = ExtractCardioTypeFromText(text);
+
+            return new CardioDataDto
+            {
+                CardioType = cardioType,
+                DistanceKm = null,
+                AvgPulse = null,
+                MaxPulse = null,
+                AvgPace = ""
+            };
+        }
+
+        private string ExtractExerciseNameFromText(string text)
+        {
+            var lowerText = text.ToLowerInvariant();
+
+            if (lowerText.Contains("жим")) return "Жим";
+            if (lowerText.Contains("тяга")) return "Тяга";
+            if (lowerText.Contains("приседания")) return "Приседания";
+            if (lowerText.Contains("подтягивания")) return "Подтягивания";
+            if (lowerText.Contains("отжимания")) return "Отжимания";
+
+            return "Силовое упражнение";
+        }
+
+        private string ExtractCardioTypeFromText(string text)
+        {
+            var lowerText = text.ToLowerInvariant();
+
+            if (lowerText.Contains("бег") || lowerText.Contains("пробежка")) return "Бег";
+            if (lowerText.Contains("ходьба")) return "Ходьба";
+            if (lowerText.Contains("велосипед")) return "Велосипед";
+            if (lowerText.Contains("плавание")) return "Плавание";
+
+            return "Кардио";
+        }
+
+        private decimal ExtractWeightFromText(string text)
+        {
+            var weightMatch = System.Text.RegularExpressions.Regex.Match(text, @"(\d+(?:\.\d+)?)\s*кг");
+            if (weightMatch.Success && decimal.TryParse(weightMatch.Groups[1].Value, out var weight))
+            {
+                return weight;
+            }
+
+            return 0;
+        }
+
+        private VoiceWorkoutResponse CreateFallbackResponse(string originalText)
+        {
+            return new VoiceWorkoutResponse
+            {
+                Success = true, 
+                ErrorMessage = null,
+                TranscribedText = string.IsNullOrEmpty(originalText) ? "Не удалось распознать речь" : originalText,
+                WorkoutData = CreateDefaultWorkoutData(originalText)
+            };
+        }
         private VoiceFoodResponse ParseVoiceFoodJsonResponse(string jsonText)
         {
             try
