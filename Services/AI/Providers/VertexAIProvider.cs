@@ -4,7 +4,6 @@ using FitnessTracker.API.Services.AI;
 using System.Text;
 using System.Text.Json;
 
-
 namespace FitnessTracker.API.Services.AI.Providers
 {
     public class VertexAIProvider : IAIProvider
@@ -87,7 +86,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                     {
                 new
                 {
-                    role = "user", 
+                    role = "user",
                     parts = new object[]
                     {
                         new { text = prompt },
@@ -232,7 +231,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                     {
                         new
                         {
-                            role = "user", 
+                            role = "user",
                             parts = parts.ToArray()
                         }
                     },
@@ -277,7 +276,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                     return CreateIntelligentFallback("Пустой аудио файл", workoutType);
                 }
 
-                if (audioData.Length > 50 * 1024 * 1024) 
+                if (audioData.Length > 50 * 1024 * 1024)
                 {
                     return CreateIntelligentFallback("Файл слишком большой", workoutType);
                 }
@@ -633,7 +632,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                     {
                         new
                         {
-                            role = "user", 
+                            role = "user",
                             parts = new[]
                             {
                                 new { text = "Say 'OK' if you are working" }
@@ -662,6 +661,118 @@ namespace FitnessTracker.API.Services.AI.Providers
             {
                 return false;
             }
+        }
+
+        // =============== НОВЫЕ МЕТОДЫ ===============
+
+        /// <summary>
+        /// ✅ НОВОЕ: Создает умный fallback ответ для voice workout
+        /// </summary>
+        private VoiceWorkoutResponse CreateIntelligentFallback(string errorReason, string? workoutType)
+        {
+            var type = DetermineWorkoutType(workoutType);
+            var defaultWorkout = CreateDefaultWorkoutData(errorReason, type);
+
+            return new VoiceWorkoutResponse
+            {
+                Success = true,
+                ErrorMessage = null,
+                TranscribedText = $"Не удалось распознать аудио ({errorReason}), но создана базовая тренировка",
+                WorkoutData = defaultWorkout
+            };
+        }
+
+        /// <summary>
+        /// ✅ НОВОЕ: Парсит ответ с fallback
+        /// </summary>
+        private VoiceWorkoutResponse ParseVoiceWorkoutResponseWithFallback(string responseText, string? workoutType)
+        {
+            try
+            {
+                var parsedResponse = ParseVoiceWorkoutResponse(responseText);
+                if (parsedResponse.Success && parsedResponse.WorkoutData != null)
+                {
+                    return parsedResponse;
+                }
+
+                _logger.LogWarning("Failed to parse voice workout response, using fallback");
+                return CreateIntelligentFallback("Ошибка парсинга ответа ИИ", workoutType);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error parsing voice workout response: {ex.Message}");
+                return CreateIntelligentFallback("Ошибка обработки ответа", workoutType);
+            }
+        }
+
+        /// <summary>
+        /// ✅ НОВОЕ: Определяет тип тренировки
+        /// </summary>
+        private string DetermineWorkoutType(string? workoutType)
+        {
+            if (string.IsNullOrEmpty(workoutType))
+                return "strength"; // По умолчанию силовая
+
+            return workoutType.ToLowerInvariant() switch
+            {
+                "strength" or "силовая" or "качалка" => "strength",
+                "cardio" or "кардио" or "бег" => "cardio",
+                _ => "strength"
+            };
+        }
+
+        /// <summary>
+        /// ✅ НОВОЕ: Создает данные тренировки по умолчанию
+        /// </summary>
+        private WorkoutDataResponse CreateDefaultWorkoutData(string reason, string type)
+        {
+            var startTime = DateTime.UtcNow;
+            var endTime = startTime.AddMinutes(type == "cardio" ? 30 : 45);
+
+            var workout = new WorkoutDataResponse
+            {
+                Type = type,
+                StartTime = startTime,
+                EndTime = endTime,
+                EstimatedCalories = type == "cardio" ? 200 : 250,
+                Notes = new List<string> { $"Автоматически созданная тренировка ({reason})" }
+            };
+
+            if (type == "strength")
+            {
+                workout.StrengthData = new StrengthDataDto
+                {
+                    Name = "Базовое упражнение",
+                    MuscleGroup = "Общая группа мышц",
+                    Equipment = "Собственный вес",
+                    WorkingWeight = 0,
+                    RestTimeSeconds = 120,
+                    Sets = new List<StrengthSetDto>
+                    {
+                        new StrengthSetDto
+                        {
+                            SetNumber = 1,
+                            Weight = 0,
+                            Reps = 10,
+                            IsCompleted = true,
+                            Notes = "Базовый подход"
+                        }
+                    }
+                };
+            }
+            else
+            {
+                workout.CardioData = new CardioDataDto
+                {
+                    CardioType = "Общее кардио",
+                    DistanceKm = null,
+                    AvgPulse = null,
+                    MaxPulse = null,
+                    AvgPace = ""
+                };
+            }
+
+            return workout;
         }
 
         // Helper methods
@@ -1041,7 +1152,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                     }
                     else
                     {
-                        response.WorkoutData = CreateDefaultWorkoutData(response.TranscribedText);
+                        response.WorkoutData = CreateDefaultWorkoutData(response.TranscribedText, "strength");
                     }
 
                     _logger.LogInformation($"✅ Voice workout parsed successfully: {response.WorkoutData?.Type}");
@@ -1063,6 +1174,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                 return CreateFallbackResponse(jsonText);
             }
         }
+
         private StrengthDataDto ParseStrengthData(JsonElement strengthData)
         {
             var strengthDto = new StrengthDataDto
@@ -1093,18 +1205,17 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
             else
             {
-               
                 strengthDto.Sets = new List<StrengthSetDto>
-        {
-            new StrengthSetDto
-            {
-                SetNumber = 1,
-                Weight = strengthDto.WorkingWeight,
-                Reps = 10,
-                IsCompleted = true,
-                Notes = "Подход из голосового ввода"
-            }
-        };
+                {
+                    new StrengthSetDto
+                    {
+                        SetNumber = 1,
+                        Weight = strengthDto.WorkingWeight,
+                        Reps = 10,
+                        IsCompleted = true,
+                        Notes = "Подход из голосового ввода"
+                    }
+                };
             }
 
             return strengthDto;
@@ -1136,134 +1247,17 @@ namespace FitnessTracker.API.Services.AI.Providers
             return new List<string> { "Тренировка добавлена голосом" };
         }
 
-        private WorkoutDataResponse CreateDefaultWorkoutData(string transcribedText)
-        {
-            var type = ExtractWorkoutTypeFromText(transcribedText);
-            var estimatedCalories = ExtractCaloriesFromText(transcribedText);
-
-            return new WorkoutDataResponse
-            {
-                Type = type,
-                StartTime = DateTime.UtcNow,
-                EndTime = DateTime.UtcNow.AddMinutes(30),
-                EstimatedCalories = estimatedCalories,
-                StrengthData = type == "strength" ? CreateDefaultStrengthData(transcribedText) : null,
-                CardioData = type == "cardio" ? CreateDefaultCardioData(transcribedText) : null,
-                Notes = new List<string> { "Данные извлечены из голосового ввода", transcribedText }
-            };
-        }
-        private string ExtractWorkoutTypeFromText(string text)
-        {
-            var lowerText = text.ToLowerInvariant();
-
-            var strengthKeywords = new[] { "жим", "тяга", "приседания", "подтягивания", "отжимания", "штанга", "гантели", "кг", "повторений", "подходов" };
-            var cardioKeywords = new[] { "бег", "ходьба", "велосипед", "плавание", "кардио", "км", "минут бега", "пробежка" };
-
-            var strengthMatches = strengthKeywords.Count(keyword => lowerText.Contains(keyword));
-            var cardioMatches = cardioKeywords.Count(keyword => lowerText.Contains(keyword));
-
-            return strengthMatches >= cardioMatches ? "strength" : "cardio";
-        }
-
-        private int ExtractCaloriesFromText(string text)
-        {
-        
-            var lowerText = text.ToLowerInvariant();
-
-            if (lowerText.Contains("интенсивн") || lowerText.Contains("тяжел"))
-                return 350;
-            if (lowerText.Contains("легк") || lowerText.Contains("разминка"))
-                return 150;
-
-            return 250; 
-        }
-
-        private StrengthDataDto CreateDefaultStrengthData(string text)
-        {
-            var exerciseName = ExtractExerciseNameFromText(text);
-            var weight = ExtractWeightFromText(text);
-
-            return new StrengthDataDto
-            {
-                Name = exerciseName,
-                MuscleGroup = "Не указано",
-                Equipment = "Не указано",
-                WorkingWeight = weight,
-                RestTimeSeconds = 120,
-                Sets = new List<StrengthSetDto>
-        {
-            new StrengthSetDto
-            {
-                SetNumber = 1,
-                Weight = weight,
-                Reps = 10,
-                IsCompleted = true,
-                Notes = "Из голосового ввода"
-            }
-        }
-            };
-        }
-
-        private CardioDataDto CreateDefaultCardioData(string text)
-        {
-            var cardioType = ExtractCardioTypeFromText(text);
-
-            return new CardioDataDto
-            {
-                CardioType = cardioType,
-                DistanceKm = null,
-                AvgPulse = null,
-                MaxPulse = null,
-                AvgPace = ""
-            };
-        }
-
-        private string ExtractExerciseNameFromText(string text)
-        {
-            var lowerText = text.ToLowerInvariant();
-
-            if (lowerText.Contains("жим")) return "Жим";
-            if (lowerText.Contains("тяга")) return "Тяга";
-            if (lowerText.Contains("приседания")) return "Приседания";
-            if (lowerText.Contains("подтягивания")) return "Подтягивания";
-            if (lowerText.Contains("отжимания")) return "Отжимания";
-
-            return "Силовое упражнение";
-        }
-
-        private string ExtractCardioTypeFromText(string text)
-        {
-            var lowerText = text.ToLowerInvariant();
-
-            if (lowerText.Contains("бег") || lowerText.Contains("пробежка")) return "Бег";
-            if (lowerText.Contains("ходьба")) return "Ходьба";
-            if (lowerText.Contains("велосипед")) return "Велосипед";
-            if (lowerText.Contains("плавание")) return "Плавание";
-
-            return "Кардио";
-        }
-
-        private decimal ExtractWeightFromText(string text)
-        {
-            var weightMatch = System.Text.RegularExpressions.Regex.Match(text, @"(\d+(?:\.\d+)?)\s*кг");
-            if (weightMatch.Success && decimal.TryParse(weightMatch.Groups[1].Value, out var weight))
-            {
-                return weight;
-            }
-
-            return 0;
-        }
-
         private VoiceWorkoutResponse CreateFallbackResponse(string originalText)
         {
             return new VoiceWorkoutResponse
             {
-                Success = true, 
+                Success = true,
                 ErrorMessage = null,
                 TranscribedText = string.IsNullOrEmpty(originalText) ? "Не удалось распознать речь" : originalText,
-                WorkoutData = CreateDefaultWorkoutData(originalText)
+                WorkoutData = CreateDefaultWorkoutData(originalText, "strength")
             };
         }
+
         private VoiceFoodResponse ParseVoiceFoodJsonResponse(string jsonText)
         {
             try
@@ -1326,6 +1320,8 @@ namespace FitnessTracker.API.Services.AI.Providers
                 return new VoiceFoodResponse { Success = false, ErrorMessage = "Failed to parse food data" };
             }
         }
+
+        // Safe parsing helpers
         private string SafeGetString(JsonElement element, string propertyName, string defaultValue = "")
         {
             return element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.String
