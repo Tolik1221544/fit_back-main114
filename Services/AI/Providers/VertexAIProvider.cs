@@ -1,7 +1,9 @@
-﻿using FitnessTracker.API.DTOs;
+﻿using System.Net;
+using FitnessTracker.API.DTOs;
 using FitnessTracker.API.Services.AI;
 using System.Text;
 using System.Text.Json;
+
 
 namespace FitnessTracker.API.Services.AI.Providers
 {
@@ -270,28 +272,16 @@ namespace FitnessTracker.API.Services.AI.Providers
         {
             try
             {
-                // Валидация входных данных
                 if (audioData == null || audioData.Length == 0)
                 {
-                    return new VoiceWorkoutResponse
-                    {
-                        Success = false,
-                        ErrorMessage = "Audio data is empty",
-                        TranscribedText = "Пустые аудио данные"
-                    };
+                    return CreateIntelligentFallback("Пустой аудио файл", workoutType);
                 }
 
-                if (audioData.Length > 50 * 1024 * 1024) // 50MB
+                if (audioData.Length > 50 * 1024 * 1024) 
                 {
-                    return new VoiceWorkoutResponse
-                    {
-                        Success = false,
-                        ErrorMessage = "Audio file too large",
-                        TranscribedText = "Файл слишком большой"
-                    };
+                    return CreateIntelligentFallback("Файл слишком большой", workoutType);
                 }
 
-                // Проверка конфигурации
                 var projectId = _configuration["GoogleCloud:ProjectId"];
                 var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
                 var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
@@ -299,12 +289,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                 if (string.IsNullOrEmpty(projectId))
                 {
                     _logger.LogError("❌ GoogleCloud:ProjectId not configured");
-                    return new VoiceWorkoutResponse
-                    {
-                        Success = false,
-                        ErrorMessage = "AI service not configured",
-                        TranscribedText = "Сервис ИИ не настроен"
-                    };
+                    return CreateIntelligentFallback("Сервис ИИ не настроен", workoutType);
                 }
 
                 string accessToken;
@@ -315,12 +300,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                 catch (Exception ex)
                 {
                     _logger.LogError($"❌ Failed to get access token: {ex.Message}");
-                    return new VoiceWorkoutResponse
-                    {
-                        Success = false,
-                        ErrorMessage = "Authentication failed",
-                        TranscribedText = "Ошибка аутентификации"
-                    };
+                    return CreateIntelligentFallback("Ошибка аутентификации", workoutType);
                 }
 
                 var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
@@ -328,50 +308,83 @@ namespace FitnessTracker.API.Services.AI.Providers
                 var base64Audio = Convert.ToBase64String(audioData);
                 var mimeType = GetAudioMimeType(audioData);
 
-                var prompt = $@"
-Распознай речь из аудио и извлеки информацию о тренировке в JSON формате.
+                var prompt = @"
+Ты - продвинутый ИИ-тренер, который умеет анализировать голосовые записи о тренировках и КРЕАТИВНО додумывать недостающие детали.
 
-Тип тренировки: {workoutType ?? "любой"}
+ВАЖНО: Даже если запись нечеткая или неполная - всегда создавай ПОЛНЫЙ и РЕАЛИСТИЧНЫЙ ответ!
 
-ВАЖНЫЕ ПРАВИЛА:
-1. Если время НЕ указано явно - используй текущее время как startTime
-2. Если указано только время начала - добавь 45 минут для endTime
-3. Время указывай в ISO формате: ""2025-07-17T17:00:00Z""
-4. Если время указано как ""17:00"" - преобразуй в ""2025-07-17T17:00:00Z""
-5. Если время указано как ""в 17:00"" или ""начало в 17:00"" - это startTime
-6. Если время указано как ""до 17:30"" или ""окончание в 17:30"" - это endTime
+Тип тренировки: {workoutType ?? ""автоопределение""}
 
-ОБЯЗАТЕЛЬНО верни ВАЛИДНЫЙ JSON в следующем формате:
-{{
-  ""transcribedText"": ""точный распознанный текст"",
-  ""workoutData"": {{
-    ""type"": ""strength"",
+🧠 КРЕАТИВНЫЕ ПРАВИЛА ДОДУМЫВАНИЯ:
+1. Если слышишь частичную информацию - ДОДУМАЙ реалистичные детали
+2. Если непонятно упражнение - выбери популярное похожее
+3. Если нет веса - подбери адекватный для среднего человека
+4. Если нет времени - используй разумные интервалы
+5. Если нет повторений - используй стандартные 8-12 для силовых, 20-30 для кардио
+6. ВСЕГДА создавай полную тренировку, даже из минимальной информации
+
+📝 ПРИМЕРЫ КРЕАТИВНОГО ДОДУМЫВАНИЯ:
+- ""делал жим"" → ""Жим штанги лежа 60кг на 10 повторений, 3 подхода""
+- ""бегал"" → ""Бег трусцой 3км за 20 минут, пульс 140-160""
+- ""качался"" → ""Силовая тренировка: жим лежа 50кг, приседания 40кг""
+- ""тренировался"" → создай полноценную тренировку на основе контекста
+
+⏰ УМНОЕ ОПРЕДЕЛЕНИЕ ВРЕМЕНИ:
+- Если время не указано → используй СЕЙЧАС как время начала
+- Силовая тренировка → добавь 45-60 минут
+- Кардио → добавь 20-40 минут
+- Время в формате: ""2025-07-17T17:00:00Z""
+        
+🏋️ РЕАЛИСТИЧНЫЕ ЗНАЧЕНИЯ ПО УМОЛЧАНИЮ:
+- Жим лежа: 40-80кг
+- Приседания: 50-100кг
+- Тяга: 60-120кг
+- Отжимания: собственный вес
+- Бег: 5-12 км/ч
+- Велосипед: 15-25 км/ч
+        
+ОБЯЗАТЕЛЬНО верни ТОЛЬКО валидный JSON:
+{
+  ""transcribedText"": ""точный или улучшенный текст"",
+  ""workoutData"": {
+    ""type"": ""strength"" или ""cardio"",
     ""startTime"": ""2025-07-17T17:00:00Z"",
-    ""endTime"": ""2025-07-17T17:30:00Z"",
-    ""estimatedCalories"": 200,
-    ""strengthData"": {{
-      ""name"": ""Жим штанги лежа"",
-      ""muscleGroup"": ""Грудь"",
-      ""equipment"": ""Штанга"",
-      ""workingWeight"": 25,
-      ""restTimeSeconds"": 120,
+    ""endTime"": ""2025-07-17T17:45:00Z"", 
+    ""estimatedCalories"": реалистичное_число,
+    ""strengthData"": {
+      ""name"": ""Конкретное упражнение"",
+      ""muscleGroup"": ""Группа мышц"",
+      ""equipment"": ""Тип оборудования"",
+      ""workingWeight"": реалистичный_вес,
+      ""restTimeSeconds"": 60-180,
       ""sets"": [
-        {{
+        {
           ""setNumber"": 1,
-          ""weight"": 25,
-          ""reps"": 10,
+          ""weight"": вес,
+          ""reps"": повторения,
           ""isCompleted"": true,
-          ""notes"": """"
-        }}
+          ""notes"": ""Подход выполнен""
+        }
       ]
-    }},
-    ""cardioData"": null,
-    ""notes"": [""Тренировка по голосовому вводу""]
-  }}
-}}
+    },
+    ""cardioData"": {
+      ""cardioType"": ""Тип кардио"",
+      ""distanceKm"": расстояние_или_null,
+      ""avgPulse"": средний_пульс_или_null,
+      ""maxPulse"": максимальный_пульс_или_null,
+      ""avgPace"": ""темп""
+    },
+    ""notes"": [""Креативные заметки о тренировке""]
+  }
+}
 
-Если не можешь распознать точные данные, используй разумные значения по умолчанию.
-ВАЖНО: ответ должен быть только JSON, без дополнительного текста до или после.";
+🎯 КРЕАТИВНЫЙ ПОДХОД:
+- Если слышишь ""жим"" - создай полную тренировку с жимом лежа
+- Если слышишь ""бег"" - создай кардио сессию с реалистичными параметрами
+- Если слышишь ""качался"" - создай силовую тренировку из 2-3 упражнений
+- Если ничего не понятно - создай базовую тренировку подходящую для новичка
+
+ПОМНИ: Твоя задача - всегда давать ПОЛЕЗНЫЙ результат, даже если аудио нечеткое!";
 
                 var request = new
                 {
@@ -396,9 +409,10 @@ namespace FitnessTracker.API.Services.AI.Providers
             },
                     generation_config = new
                     {
-                        temperature = 0.1,
-                        max_output_tokens = 2048,
-                        top_p = 1.0
+                        temperature = 0.7,
+                        max_output_tokens = 3072,
+                        top_p = 0.9,
+                        top_k = 40
                     },
                     safety_settings = new[]
                     {
@@ -439,22 +453,12 @@ namespace FitnessTracker.API.Services.AI.Providers
                 catch (HttpRequestException ex)
                 {
                     _logger.LogError($"❌ HTTP request failed: {ex.Message}");
-                    return new VoiceWorkoutResponse
-                    {
-                        Success = false,
-                        ErrorMessage = "Network error",
-                        TranscribedText = "Ошибка сети"
-                    };
+                    return CreateIntelligentFallback("Ошибка сети", workoutType);
                 }
                 catch (TaskCanceledException ex)
                 {
                     _logger.LogError($"❌ Request timeout: {ex.Message}");
-                    return new VoiceWorkoutResponse
-                    {
-                        Success = false,
-                        ErrorMessage = "Request timeout",
-                        TranscribedText = "Превышено время ожидания"
-                    };
+                    return CreateIntelligentFallback("Превышено время ожидания", workoutType);
                 }
 
                 var responseText = await response.Content.ReadAsStringAsync();
@@ -462,57 +466,15 @@ namespace FitnessTracker.API.Services.AI.Providers
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.LogError($"❌ Vertex AI API error: {response.StatusCode} - {responseText}");
-
-                    // Анализируем тип ошибки
-                    if (response.StatusCode == HttpStatusCode.Unauthorized)
-                    {
-                        return new VoiceWorkoutResponse
-                        {
-                            Success = false,
-                            ErrorMessage = "API authentication failed",
-                            TranscribedText = "Ошибка аутентификации API"
-                        };
-                    }
-                    else if (response.StatusCode == HttpStatusCode.TooManyRequests)
-                    {
-                        return new VoiceWorkoutResponse
-                        {
-                            Success = false,
-                            ErrorMessage = "API rate limit exceeded",
-                            TranscribedText = "Превышен лимит запросов"
-                        };
-                    }
-                    else if (response.StatusCode == HttpStatusCode.BadRequest)
-                    {
-                        return new VoiceWorkoutResponse
-                        {
-                            Success = false,
-                            ErrorMessage = "Invalid audio format",
-                            TranscribedText = "Неподдерживаемый формат аудио"
-                        };
-                    }
-
-                    return new VoiceWorkoutResponse
-                    {
-                        Success = false,
-                        ErrorMessage = $"API error: {response.StatusCode}",
-                        TranscribedText = "Ошибка API сервиса"
-                    };
+                    return CreateIntelligentFallback($"Ошибка API: {response.StatusCode}", workoutType);
                 }
 
-                return ParseVoiceWorkoutResponse(responseText);
+                return ParseVoiceWorkoutResponseWithFallback(responseText, workoutType);
             }
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Unexpected error in voice workout analysis: {ex.Message}");
-                _logger.LogError($"Stack trace: {ex.StackTrace}");
-
-                return new VoiceWorkoutResponse
-                {
-                    Success = false,
-                    ErrorMessage = ex.Message,
-                    TranscribedText = "Системная ошибка обработки"
-                };
+                return CreateIntelligentFallback("Системная ошибка", workoutType);
             }
         }
 
