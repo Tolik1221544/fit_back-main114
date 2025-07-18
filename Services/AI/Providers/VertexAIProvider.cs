@@ -688,6 +688,18 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
         }
 
+  ////////////
+        private bool ValidateBodyScanResult(BodyScanResponse result)
+        {
+            if (result?.BodyAnalysis == null)
+                return false;
+
+            return result.BodyAnalysis.BMI > 0 &&
+                   result.BodyAnalysis.EstimatedBodyFatPercentage >= 0 &&
+                   result.BodyAnalysis.EstimatedMusclePercentage >= 0 &&
+                   result.BodyAnalysis.BasalMetabolicRate > 0;
+        }
+
         private BodyScanResponse CreateIntelligentBodyFallback(string reason, decimal? weight, decimal? height, int? age, string? gender)
         {
             _logger.LogInformation($"💪 Creating intelligent body fallback: {reason}");
