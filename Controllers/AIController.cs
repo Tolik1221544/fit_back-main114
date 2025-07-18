@@ -428,7 +428,30 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
-                _logger.LogInformation($"💪 Processing body analysis for user {userId}");
+                _logger.LogInformation($"💪 Starting body analysis for user {userId}");
+                _logger.LogInformation($"💪 Request data - Weight: {request.CurrentWeight}, Height: {request.Height}, Age: {request.Age}, Gender: {request.Gender}");
+
+                if (request.FrontImage == null && request.SideImage == null && request.BackImage == null)
+                {
+                    _logger.LogWarning("❌ No images provided for body analysis");
+                    return BadRequest(new { error = "Необходимо предоставить хотя бы одно изображение для анализа тела" });
+                }
+
+                var maxSize = 10 * 1024 * 1024; // 10MB
+                if ((request.FrontImage?.Length ?? 0) > maxSize ||
+                    (request.SideImage?.Length ?? 0) > maxSize ||
+                    (request.BackImage?.Length ?? 0) > maxSize)
+                {
+                    _logger.LogWarning("❌ Image size exceeds limit");
+                    return BadRequest(new { error = "Размер изображения не должен превышать 10MB" });
+                }
+
+                if (request.FrontImage != null)
+                    _logger.LogInformation($"💪 Front image: {request.FrontImage.Length} bytes, type: {request.FrontImage.ContentType}");
+                if (request.SideImage != null)
+                    _logger.LogInformation($"💪 Side image: {request.SideImage.Length} bytes, type: {request.SideImage.ContentType}");
+                if (request.BackImage != null)
+                    _logger.LogInformation($"💪 Back image: {request.BackImage.Length} bytes, type: {request.BackImage.ContentType}");
 
                 string? frontImageUrl = null;
                 string? sideImageUrl = null;
@@ -438,50 +461,106 @@ namespace FitnessTracker.API.Controllers
                 byte[]? sideImageData = null;
                 byte[]? backImageData = null;
 
-                if (request.FrontImage != null)
+                try
                 {
-                    frontImageUrl = await _imageService.SaveImageAsync(request.FrontImage, "body-scans");
-                    using var ms = new MemoryStream();
-                    await request.FrontImage.CopyToAsync(ms);
-                    frontImageData = ms.ToArray();
+                    if (request.FrontImage != null)
+                    {
+                        frontImageUrl = await _imageService.SaveImageAsync(request.FrontImage, "body-scans");
+                        using var ms = new MemoryStream();
+                        await request.FrontImage.CopyToAsync(ms);
+                        frontImageData = ms.ToArray();
+                        _logger.LogInformation($"💪 Front image saved: {frontImageUrl}");
+                    }
+
+                    if (request.SideImage != null)
+                    {
+                        sideImageUrl = await _imageService.SaveImageAsync(request.SideImage, "body-scans");
+                        using var ms = new MemoryStream();
+                        await request.SideImage.CopyToAsync(ms);
+                        sideImageData = ms.ToArray();
+                        _logger.LogInformation($"💪 Side image saved: {sideImageUrl}");
+                    }
+
+                    if (request.BackImage != null)
+                    {
+                        backImageUrl = await _imageService.SaveImageAsync(request.BackImage, "body-scans");
+                        using var ms = new MemoryStream();
+                        await request.BackImage.CopyToAsync(ms);
+                        backImageData = ms.ToArray();
+                        _logger.LogInformation($"💪 Back image saved: {backImageUrl}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"❌ Error saving images: {ex.Message}");
+                    return BadRequest(new { error = "Ошибка сохранения изображений" });
                 }
 
-                if (request.SideImage != null)
+                BodyScanResponse result;
+                try
                 {
-                    sideImageUrl = await _imageService.SaveImageAsync(request.SideImage, "body-scans");
-                    using var ms = new MemoryStream();
-                    await request.SideImage.CopyToAsync(ms);
-                    sideImageData = ms.ToArray();
-                }
+                    _logger.LogInformation($"💪 Calling Gemini service for body analysis");
 
-                if (request.BackImage != null)
+                    result = await _geminiService.AnalyzeBodyImagesAsync(
+                        frontImageData,
+                        sideImageData,
+                        backImageData,
+                        request.CurrentWeight,
+                        request.Height,
+                        request.Age,
+                        request.Gender,
+                        request.Goals);
+
+                    _logger.LogInformation($"💪 Gemini service completed. Success: {result.Success}");
+
+                    if (!string.IsNullOrEmpty(result.ErrorMessage))
+                    {
+                        _logger.LogWarning($"⚠️ Gemini service warning: {result.ErrorMessage}");
+                    }
+                }
+                catch (Exception ex)
                 {
-                    backImageUrl = await _imageService.SaveImageAsync(request.BackImage, "body-scans");
-                    using var ms = new MemoryStream();
-                    await request.BackImage.CopyToAsync(ms);
-                    backImageData = ms.ToArray();
-                }
+                    _logger.LogError($"❌ Error during body analysis: {ex.Message}");
+                    _logger.LogError($"Stack trace: {ex.StackTrace}");
 
-                var result = await _geminiService.AnalyzeBodyImagesAsync(
-                    frontImageData,
-                    sideImageData,
-                    backImageData,
-                    request.CurrentWeight,
-                    request.Height,
-                    request.Age,
-                    request.Gender,
-                    request.Goals);
+                    if (!string.IsNullOrEmpty(frontImageUrl))
+                    {
+                        try { await _imageService.DeleteImageAsync(frontImageUrl); } catch { }
+                    }
+                    if (!string.IsNullOrEmpty(sideImageUrl))
+                    {
+                        try { await _imageService.DeleteImageAsync(sideImageUrl); } catch { }
+                    }
+                    if (!string.IsNullOrEmpty(backImageUrl))
+                    {
+                        try { await _imageService.DeleteImageAsync(backImageUrl); } catch { }
+                    }
+
+                    return BadRequest(new { error = "Ошибка анализа изображений. Попробуйте еще раз или обратитесь в поддержку." });
+                }
 
                 if (!result.Success)
                 {
-                    if (!string.IsNullOrEmpty(frontImageUrl))
-                        await _imageService.DeleteImageAsync(frontImageUrl);
-                    if (!string.IsNullOrEmpty(sideImageUrl))
-                        await _imageService.DeleteImageAsync(sideImageUrl);
-                    if (!string.IsNullOrEmpty(backImageUrl))
-                        await _imageService.DeleteImageAsync(backImageUrl);
+                    _logger.LogError($"❌ Body analysis failed: {result.ErrorMessage}");
 
-                    return BadRequest(new { error = result.ErrorMessage });
+                    if (!string.IsNullOrEmpty(frontImageUrl))
+                    {
+                        try { await _imageService.DeleteImageAsync(frontImageUrl); } catch { }
+                    }
+                    if (!string.IsNullOrEmpty(sideImageUrl))
+                    {
+                        try { await _imageService.DeleteImageAsync(sideImageUrl); } catch { }
+                    }
+                    if (!string.IsNullOrEmpty(backImageUrl))
+                    {
+                        try { await _imageService.DeleteImageAsync(backImageUrl); } catch { }
+                    }
+
+                    return BadRequest(new
+                    {
+                        error = result.ErrorMessage ?? "Не удалось проанализировать изображения",
+                        suggestion = "Убедитесь, что изображения четкие и показывают тело в полный рост"
+                    });
                 }
 
                 result.FrontImageUrl = frontImageUrl;
@@ -503,24 +582,38 @@ namespace FitnessTracker.API.Controllers
                         HipCircumference = result.BodyAnalysis.EstimatedHipCircumference,
                         BasalMetabolicRate = result.BodyAnalysis.BasalMetabolicRate,
                         MetabolicRateCategory = result.BodyAnalysis.MetabolicRateCategory,
-                        Notes = $"AI Analysis: {result.BodyAnalysis.OverallCondition}. BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал ({result.BodyAnalysis.MetabolicRateCategory})",
+                        Notes = $"AI Analysis: {result.BodyAnalysis.OverallCondition}. BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал ({result.BodyAnalysis.MetabolicRateCategory}). BMI: {result.BodyAnalysis.BMI} ({result.BodyAnalysis.BMICategory})",
                         ScanDate = DateTime.UtcNow
                     };
 
                     await _bodyScanService.AddBodyScanAsync(userId, addBodyScanRequest);
-                    _logger.LogInformation($"✅ Saved body scan analysis for user {userId} with BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал");
+                    _logger.LogInformation($"✅ Body scan saved for user {userId} - BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал, BMI: {result.BodyAnalysis.BMI}, Body Fat: {result.BodyAnalysis.EstimatedBodyFatPercentage}%");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError($"❌ Error saving body scan: {ex.Message}");
+                    _logger.LogError($"❌ Error saving body scan to database: {ex.Message}");
+                    
                 }
+
+                _logger.LogInformation($"✅ Body analysis completed successfully:");
+                _logger.LogInformation($"   BMI: {result.BodyAnalysis.BMI} ({result.BodyAnalysis.BMICategory})");
+                _logger.LogInformation($"   Body Fat: {result.BodyAnalysis.EstimatedBodyFatPercentage}%");
+                _logger.LogInformation($"   Muscle: {result.BodyAnalysis.EstimatedMusclePercentage}%");
+                _logger.LogInformation($"   BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал ({result.BodyAnalysis.MetabolicRateCategory})");
+                _logger.LogInformation($"   Body Type: {result.BodyAnalysis.BodyType}");
 
                 return Ok(result);
             }
             catch (Exception ex)
             {
-                _logger.LogError($"❌ Error analyzing body: {ex.Message}");
-                return BadRequest(new { error = $"Ошибка анализа тела: {ex.Message}" });
+                _logger.LogError($"❌ Unexpected error in body analysis controller: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
+
+                return BadRequest(new
+                {
+                    error = "Произошла системная ошибка при анализе тела",
+                    message = "Попробуйте еще раз через несколько минут или обратитесь в поддержку"
+                });
             }
         }
 

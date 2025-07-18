@@ -28,35 +28,28 @@ namespace FitnessTracker.API.Services
                 if (image == null || image.Length == 0)
                     throw new ArgumentException("Image is required");
 
-                // Проверяем размер файла (максимум 10MB)
                 if (image.Length > 10 * 1024 * 1024)
                     throw new ArgumentException("Image size must be less than 10MB");
 
-                // Проверяем тип файла
                 var allowedTypes = new[] { "image/jpeg", "image/jpg", "image/png", "image/gif" };
                 if (!allowedTypes.Contains(image.ContentType.ToLowerInvariant()))
                     throw new ArgumentException("Only JPEG, PNG and GIF images are allowed");
 
-                // Создаем уникальное имя файла
                 var fileExtension = Path.GetExtension(image.FileName).ToLowerInvariant();
                 var fileName = $"{Guid.NewGuid()}{fileExtension}";
 
-                // Определяем путь для сохранения
                 var uploadsPath = GetUploadsPath();
                 var folderPath = Path.Combine(uploadsPath, folder);
 
-                // Создаем папку если не существует
                 Directory.CreateDirectory(folderPath);
 
                 var filePath = Path.Combine(folderPath, fileName);
 
-                // Сохраняем файл
                 using (var stream = new FileStream(filePath, FileMode.Create))
                 {
                     await image.CopyToAsync(stream);
                 }
 
-                // Возвращаем URL для доступа к файлу
                 var imageUrl = GetImageUrl(fileName, folder);
                 _logger.LogInformation($"✅ Image saved: {imageUrl}");
 
@@ -76,26 +69,19 @@ namespace FitnessTracker.API.Services
                 if (imageData == null || imageData.Length == 0)
                     throw new ArgumentException("Image data is required");
 
-                // Проверяем размер
                 if (imageData.Length > 10 * 1024 * 1024)
                     throw new ArgumentException("Image size must be less than 10MB");
 
-                // Создаем уникальное имя файла
                 var uniqueFileName = $"{Guid.NewGuid()}_{fileName}";
 
-                // Определяем путь для сохранения
                 var uploadsPath = GetUploadsPath();
                 var folderPath = Path.Combine(uploadsPath, folder);
-
-                // Создаем папку если не существует
                 Directory.CreateDirectory(folderPath);
 
                 var filePath = Path.Combine(folderPath, uniqueFileName);
 
-                // Сохраняем файл
                 await File.WriteAllBytesAsync(filePath, imageData);
 
-                // Возвращаем URL для доступа к файлу
                 var imageUrl = GetImageUrl(uniqueFileName, folder);
                 _logger.LogInformation($"✅ Image saved from bytes: {imageUrl}");
 
@@ -108,18 +94,16 @@ namespace FitnessTracker.API.Services
             }
         }
 
-        public async Task<bool> DeleteImageAsync(string imageUrl)
+        public Task<bool> DeleteImageAsync(string imageUrl)
         {
             try
             {
                 if (string.IsNullOrEmpty(imageUrl))
-                    return false;
+                    return Task.FromResult(false);
 
-                // Извлекаем путь к файлу из URL
                 var uri = new Uri(imageUrl, UriKind.RelativeOrAbsolute);
                 var relativePath = uri.IsAbsoluteUri ? uri.LocalPath : imageUrl;
 
-                // Удаляем префикс /uploads/
                 if (relativePath.StartsWith("/uploads/"))
                     relativePath = relativePath.Substring("/uploads/".Length);
 
@@ -130,18 +114,19 @@ namespace FitnessTracker.API.Services
                 {
                     File.Delete(filePath);
                     _logger.LogInformation($"✅ Image deleted: {filePath}");
-                    return true;
+                    return Task.FromResult(true);
                 }
 
                 _logger.LogWarning($"⚠️ Image not found for deletion: {filePath}");
-                return false;
+                return Task.FromResult(false);
             }
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Error deleting image: {ex.Message}");
-                return false;
+                return Task.FromResult(false);
             }
         }
+
 
         public string GetImageUrl(string fileName, string folder)
         {

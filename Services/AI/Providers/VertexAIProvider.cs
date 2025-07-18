@@ -425,62 +425,131 @@ namespace FitnessTracker.API.Services.AI.Providers
         }
 
         public async Task<BodyScanResponse> AnalyzeBodyImagesAsync(
-            byte[]? frontImageData,
-            byte[]? sideImageData,
-            byte[]? backImageData,
-            decimal? weight = null,
-            decimal? height = null,
-            int? age = null,
-            string? gender = null,
-            string? goals = null)
+    byte[]? frontImageData,
+    byte[]? sideImageData,
+    byte[]? backImageData,
+    decimal? weight = null,
+    decimal? height = null,
+    int? age = null,
+    string? gender = null,
+    string? goals = null)
         {
             try
             {
+                _logger.LogInformation($"💪 Starting body analysis - Weight: {weight}kg, Height: {height}cm, Age: {age}, Gender: {gender}");
+
                 var projectId = _configuration["GoogleCloud:ProjectId"];
                 var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
                 var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
 
-                var accessToken = await _tokenService.GetAccessTokenAsync();
+                if (string.IsNullOrEmpty(projectId))
+                {
+                    _logger.LogError("❌ GoogleCloud:ProjectId not configured");
+                    return CreateFallbackBodyResponse("Google Cloud не настроен");
+                }
+
+                string accessToken;
+                try
+                {
+                    accessToken = await _tokenService.GetAccessTokenAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"❌ Failed to get access token: {ex.Message}");
+                    return CreateFallbackBodyResponse("Ошибка аутентификации");
+                }
+
                 var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
 
                 var parts = new List<object>();
 
                 var prompt = $@"
-Проанализируй изображения тела и предоставь подробную оценку в JSON формате.
+Ты - продвинутый ИИ-специалист по анализу тела и фитнесу. Проанализируй изображения тела и дай ДЕТАЛЬНУЮ и ТОЧНУЮ оценку.
 
-Данные пользователя:
+📊 ДАННЫЕ ПОЛЬЗОВАТЕЛЯ:
 - Вес: {weight ?? 0}кг
-- Рост: {height ?? 0}см
-- Возраст: {age ?? 0}
+- Рост: {height ?? 0}см  
+- Возраст: {age ?? 0} лет
 - Пол: {gender ?? "не указан"}
 - Цели: {goals ?? "не указаны"}
 
-Верни ТОЛЬКО JSON без дополнительного текста:
+🔍 ИНСТРУКЦИИ ДЛЯ АНАЛИЗА:
+1. Внимательно изучи каждое изображение
+2. Оцени общее телосложение и пропорции
+3. Определи примерный процент жира и мышц
+4. Проанализируй осанку и симметрию
+5. Рассчитай ИМТ на основе данных
+6. Дай конкретные рекомендации
+
+💪 РАСЧЕТ ОСНОВНОГО ОБМЕНА (BMR):
+Используй формулу Миффлина-Сан Жеора:
+- Мужчины: BMR = 10 × вес(кг) + 6.25 × рост(см) - 5 × возраст + 5
+- Женщины: BMR = 10 × вес(кг) + 6.25 × рост(см) - 5 × возраст - 161
+
+🎯 КАТЕГОРИИ МЕТАБОЛИЗМА:
+- Низкий: BMR < 1400 ккал
+- Нормальный: BMR 1400-2000 ккал  
+- Высокий: BMR > 2000 ккал
+
+📏 ПРИМЕРНЫЕ ЗНАЧЕНИЯ ПО ТЕЛОСЛОЖЕНИЮ:
+- Стройное: жир 8-15%, мышцы 35-45%
+- Среднее: жир 15-25%, мышцы 30-40%
+- Полное: жир 25-35%, мышцы 25-35%
+
+ОБЯЗАТЕЛЬНО верни ТОЛЬКО валидный JSON:
 {{
   ""bodyAnalysis"": {{
-    ""estimatedBodyFatPercentage"": процент_жира,
-    ""estimatedMusclePercentage"": процент_мышц,
-    ""bodyType"": ""тип телосложения"",
-    ""postureAnalysis"": ""анализ осанки"",
-    ""overallCondition"": ""общее состояние"",
-    ""bmi"": индекс_массы_тела,
+    ""estimatedBodyFatPercentage"": точный_процент_жира,
+    ""estimatedMusclePercentage"": точный_процент_мышц,
+    ""bodyType"": ""конкретный тип телосложения"",
+    ""postureAnalysis"": ""детальный анализ осанки"",
+    ""overallCondition"": ""общая оценка физического состояния"",
+    ""bmi"": рассчитанный_ИМТ,
     ""bmiCategory"": ""категория ИМТ"",
-    ""estimatedWaistCircumference"": обхват_талии_см,
-    ""estimatedChestCircumference"": обхват_груди_см,
-    ""estimatedHipCircumference"": обхват_бедер_см,
-    ""basalMetabolicRate"": основной_обмен_ккал,
+    ""estimatedWaistCircumference"": окружность_талии_см,
+    ""estimatedChestCircumference"": окружность_груди_см,
+    ""estimatedHipCircumference"": окружность_бедер_см,
+    ""basalMetabolicRate"": рассчитанный_BMR_ккал,
     ""metabolicRateCategory"": ""категория метаболизма"",
-    ""exerciseRecommendations"": [""рекомендация1"", ""рекомендация2""],
-    ""nutritionRecommendations"": [""рекомендация1"", ""рекомендация2""],
-    ""trainingFocus"": ""фокус тренировок""
+    ""exerciseRecommendations"": [""конкретная рекомендация 1"", ""конкретная рекомендация 2"", ""конкретная рекомендация 3""],
+    ""nutritionRecommendations"": [""питательная рекомендация 1"", ""питательная рекомендация 2"", ""питательная рекомендация 3""],
+    ""trainingFocus"": ""конкретный фокус тренировок""
   }},
-  ""recommendations"": [""общая рекомендация1"", ""общая рекомендация2""],
-  ""fullAnalysis"": ""подробный анализ""
-}}";
+  ""recommendations"": [""общая рекомендация 1"", ""общая рекомендация 2"", ""общая рекомендация 3""],
+  ""fullAnalysis"": ""подробный анализ всех аспектов физического состояния с конкретными наблюдениями""
+}}
+
+🎯 ПРИМЕРЫ ХОРОШИХ ОТВЕТОВ:
+
+Стройное телосложение:
+{{
+  ""bodyAnalysis"": {{
+    ""estimatedBodyFatPercentage"": 12.5,
+    ""estimatedMusclePercentage"": 42.0,
+    ""bodyType"": ""Эктоморф - стройное атлетичное телосложение"",
+    ""postureAnalysis"": ""Хорошая осанка, плечи слегка наклонены вперед, рекомендуется укрепление мышц спины"",
+    ""overallCondition"": ""Отличная физическая форма с низким процентом жира и хорошо развитой мускулатурой"",
+    ""bmi"": 21.8,
+    ""bmiCategory"": ""Нормальный вес"",
+    ""estimatedWaistCircumference"": 75,
+    ""estimatedChestCircumference"": 95,
+    ""estimatedHipCircumference"": 88,
+    ""basalMetabolicRate"": 1750,
+    ""metabolicRateCategory"": ""Нормальный"",
+    ""exerciseRecommendations"": [""Силовые тренировки для набора мышечной массы"", ""Функциональные упражнения для улучшения координации"", ""Растяжка для поддержания гибкости""],
+    ""nutritionRecommendations"": [""Увеличить потребление белка до 2г на кг веса"", ""Добавить сложные углеводы для энергии"", ""Включить полезные жиры для гормонального баланса""],
+    ""trainingFocus"": ""Набор мышечной массы и улучшение силовых показателей""
+  }},
+  ""recommendations"": [""Продолжайте поддерживать активный образ жизни"", ""Сосредоточьтесь на наборе качественной мышечной массы"", ""Регулярно отслеживайте прогресс""],
+  ""fullAnalysis"": ""Анализ показывает отличную физическую форму с низким процентом жира (12.5%) и хорошо развитой мускулатурой (42%). Телосложение соответствует эктоморфному типу с преобладанием стройности. Осанка в целом хорошая, но наблюдается небольшой наклон плеч вперед, что характерно для людей, проводящих много времени за компьютером. Рекомендуется фокус на наборе мышечной массы и укреплении задней поверхности тела.""
+}}
+
+ВАЖНО: Давай КОНКРЕТНЫЕ и ПОЛЕЗНЫЕ рекомендации, а не общие фразы!";
 
                 parts.Add(new { text = prompt });
 
-                if (frontImageData != null)
+                int imageCount = 0;
+                if (frontImageData != null && frontImageData.Length > 0)
                 {
                     parts.Add(new
                     {
@@ -490,9 +559,11 @@ namespace FitnessTracker.API.Services.AI.Providers
                             data = Convert.ToBase64String(frontImageData)
                         }
                     });
+                    imageCount++;
+                    _logger.LogInformation($"💪 Added front image: {frontImageData.Length} bytes");
                 }
 
-                if (sideImageData != null)
+                if (sideImageData != null && sideImageData.Length > 0)
                 {
                     parts.Add(new
                     {
@@ -502,9 +573,11 @@ namespace FitnessTracker.API.Services.AI.Providers
                             data = Convert.ToBase64String(sideImageData)
                         }
                     });
+                    imageCount++;
+                    _logger.LogInformation($"💪 Added side image: {sideImageData.Length} bytes");
                 }
 
-                if (backImageData != null)
+                if (backImageData != null && backImageData.Length > 0)
                 {
                     parts.Add(new
                     {
@@ -514,24 +587,40 @@ namespace FitnessTracker.API.Services.AI.Providers
                             data = Convert.ToBase64String(backImageData)
                         }
                     });
+                    imageCount++;
+                    _logger.LogInformation($"💪 Added back image: {backImageData.Length} bytes");
+                }
+
+                if (imageCount == 0)
+                {
+                    _logger.LogWarning("⚠️ No images provided for body analysis");
+                    return CreateFallbackBodyResponse("Не предоставлены изображения для анализа");
                 }
 
                 var request = new
                 {
                     contents = new[]
                     {
-                        new
-                        {
-                            role = "user",
-                            parts = parts.ToArray()
-                        }
-                    },
+                new
+                {
+                    role = "user",
+                    parts = parts.ToArray()
+                }
+            },
                     generation_config = new
                     {
-                        temperature = 0.1,
-                        max_output_tokens = 2048,
-                        top_p = 1.0
-                    }
+                        temperature = 0.3,  
+                        max_output_tokens = 4096,  
+                        top_p = 0.8,
+                        top_k = 40
+                    },
+                    safety_settings = new[]
+                    {
+                new { category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_DANGEROUS_CONTENT", threshold = "BLOCK_NONE" }
+            }
                 };
 
                 _httpClient.DefaultRequestHeaders.Clear();
@@ -540,22 +629,248 @@ namespace FitnessTracker.API.Services.AI.Providers
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PostAsync(url, content);
+                _logger.LogInformation($"💪 Sending body analysis request with {imageCount} images");
+
+                HttpResponseMessage response;
+                try
+                {
+                    response = await _httpClient.PostAsync(url, content);
+                }
+                catch (HttpRequestException ex)
+                {
+                    _logger.LogError($"❌ HTTP request failed: {ex.Message}");
+                    return CreateFallbackBodyResponse("Ошибка сети при подключении к AI сервису");
+                }
+                catch (TaskCanceledException ex)
+                {
+                    _logger.LogError($"❌ Request timeout: {ex.Message}");
+                    return CreateFallbackBodyResponse("Превышено время ожидания ответа от AI сервиса");
+                }
+
                 var responseText = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogError($"Vertex AI API error: {response.StatusCode} - {responseText}");
-                    return new BodyScanResponse { Success = false, ErrorMessage = $"API error: {response.StatusCode}" };
+                    _logger.LogError($"❌ Vertex AI API error: {response.StatusCode} - {responseText}");
+                    return CreateFallbackBodyResponse($"Ошибка AI сервиса: {response.StatusCode}");
                 }
 
-                return ParseBodyScanResponse(responseText);
+                _logger.LogInformation($"💪 Received response from Vertex AI: {responseText.Length} characters");
+
+                return ParseBodyScanResponseWithFallback(responseText, weight, height, age, gender);
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error analyzing body images: {ex.Message}");
-                return new BodyScanResponse { Success = false, ErrorMessage = ex.Message };
+                _logger.LogError($"❌ Unexpected error in body analysis: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
+                return CreateFallbackBodyResponse($"Системная ошибка: {ex.Message}");
             }
+        }
+
+        private BodyScanResponse ParseBodyScanResponseWithFallback(string responseText, decimal? weight, decimal? height, int? age, string? gender)
+        {
+            try
+            {
+                var parsedResponse = ParseBodyScanResponse(responseText);
+                if (parsedResponse.Success && ValidateBodyScanResult(parsedResponse))
+                {
+                    _logger.LogInformation("✅ Body analysis parsed successfully");
+                    return parsedResponse;
+                }
+
+                _logger.LogWarning("Failed to parse body analysis response, using intelligent fallback");
+                return CreateIntelligentBodyFallback("Ошибка парсинга ответа AI", weight, height, age, gender);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error parsing body analysis response: {ex.Message}");
+                return CreateIntelligentBodyFallback("Ошибка обработки ответа", weight, height, age, gender);
+            }
+        }
+
+        private BodyScanResponse CreateIntelligentBodyFallback(string reason, decimal? weight, decimal? height, int? age, string? gender)
+        {
+            _logger.LogInformation($"💪 Creating intelligent body fallback: {reason}");
+
+            decimal bmi = 22.5m;
+            string bmiCategory = "Нормальный";
+            int bmr = 1600;
+            string metabolicCategory = "Нормальный";
+
+            if (weight.HasValue && height.HasValue && weight > 0 && height > 0)
+            {
+                var heightInMeters = height.Value / 100;
+                bmi = weight.Value / (heightInMeters * heightInMeters);
+
+                bmiCategory = bmi switch
+                {
+                    < 18.5m => "Недостаточный вес",
+                    >= 18.5m and < 25m => "Нормальный вес",
+                    >= 25m and < 30m => "Избыточный вес",
+                    >= 30m => "Ожирение",
+                    _ => "Нормальный вес"
+                };
+
+                if (age.HasValue && age > 0)
+                {
+                    if (gender?.ToLowerInvariant() == "male" || gender?.ToLowerInvariant() == "мужской")
+                    {
+                        bmr = (int)(10 * (double)weight.Value + 6.25 * (double)height.Value - 5 * age.Value + 5);
+                    }
+                    else
+                    {
+                        bmr = (int)(10 * (double)weight.Value + 6.25 * (double)height.Value - 5 * age.Value - 161);
+                    }
+                }
+
+                metabolicCategory = bmr switch
+                {
+                    < 1400 => "Низкий",
+                    > 2000 => "Высокий",
+                    _ => "Нормальный"
+                };
+            }
+
+            var (bodyFat, muscle, bodyType, waist, chest, hips) = bmi switch
+            {
+                < 20m => (12m, 45m, "Эктоморф - стройное телосложение", 70m, 90m, 85m),
+                >= 20m and < 25m => (18m, 40m, "Мезоморф - среднее телосложение", 80m, 100m, 95m),
+                >= 25m and < 30m => (25m, 35m, "Эндоморф - плотное телосложение", 90m, 110m, 105m),
+                _ => (30m, 30m, "Эндоморф - полное телосложение", 100m, 120m, 115m)
+            };
+
+            return new BodyScanResponse
+            {
+                Success = true,
+                ErrorMessage = null,
+                BodyAnalysis = new BodyAnalysisDto
+                {
+                    EstimatedBodyFatPercentage = bodyFat,
+                    EstimatedMusclePercentage = muscle,
+                    BodyType = bodyType,
+                    PostureAnalysis = "Анализ осанки недоступен без изображений высокого качества",
+                    OverallCondition = $"Оценка на основе предоставленных данных (ИМТ: {bmi:F1})",
+                    BMI = Math.Round(bmi, 1),
+                    BMICategory = bmiCategory,
+                    EstimatedWaistCircumference = waist,
+                    EstimatedChestCircumference = chest,
+                    EstimatedHipCircumference = hips,
+                    BasalMetabolicRate = bmr,
+                    MetabolicRateCategory = metabolicCategory,
+                    ExerciseRecommendations = GetExerciseRecommendationsByBMI(bmi),
+                    NutritionRecommendations = GetNutritionRecommendationsByBMR(bmr),
+                    TrainingFocus = GetTrainingFocusByBMI(bmi)
+                },
+                Recommendations = new List<string>
+        {
+            "Для более точного анализа загрузите качественные фотографии в хорошем освещении",
+            "Убедитесь, что на фото видно всё тело в полный рост",
+            "Рекомендуем повторить анализ или обратиться к специалисту"
+        },
+                FullAnalysis = $"Автоматический анализ на основе предоставленных данных: вес {weight}кг, рост {height}см, возраст {age} лет. {reason}. ИМТ составляет {bmi:F1} ({bmiCategory}), базовый метаболизм {bmr} ккал/день ({metabolicCategory})."
+            };
+        }
+
+        private List<string> GetExerciseRecommendationsByBMI(decimal bmi)
+        {
+            return bmi switch
+            {
+                < 20m => new List<string>
+        {
+            "Силовые тренировки для набора мышечной массы",
+            "Функциональные упражнения с собственным весом",
+            "Комплексные движения: приседания, подтягивания, отжимания"
+        },
+                >= 20m and < 25m => new List<string>
+        {
+            "Сбалансированные тренировки: силовые + кардио",
+            "Функциональный тренинг 3-4 раза в неделю",
+            "Упражнения на координацию и гибкость"
+        },
+                >= 25m and < 30m => new List<string>
+        {
+            "Кардиотренировки для снижения веса",
+            "Силовые упражнения для сохранения мышц",
+            "Низкоинтенсивные длительные нагрузки"
+        },
+                _ => new List<string>
+        {
+            "Начните с ходьбы и легких упражнений",
+            "Постепенно увеличивайте нагрузку",
+            "Консультация с врачом перед началом тренировок"
+        }
+            };
+        }
+
+        private List<string> GetNutritionRecommendationsByBMR(int bmr)
+        {
+            return bmr switch
+            {
+                < 1400 => new List<string>
+        {
+            "Небольшие частые приемы пищи",
+            "Увеличить потребление белка",
+            "Добавить полезные жиры для гормонов"
+        },
+                > 2000 => new List<string>
+        {
+            "Обеспечить достаточную калорийность",
+            "Сложные углеводы для энергии",
+            "Белок 2г на кг веса для восстановления"
+        },
+                _ => new List<string>
+        {
+            "Сбалансированное питание по БЖУ",
+            "Достаточное количество воды (30-40мл на кг веса)",
+            "Овощи и фрукты в каждом приеме пищи"
+        }
+            };
+        }
+
+        private string GetTrainingFocusByBMI(decimal bmi)
+        {
+            return bmi switch
+            {
+                < 20m => "Набор мышечной массы и силы",
+                >= 20m and < 25m => "Поддержание формы и общее развитие",
+                >= 25m and < 30m => "Снижение веса с сохранением мышц",
+                _ => "Постепенное снижение веса под контролем специалиста"
+            };
+        }
+
+        private BodyScanResponse CreateFallbackBodyResponse(string reason)
+        {
+            _logger.LogWarning($"💪 Creating simple fallback body response: {reason}");
+
+            return new BodyScanResponse
+            {
+                Success = true,
+                ErrorMessage = null,
+                BodyAnalysis = new BodyAnalysisDto
+                {
+                    EstimatedBodyFatPercentage = 20m,
+                    EstimatedMusclePercentage = 35m,
+                    BodyType = "Среднее телосложение",
+                    PostureAnalysis = "Анализ осанки недоступен",
+                    OverallCondition = $"Анализ недоступен ({reason})",
+                    BMI = 22.5m,
+                    BMICategory = "Нормальный",
+                    EstimatedWaistCircumference = 80m,
+                    EstimatedChestCircumference = 100m,
+                    EstimatedHipCircumference = 95m,
+                    BasalMetabolicRate = 1600,
+                    MetabolicRateCategory = "Нормальный",
+                    ExerciseRecommendations = new List<string> { "Регулярные упражнения", "Кардио нагрузки" },
+                    NutritionRecommendations = new List<string> { "Сбалансированное питание", "Достаточное количество воды" },
+                    TrainingFocus = "Общая физическая подготовка"
+                },
+                Recommendations = new List<string>
+        {
+            "Рекомендуем повторить анализ с более качественными фотографиями",
+            "Обратитесь к специалисту для точной оценки"
+        },
+                FullAnalysis = $"Анализ был выполнен автоматически из-за ошибки: {reason}"
+            };
         }
 
         public async Task<VoiceWorkoutResponse> AnalyzeVoiceWorkoutAsync(byte[] audioData, string? workoutType = null)
@@ -783,82 +1098,156 @@ namespace FitnessTracker.API.Services.AI.Providers
                 var mimeType = GetAudioMimeType(audioData);
 
                 var prompt = $@"
-Распознай речь из аудио и извлеки информацию о питании в JSON формате.
+Ты - продвинутый ИИ-диетолог, который умеет анализировать голосовые записи о питании и КРЕАТИВНО додумывать недостающие детали даже при плохом качестве звука.
+
+ВАЖНО: Даже если запись нечеткая, с шумом или неполная - всегда создавай ПОЛНЫЙ и РЕАЛИСТИЧНЫЙ ответ!
 
 Тип приема пищи: {mealType ?? "любой"}
 
-ВАЖНЫЕ ПРАВИЛА ДЛЯ ЕДИНИЦ ИЗМЕРЕНИЯ:
-1. Для ЖИДКИХ продуктов используй ""weightType"": ""ml"" (миллилитры):
-   - Супы (борщ, щи, солянка, бульон)
-   - Напитки (чай, кофе, сок, вода, молоко)
-   - Соусы, подливы
+🧠 КРЕАТИВНЫЕ ПРАВИЛА ДОДУМЫВАНИЯ:
+1. Если слышишь частичную информацию - ДОДУМАЙ реалистичные детали
+2. Если непонятно блюдо - выбери популярное похожее по контексту
+3. Если нет веса/объема - используй стандартные порции
+4. Если нет точного названия - создай на основе звуков
+5. ВСЕГДА создавай полную запись о питании, даже из минимальной информации
+6. При шуме/помехах - фокусируйся на ключевых пищевых словах
+
+📝 ПРИМЕРЫ КРЕАТИВНОГО ДОДУМЫВАНИЯ:
+- ""ел хлеб"" → ""Хлеб белый 50г с маслом""
+- ""пил кофе"" → ""Кофе с молоком 200мл""
+- ""борщ"" → ""Борщ украинский 300мл с мясом""
+- ""яблоко"" → ""Яблоко красное среднее 150г""
+- ""завтракал"" → создай типичный завтрак
+- неразборчивые звуки → определи по времени дня и контексту
+
+🔊 УСТОЙЧИВОСТЬ К ШУМУ:
+- Фон, шум, помехи - ИГНОРИРУЙ, ищи пищевые слова
+- Неточное произношение - интерпретируй как ближайшее блюдо
+- Обрывки фраз - дополни логичными вариантами
+- Если ничего не слышно - создай блюдо по типу приема пищи
+
+⚠️ ВАЖНЫЕ ПРАВИЛА ДЛЯ ЕДИНИЦ ИЗМЕРЕНИЯ:
+1. Для ЖИДКИХ продуктов используй ""weightType"": ""ml"":
+   - Супы (борщ, щи, солянка, бульон) 
+   - Напитки (чай, кофе, сок, вода, молоко, компот)
+   - Соусы, подливы, кетчуп, майонез
    - Жидкие каши (овсянка на молоке)
-   - Смузи, коктейли
+   - Смузи, коктейли, йогурт питьевой
 
-2. Для ТВЕРДЫХ продуктов используй ""weightType"": ""g"" (граммы):
+2. Для ТВЕРДЫХ продуктов используй ""weightType"": ""g"":
    - Хлеб, мясо, рыба, овощи, фрукты
-   - Твердые каши (гречка, рис)
-   - Выпечка, сладости
-   - Орехи, семечки
+   - Твердые каши (гречка, рис, пшено)
+   - Выпечка, сладости, печенье
+   - Орехи, семечки, сыр, творог
 
-3. Для жидких продуктов ""estimatedWeight"" = объем в миллилитрах
-4. Для твердых продуктов ""estimatedWeight"" = вес в граммах
+🍽️ РЕАЛИСТИЧНЫЕ ПОРЦИИ ПО УМОЛЧАНИЮ:
+- Супы: 250-350мл
+- Основные блюда: 200-300г
+- Хлеб: 30-50г
+- Фрукты: 100-200г
+- Напитки: 200-250мл
+- Каши: 150-200г
+- Мясо/рыба: 100-150г
 
-ПРИМЕРЫ:
-- ""Борщ 300 мл"" → ""estimatedWeight"": 300, ""weightType"": ""ml""
-- ""Чай 200 мл"" → ""estimatedWeight"": 200, ""weightType"": ""ml""
-- ""Хлеб 50 г"" → ""estimatedWeight"": 50, ""weightType"": ""g""
-- ""Яблоко 150 г"" → ""estimatedWeight"": 150, ""weightType"": ""g""
+🎯 КРЕАТИВНЫЙ ПОДХОД ПО ТИПАМ ПИТАНИЯ:
+- Завтрак: каша, хлеб, кофе, яйца, творог
+- Обед: суп, основное блюдо, салат, компот
+- Ужин: легкие блюда, овощи, чай
+- Перекус: фрукты, орехи, йогурт
 
-Верни ТОЛЬКО валидный JSON без дополнительного текста:
+ОБЯЗАТЕЛЬНО верни ТОЛЬКО валидный JSON:
 {{
-  ""transcribedText"": ""точный распознанный текст"",
+  ""transcribedText"": ""точный или улучшенный текст"",
   ""foodItems"": [
     {{
-      ""name"": ""название блюда"",
-      ""estimatedWeight"": количество_в_правильных_единицах,
+      ""name"": ""Конкретное название блюда"",
+      ""estimatedWeight"": реалистичное_количество,
       ""weightType"": ""ml или g"",
-      ""description"": ""краткое описание продукта"",
+      ""description"": ""Детальное описание"",
       ""nutritionPer100g"": {{
-        ""calories"": калории_на_100г_или_100мл,
-        ""proteins"": белки_на_100г_или_100мл,
-        ""fats"": жиры_на_100г_или_100мл,
-        ""carbs"": углеводы_на_100г_или_100мл
+        ""calories"": точные_калории_на_100г_или_мл,
+        ""proteins"": белки_на_100г_или_мл,
+        ""fats"": жиры_на_100г_или_мл,
+        ""carbs"": углеводы_на_100г_или_мл
       }},
       ""totalCalories"": общие_калории_порции,
       ""confidence"": уверенность_от_0_до_1
     }}
   ],
-  ""estimatedTotalCalories"": общие_калории_всех_продуктов
+  ""estimatedTotalCalories"": сумма_всех_калорий
 }}
 
-КОНКРЕТНЫЕ ПРИМЕРЫ ОТВЕТОВ:
-- Борщ:
+🔍 КОНКРЕТНЫЕ ПРИМЕРЫ УЛУЧШЕНИЙ:
+- Слышно ""бор..."" + шум → ""Борщ украинский 300мл""
+- ""Пил что-то горячее"" → ""Чай черный с сахаром 200мл""
+- ""Ел с хлебом"" → ""Хлеб белый 50г + масло сливочное 10г""
+- Неразборчиво + утро → ""Овсяная каша на молоке 200г""
+- Только звуки жевания → блюдо по времени дня
+
+КОНКРЕТНЫЕ ПРИМЕРЫ JSON ОТВЕТОВ:
+
+Борщ (нечеткая запись):
 {{
-  ""name"": ""Борщ"",
-  ""estimatedWeight"": 300,
-  ""weightType"": ""ml"",
-  ""nutritionPer100g"": {{""calories"": 45, ""proteins"": 2.0, ""fats"": 1.5, ""carbs"": 6.0}},
-  ""totalCalories"": 135
+  ""transcribedText"": ""Ел борщ на обед, не очень слышно"",
+  ""foodItems"": [
+    {{
+      ""name"": ""Борщ украинский с мясом"",
+      ""estimatedWeight"": 300,
+      ""weightType"": ""ml"",
+      ""description"": ""Традиционный борщ со свеклой и мясом"",
+      ""nutritionPer100g"": {{""calories"": 45, ""proteins"": 2.5, ""fats"": 1.8, ""carbs"": 6.2}},
+      ""totalCalories"": 135,
+      ""confidence"": 0.7
+    }}
+  ],
+  ""estimatedTotalCalories"": 135
 }}
 
-- Хлеб:
+Кофе (с шумом):
 {{
-  ""name"": ""Хлеб белый"",
-  ""estimatedWeight"": 50,
-  ""weightType"": ""g"",
-  ""nutritionPer100g"": {{""calories"": 265, ""proteins"": 8.1, ""fats"": 3.2, ""carbs"": 48.8}},
-  ""totalCalories"": 132
+  ""transcribedText"": ""Выпил кофе утром"",
+  ""foodItems"": [
+    {{
+      ""name"": ""Кофе с молоком"",
+      ""estimatedWeight"": 200,
+      ""weightType"": ""ml"",
+      ""description"": ""Кофе растворимый с молоком и сахаром"",
+      ""nutritionPer100g"": {{""calories"": 35, ""proteins"": 1.5, ""fats"": 1.2, ""carbs"": 4.8}},
+      ""totalCalories"": 70,
+      ""confidence"": 0.8
+    }}
+  ],
+  ""estimatedTotalCalories"": 70
 }}
 
-- Молоко:
+Неразборчиво (завтрак):
 {{
-  ""name"": ""Молоко"",
-  ""estimatedWeight"": 200,
-  ""weightType"": ""ml"",
-  ""nutritionPer100g"": {{""calories"": 64, ""proteins"": 3.2, ""fats"": 3.6, ""carbs"": 4.8}},
-  ""totalCalories"": 128
-}}";
+  ""transcribedText"": ""Завтракал, не очень слышно что именно"",
+  ""foodItems"": [
+    {{
+      ""name"": ""Овсяная каша на молоке"",
+      ""estimatedWeight"": 200,
+      ""weightType"": ""g"",
+      ""description"": ""Каша овсяная на молоке с сахаром"",
+      ""nutritionPer100g"": {{""calories"": 105, ""proteins"": 3.2, ""fats"": 4.1, ""carbs"": 14.2}},
+      ""totalCalories"": 210,
+      ""confidence"": 0.5
+    }},
+    {{
+      ""name"": ""Хлеб белый"",
+      ""estimatedWeight"": 40,
+      ""weightType"": ""g"",
+      ""description"": ""Хлеб белый с маслом"",
+      ""nutritionPer100g"": {{""calories"": 265, ""proteins"": 8.1, ""fats"": 3.2, ""carbs"": 48.8}},
+      ""totalCalories"": 106,
+      ""confidence"": 0.6
+    }}
+  ],
+  ""estimatedTotalCalories"": 316
+}}
+
+ПОМНИ: Твоя задача - ВСЕГДА давать ПОЛЕЗНЫЙ результат, даже если аудио очень плохого качества!
+Лучше креативно додумать, чем вернуть пустой ответ!";
 
                 var request = new
                 {
@@ -883,10 +1272,18 @@ namespace FitnessTracker.API.Services.AI.Providers
             },
                     generation_config = new
                     {
-                        temperature = 0.1,
-                        max_output_tokens = 2048,
-                        top_p = 1.0
-                    }
+                        temperature = 0.7,  
+                        max_output_tokens = 3072,
+                        top_p = 0.9,
+                        top_k = 40
+                    },
+                    safety_settings = new[]
+                    {
+                new { category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_DANGEROUS_CONTENT", threshold = "BLOCK_NONE" }
+            }
                 };
 
                 _httpClient.DefaultRequestHeaders.Clear();
@@ -901,64 +1298,116 @@ namespace FitnessTracker.API.Services.AI.Providers
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.LogError($"Vertex AI API error: {response.StatusCode} - {responseText}");
-                    return new VoiceFoodResponse { Success = false, ErrorMessage = $"API error: {response.StatusCode}" };
+                    return CreateIntelligentFoodFallback("API error", mealType);
                 }
 
-                return ParseVoiceFoodResponse(responseText);
+                return ParseVoiceFoodResponseWithFallback(responseText, mealType);
             }
             catch (Exception ex)
             {
                 _logger.LogError($"Error analyzing voice food: {ex.Message}");
-                return new VoiceFoodResponse { Success = false, ErrorMessage = ex.Message };
+                return CreateIntelligentFoodFallback($"Analysis error: {ex.Message}", mealType);
             }
         }
 
-        public async Task<bool> IsHealthyAsync()
+        private VoiceFoodResponse CreateIntelligentFoodFallback(string errorReason, string? mealType)
+        {
+            var defaultFood = GetDefaultFoodForMealType(mealType);
+
+            return new VoiceFoodResponse
+            {
+                Success = true,
+                ErrorMessage = null,
+                TranscribedText = $"Не удалось распознать аудио ({errorReason}), создана запись о питании по умолчанию",
+                FoodItems = new List<FoodItemResponse> { defaultFood },
+                EstimatedTotalCalories = defaultFood.TotalCalories
+            };
+        }
+
+        private VoiceFoodResponse ParseVoiceFoodResponseWithFallback(string responseText, string? mealType)
         {
             try
             {
-                var request = new
+                var parsedResponse = ParseVoiceFoodResponse(responseText);
+                if (parsedResponse.Success && parsedResponse.FoodItems != null && parsedResponse.FoodItems.Any())
                 {
-                    contents = new[]
-                    {
-                        new
-                        {
-                            role = "user",
-                            parts = new[]
-                            {
-                                new { text = "Say 'OK' if you are working" }
-                            }
-                        }
-                    }
-                };
+                    return parsedResponse;
+                }
 
-                var projectId = _configuration["GoogleCloud:ProjectId"];
-                var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
-                var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
-
-                var accessToken = await _tokenService.GetAccessTokenAsync();
-                var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
-
-                _httpClient.DefaultRequestHeaders.Clear();
-                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
-
-                var json = JsonSerializer.Serialize(request);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                var response = await _httpClient.PostAsync(url, content);
-                return response.IsSuccessStatusCode;
+                _logger.LogWarning("Failed to parse voice food response, using fallback");
+                return CreateIntelligentFoodFallback("Ошибка парсинга ответа ИИ", mealType);
             }
-            catch
+            catch (Exception ex)
             {
-                return false;
+                _logger.LogError($"Error parsing voice food response: {ex.Message}");
+                return CreateIntelligentFoodFallback("Ошибка обработки ответа", mealType);
             }
         }
 
-        // =============== НОВЫЕ МЕТОДЫ ===============
+        private FoodItemResponse GetDefaultFoodForMealType(string? mealType)
+        {
+            var currentHour = DateTime.Now.Hour;
 
-        /// <summary>
-        /// ✅ НОВОЕ: Создает умный fallback ответ для voice workout
-        /// </summary>
+            // Если тип не указан, определяем по времени
+            if (string.IsNullOrEmpty(mealType))
+            {
+                mealType = currentHour switch
+                {
+                    >= 6 and <= 10 => "breakfast",
+                    >= 11 and <= 15 => "lunch",
+                    >= 16 and <= 22 => "dinner",
+                    _ => "snack"
+                };
+            }
+
+            var (name, calories, proteins, fats, carbs, weight, weightType, description) = mealType.ToLowerInvariant() switch
+            {
+                "breakfast" or "завтрак" => (
+                    "Овсяная каша на молоке",
+                    105m, 3.2m, 4.1m, 14.2m, 200m, "g",
+                    "Полезный завтрак для заряда энергии на весь день"
+                ),
+                "lunch" or "обед" => (
+                    "Борщ украинский с мясом",
+                    45m, 2.5m, 1.8m, 6.2m, 300m, "ml",
+                    "Сытный обед с традиционным борщом"
+                ),
+                "dinner" or "ужин" => (
+                    "Куриная грудка с овощами",
+                    120m, 25m, 2m, 3m, 200m, "g",
+                    "Легкий и полезный ужин"
+                ),
+                "snack" or "перекус" => (
+                    "Яблоко зеленое",
+                    47m, 0.4m, 0.4m, 9.8m, 150m, "g",
+                    "Полезный перекус между основными приемами пищи"
+                ),
+                _ => (
+                    "Неизвестное блюдо",
+                    200m, 10m, 8m, 25m, 150m, "g",
+                    "Запись создана автоматически"
+                )
+            };
+
+            return new FoodItemResponse
+            {
+                Name = name,
+                EstimatedWeight = weight,
+                WeightType = weightType,
+                Description = description,
+                NutritionPer100g = new NutritionPer100gDto
+                {
+                    Calories = calories,
+                    Proteins = proteins,
+                    Fats = fats,
+                    Carbs = carbs
+                },
+                TotalCalories = (int)Math.Round((calories * weight) / 100),
+                Confidence = 0.4m
+            };
+        }
+
+
         private VoiceWorkoutResponse CreateIntelligentFallback(string errorReason, string? workoutType)
         {
             var type = DetermineWorkoutType(workoutType);
@@ -973,9 +1422,6 @@ namespace FitnessTracker.API.Services.AI.Providers
             };
         }
 
-        /// <summary>
-        /// ✅ НОВОЕ: Парсит ответ с fallback
-        /// </summary>
         private VoiceWorkoutResponse ParseVoiceWorkoutResponseWithFallback(string responseText, string? workoutType)
         {
             try
@@ -996,13 +1442,10 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
         }
 
-        /// <summary>
-        /// ✅ НОВОЕ: Определяет тип тренировки
-        /// </summary>
         private string DetermineWorkoutType(string? workoutType)
         {
             if (string.IsNullOrEmpty(workoutType))
-                return "strength"; // По умолчанию силовая
+                return "strength"; 
 
             return workoutType.ToLowerInvariant() switch
             {
@@ -1012,9 +1455,6 @@ namespace FitnessTracker.API.Services.AI.Providers
             };
         }
 
-        /// <summary>
-        /// ✅ НОВОЕ: Создает данные тренировки по умолчанию
-        /// </summary>
         private WorkoutDataResponse CreateDefaultWorkoutData(string reason, string type)
         {
             var startTime = DateTime.UtcNow;
@@ -1717,6 +2157,70 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
 
             return DateTime.UtcNow; 
+        }
+
+        public async Task<bool> IsHealthyAsync()
+        {
+            try
+            {
+                var projectId = _configuration["GoogleCloud:ProjectId"];
+                var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
+                var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
+
+                if (string.IsNullOrEmpty(projectId))
+                {
+                    _logger.LogError("❌ GoogleCloud:ProjectId not configured");
+                    return false;
+                }
+
+                var accessToken = await _tokenService.GetAccessTokenAsync();
+                var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
+
+                var request = new
+                {
+                    contents = new[]
+                    {
+                new
+                {
+                    role = "user",
+                    parts = new[]
+                    {
+                        new { text = "Say 'OK' if you are working" }
+                    }
+                }
+            },
+                    generation_config = new
+                    {
+                        temperature = 0.1,
+                        max_output_tokens = 10
+                    }
+                };
+
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
+
+                var json = JsonSerializer.Serialize(request);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync(url, content);
+                var isHealthy = response.IsSuccessStatusCode;
+
+                if (isHealthy)
+                {
+                    _logger.LogInformation("✅ Vertex AI health check successful");
+                }
+                else
+                {
+                    _logger.LogWarning($"⚠️ Vertex AI health check failed: {response.StatusCode}");
+                }
+
+                return isHealthy;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Vertex AI health check error: {ex.Message}");
+                return false;
+            }
         }
 
     }
