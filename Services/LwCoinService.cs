@@ -16,7 +16,7 @@ namespace FitnessTracker.API.Services
         private const decimal VOICE_COST = 1.5m;      // Голосовой ввод: 1.5 монеты  
         private const decimal TEXT_COST = 1.0m;       // Текстовый ввод: 1 монета
 
-        private const decimal DAILY_LIMIT_BASE = 10.0m;  // 300 монет / 30 дней = 10 монет/день
+        private const decimal DAILY_LIMIT_BASE = 10.0m;  
 
         private const int MONTHLY_ALLOWANCE = 300;
         private const int TRIAL_BONUS = 150;
@@ -46,14 +46,14 @@ namespace FitnessTracker.API.Services
 
             var notification = await GeneratePremiumNotificationAsync(userId, isPremium, premiumExpiresAt);
 
-            var dailyRemaining = isPremium ? decimal.MaxValue : Math.Max(0, DAILY_LIMIT_BASE - todayUsage);
+            var dailyRemaining = isPremium ? decimal.MaxValue : decimal.MaxValue; 
 
             var currentBalance = await GetUserFractionalBalanceAsync(userId);
             var usedThisMonth = await GetUsedCoinsThisMonthAsync(userId);
 
             return new LwCoinBalanceDto
             {
-                Balance = (int)Math.Floor(currentBalance), 
+                Balance = (int)Math.Floor(currentBalance),
                 MonthlyAllowance = MONTHLY_ALLOWANCE,
                 UsedThisMonth = (int)usedThisMonth,
                 RemainingThisMonth = isPremium ? int.MaxValue : Math.Max(0, MONTHLY_ALLOWANCE - (int)usedThisMonth),
@@ -63,12 +63,13 @@ namespace FitnessTracker.API.Services
                 PremiumNotification = notification,
 
                 DailyUsage = todayUsage,
-                DailyLimit = isPremium ? decimal.MaxValue : DAILY_LIMIT_BASE,
-                DailyRemaining = dailyRemaining
+                DailyLimit = isPremium ? decimal.MaxValue : decimal.MaxValue, 
+                DailyRemaining = decimal.MaxValue 
             };
         }
 
         /// <summary>
+        /// Пользователь может тратить монеты пока они есть на балансе
         /// </summary>
         public async Task<bool> SpendLwCoinsAsync(string userId, int legacyAmount, string type, string description, string featureUsed = "")
         {
@@ -77,7 +78,7 @@ namespace FitnessTracker.API.Services
 
             decimal actualCost = GetActionCost(featureUsed);
 
-            _logger.LogInformation($"🪙 Spending calculation: user={userId}, feature={featureUsed}, cost={actualCost}");
+            _logger.LogInformation($"🪙 Spending: user={userId}, feature={featureUsed}, cost={actualCost}");
 
             // Check if user is premium (unlimited usage)
             var isPremium = await IsUserPremiumAsync(userId);
@@ -85,14 +86,8 @@ namespace FitnessTracker.API.Services
             {
                 // Premium users don't spend actual coins, but we log the usage
                 await CreateTransactionAsync(userId, 0, actualCost, "spent", description, featureUsed, null, "premium");
+                _logger.LogInformation($"✅ Premium user {userId} used {featureUsed} for free");
                 return true;
-            }
-
-            var todayUsage = await GetTodayUsageAsync(userId);
-            if (todayUsage + actualCost > DAILY_LIMIT_BASE)
-            {
-                _logger.LogWarning($"❌ Daily limit exceeded: user={userId}, today_usage={todayUsage}, cost={actualCost}, limit={DAILY_LIMIT_BASE}");
-                return false;
             }
 
             // Check if user has enough coins (используем дробные монеты)
@@ -108,11 +103,12 @@ namespace FitnessTracker.API.Services
             // Create transaction record with fractional amount
             await CreateTransactionAsync(userId, -(int)Math.Ceiling(actualCost), actualCost, "spent", description, featureUsed);
 
-            _logger.LogInformation($"✅ User {userId} spent {actualCost} LW Coins for {featureUsed}");
+            _logger.LogInformation($"✅ User {userId} spent {actualCost} LW Coins for {featureUsed}. Remaining balance: {userFractionalBalance - actualCost}");
             return true;
         }
 
         /// <summary>
+        /// Получение стоимости действия
         /// </summary>
         private decimal GetActionCost(string featureUsed)
         {
@@ -122,16 +118,16 @@ namespace FitnessTracker.API.Services
                 "voice" or "ai_voice_workout" or "ai_voice_food" => VOICE_COST,
                 "text" or "ai_text" => TEXT_COST,
 
-                // Бесплатные действия
                 "ai_body_scan" or "body_analysis" => 0.0m,
                 "exercise" or "activity" => 0.0m,
                 "archive" => 0.0m,
 
-                _ => 1.0m // Дефолтная стоимость для неизвестных действий
+                _ => 1.0m 
             };
         }
 
         /// <summary>
+        /// Получение дробного баланса пользователя
         /// </summary>
         private async Task<decimal> GetUserFractionalBalanceAsync(string userId)
         {
@@ -149,6 +145,7 @@ namespace FitnessTracker.API.Services
         }
 
         /// <summary>
+        /// Списание дробных монет
         /// </summary>
         private async Task DeductFractionalCoinsAsync(string userId, decimal amount)
         {
@@ -160,14 +157,14 @@ namespace FitnessTracker.API.Services
             var newFractional = currentFractional - amount;
 
             user.FractionalLwCoins = (double)newFractional;
-            user.LwCoins = (int)Math.Floor(newFractional); // Целая часть для совместимости
+            user.LwCoins = (int)Math.Floor(newFractional); 
 
             await _userRepository.UpdateAsync(user);
             _logger.LogInformation($"Deducted {amount} fractional coins from user {userId}. New balance: {newFractional}");
         }
 
         /// <summary>
-        /// ✅ НОВОЕ: Получение использования монет за сегодня
+        /// ✅ ОБНОВЛЕНО: Получение использования монет за сегодня (только для статистики)
         /// </summary>
         private async Task<decimal> GetTodayUsageAsync(string userId)
         {
@@ -184,11 +181,9 @@ namespace FitnessTracker.API.Services
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) return false;
 
-            // Получаем текущий дробный баланс
             var currentFractional = await GetUserFractionalBalanceAsync(userId);
             var newFractional = currentFractional + amount;
 
-            // Обновляем как дробные, так и целые монеты
             user.FractionalLwCoins = (double)newFractional;
             user.LwCoins = (int)Math.Floor(newFractional);
             await _userRepository.UpdateAsync(user);
@@ -306,12 +301,10 @@ namespace FitnessTracker.API.Services
                 FeatureUsage = featureUsage,
 
                 DailyUsage = todayUsage,
-                DailyLimit = isPremium ? decimal.MaxValue : DAILY_LIMIT_BASE,
-                DailyRemaining = isPremium ? decimal.MaxValue : Math.Max(0, DAILY_LIMIT_BASE - todayUsage)
+                DailyLimit = decimal.MaxValue, 
+                DailyRemaining = decimal.MaxValue 
             };
         }
-
-        // ==================== HELPER METHODS ====================
 
         private async Task<PremiumNotificationDto?> GeneratePremiumNotificationAsync(string userId, bool isPremium, DateTime? premiumExpiresAt)
         {
@@ -430,6 +423,7 @@ namespace FitnessTracker.API.Services
         }
 
         /// <summary>
+        /// Создание транзакции
         /// </summary>
         private async Task CreateTransactionAsync(string userId, int amount, decimal fractionalAmount, string type, string description, string featureUsed = "", decimal? price = null, string period = "")
         {
