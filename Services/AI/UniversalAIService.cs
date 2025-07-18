@@ -1,28 +1,81 @@
-using FitnessTracker.API.DTOs;
+п»їusing FitnessTracker.API.DTOs;
+using FitnessTracker.API.Services.AI;
 
 namespace FitnessTracker.API.Services.AI
 {
+    
     public class UniversalAIService : IGeminiService
     {
-        private readonly Dictionary<string, IAIProvider> _providers;
-        private readonly IConfiguration _configuration;
+        private readonly IAIProvider _primaryProvider;
+        private readonly IAIErrorHandlerService _errorHandler;
         private readonly ILogger<UniversalAIService> _logger;
+        private readonly IConfiguration _configuration;
 
         public UniversalAIService(
-            IEnumerable<IAIProvider> providers,
-            IConfiguration configuration,
-            ILogger<UniversalAIService> logger)
+            IAIProvider primaryProvider,
+            IAIErrorHandlerService errorHandler,
+            ILogger<UniversalAIService> logger,
+            IConfiguration configuration)
         {
-            _providers = providers.ToDictionary(p => p.ProviderName, p => p);
-            _configuration = configuration;
+            _primaryProvider = primaryProvider;
+            _errorHandler = errorHandler;
             _logger = logger;
+            _configuration = configuration;
         }
 
         public async Task<FoodScanResponse> AnalyzeFoodImageAsync(byte[] imageData, string? userPrompt = null)
         {
-            var provider = GetActiveProvider();
-            _logger.LogInformation($"?? Using {provider.ProviderName} for food analysis");
-            return await provider.AnalyzeFoodImageAsync(imageData, userPrompt);
+            const int maxAttempts = 3;
+            var lastException = new Exception("Unknown error");
+
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    _logger.LogInformation($"рџЌЋ Food analysis attempt {attempt}/{maxAttempts}");
+
+                    var result = await _primaryProvider.AnalyzeFoodImageAsync(imageData, userPrompt);
+
+                    if (result.Success && ValidateFoodScanResult(result))
+                    {
+                        _logger.LogInformation($"вњ… Food analysis successful on attempt {attempt}");
+                        return result;
+                    }
+
+                    if (result.Success && !ValidateFoodScanResult(result))
+                    {
+                        _logger.LogWarning($"вљ пёЏ Food analysis returned invalid data on attempt {attempt}");
+                        if (attempt == maxAttempts)
+                        {
+                            return _errorHandler.CreateFallbackFoodResponse("Invalid analysis result", imageData);
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"вќЊ Food analysis failed on attempt {attempt}: {result.ErrorMessage}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    _logger.LogError($"вќЊ Food analysis error on attempt {attempt}: {ex.Message}");
+
+                    if (!_errorHandler.ShouldRetryRequest(ex, attempt))
+                    {
+                        break;
+                    }
+
+                    if (attempt < maxAttempts)
+                    {
+                        var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)); // Exponential backoff
+                        _logger.LogInformation($"вЏі Retrying in {delay.TotalSeconds} seconds...");
+                        await Task.Delay(delay);
+                    }
+                }
+            }
+
+            _logger.LogError($"вќЊ All food analysis attempts failed. Creating fallback response.");
+            return _errorHandler.CreateFallbackFoodResponse($"Analysis failed after {maxAttempts} attempts: {lastException.Message}", imageData);
         }
 
         public async Task<BodyScanResponse> AnalyzeBodyImagesAsync(
@@ -35,28 +88,164 @@ namespace FitnessTracker.API.Services.AI
             string? gender = null,
             string? goals = null)
         {
-            var provider = GetActiveProvider();
-            _logger.LogInformation($"?? Using {provider.ProviderName} for body analysis");
-            return await provider.AnalyzeBodyImagesAsync(frontImageData, sideImageData, backImageData, weight, height, age, gender, goals);
+            const int maxAttempts = 2;
+            var lastException = new Exception("Unknown error");
+
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    _logger.LogInformation($"рџ’Є Body analysis attempt {attempt}/{maxAttempts}");
+
+                    var result = await _primaryProvider.AnalyzeBodyImagesAsync(
+                        frontImageData, sideImageData, backImageData, weight, height, age, gender, goals);
+
+                    if (result.Success && ValidateBodyScanResult(result))
+                    {
+                        _logger.LogInformation($"вњ… Body analysis successful on attempt {attempt}");
+                        return result;
+                    }
+
+                    _logger.LogWarning($"вќЊ Body analysis failed on attempt {attempt}: {result.ErrorMessage}");
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    _logger.LogError($"вќЊ Body analysis error on attempt {attempt}: {ex.Message}");
+
+                    if (!_errorHandler.ShouldRetryRequest(ex, attempt))
+                    {
+                        break;
+                    }
+
+                    if (attempt < maxAttempts)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(3));
+                    }
+                }
+            }
+
+            _logger.LogError($"вќЊ All body analysis attempts failed. Creating fallback response.");
+            return _errorHandler.CreateFallbackBodyResponse($"Analysis failed: {lastException.Message}");
         }
 
         public async Task<VoiceWorkoutResponse> AnalyzeVoiceWorkoutAsync(byte[] audioData, string? workoutType = null)
         {
-            var provider = GetActiveProvider();
-            _logger.LogInformation($"?? Using {provider.ProviderName} for voice workout analysis");
-            return await provider.AnalyzeVoiceWorkoutAsync(audioData, workoutType);
+            const int maxAttempts = 2;
+            var lastException = new Exception("Unknown error");
+
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    _logger.LogInformation($"рџЋ¤ Voice workout analysis attempt {attempt}/{maxAttempts}");
+
+                    var result = await _primaryProvider.AnalyzeVoiceWorkoutAsync(audioData, workoutType);
+
+                    if (result.Success && ValidateVoiceWorkoutResult(result))
+                    {
+                        _logger.LogInformation($"вњ… Voice workout analysis successful on attempt {attempt}");
+                        return result;
+                    }
+
+                    _logger.LogWarning($"вќЊ Voice workout analysis failed on attempt {attempt}: {result.ErrorMessage}");
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    _logger.LogError($"вќЊ Voice workout analysis error on attempt {attempt}: {ex.Message}");
+
+                    if (!_errorHandler.ShouldRetryRequest(ex, attempt))
+                    {
+                        break;
+                    }
+
+                    if (attempt < maxAttempts)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+                    }
+                }
+            }
+
+            _logger.LogError($"вќЊ All voice workout attempts failed. Creating fallback response.");
+            return _errorHandler.CreateFallbackWorkoutResponse($"Analysis failed: {lastException.Message}", workoutType);
         }
 
         public async Task<VoiceFoodResponse> AnalyzeVoiceFoodAsync(byte[] audioData, string? mealType = null)
         {
-            var provider = GetActiveProvider();
-            _logger.LogInformation($"??? Using {provider.ProviderName} for voice food analysis");
-            return await provider.AnalyzeVoiceFoodAsync(audioData, mealType);
+            const int maxAttempts = 2;
+            var lastException = new Exception("Unknown error");
+
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    _logger.LogInformation($"рџ—ЈпёЏ Voice food analysis attempt {attempt}/{maxAttempts}");
+
+                    var result = await _primaryProvider.AnalyzeVoiceFoodAsync(audioData, mealType);
+
+                    if (result.Success && ValidateVoiceFoodResult(result))
+                    {
+                        _logger.LogInformation($"вњ… Voice food analysis successful on attempt {attempt}");
+                        return result;
+                    }
+
+                    _logger.LogWarning($"вќЊ Voice food analysis failed on attempt {attempt}: {result.ErrorMessage}");
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    _logger.LogError($"вќЊ Voice food analysis error on attempt {attempt}: {ex.Message}");
+
+                    if (!_errorHandler.ShouldRetryRequest(ex, attempt))
+                    {
+                        break;
+                    }
+
+                    if (attempt < maxAttempts)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+                    }
+                }
+            }
+
+            _logger.LogError($"вќЊ All voice food attempts failed. Creating fallback response.");
+            return _errorHandler.CreateFallbackVoiceFoodResponse($"Analysis failed: {lastException.Message}", mealType);
         }
 
+        public async Task<bool> IsHealthyAsync()
+        {
+            try
+            {
+                return await _primaryProvider.IsHealthyAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"вќЊ Health check failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<Dictionary<string, bool>> GetProviderHealthStatusAsync()
+        {
+            var status = new Dictionary<string, bool>();
+
+            try
+            {
+                status[_primaryProvider.ProviderName] = await _primaryProvider.IsHealthyAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"вќЊ Provider health check failed for {_primaryProvider.ProviderName}: {ex.Message}");
+                status[_primaryProvider.ProviderName] = false;
+            }
+
+            return status;
+        }
+
+        // Legacy methods for backward compatibility
         public async Task<GeminiResponse> SendGeminiRequestAsync(List<GeminiContent> contents, GeminiGenerationConfig? config = null)
         {
-            // Метод для обратной совместимости - можно убрать позже
             throw new NotImplementedException("Use specific analysis methods instead");
         }
 
@@ -67,24 +256,23 @@ namespace FitnessTracker.API.Services.AI
 
         public async Task<bool> ValidateImageQualityAsync(byte[] imageData)
         {
-            // Та же логика из оригинального GeminiService
             try
             {
-                if (imageData.Length < 10 * 1024) return false;
-                if (imageData.Length > 20 * 1024 * 1024) return false;
+                if (imageData == null || imageData.Length == 0)
+                    return false;
 
-                var imageHeaders = new[]
+                if (imageData.Length > 10 * 1024 * 1024) // 10MB
+                    return false;
+
+                var imageFormats = new byte[][]
                 {
-                    new byte[] { 0xFF, 0xD8, 0xFF }, // JPEG
+                    new byte[] { 0xFF, 0xD8 }, // JPEG
                     new byte[] { 0x89, 0x50, 0x4E, 0x47 }, // PNG
-                    new byte[] { 0x47, 0x49, 0x46 }, // GIF
+                    new byte[] { 0x47, 0x49, 0x46 } // GIF
                 };
 
-                return imageHeaders.Any(header =>
-                {
-                    if (imageData.Length < header.Length) return false;
-                    return header.SequenceEqual(imageData.Take(header.Length));
-                });
+                return imageFormats.Any(format =>
+                    imageData.Take(format.Length).SequenceEqual(format));
             }
             catch
             {
@@ -92,69 +280,46 @@ namespace FitnessTracker.API.Services.AI
             }
         }
 
-        public async Task<bool> IsHealthyAsync()
+        // Private validation methods
+        private bool ValidateFoodScanResult(FoodScanResponse result)
         {
-            try
-            {
-                var testContents = new List<GeminiContent>
-        {
-            new GeminiContent
-            {
-                Parts = new List<GeminiPart>
-                {
-                    new GeminiPart { Text = "Test" }
-                }
-            }
-        };
-
-                var response = await SendGeminiRequestAsync(testContents);
-                return response?.Candidates?.Any() == true;
-            }
-            catch
-            {
+            if (result?.FoodItems == null || !result.FoodItems.Any())
                 return false;
-            }
+
+            return result.FoodItems.All(item =>
+                !string.IsNullOrEmpty(item.Name) &&
+                item.EstimatedWeight > 0 &&
+                item.NutritionPer100g != null &&
+                item.NutritionPer100g.Calories > 0);
         }
 
-        private IAIProvider GetActiveProvider()
+        private bool ValidateBodyScanResult(BodyScanResponse result)
         {
-            var activeProviderName = _configuration["AI:ActiveProvider"] ?? "Vertex AI (Gemini Pro 2.5)";
+            if (result?.BodyAnalysis == null)
+                return false;
 
-            if (_providers.TryGetValue(activeProviderName, out var provider))
-            {
-                return provider;
-            }
-
-            // Fallback к первому доступному провайдеру
-            var fallbackProvider = _providers.Values.FirstOrDefault();
-            if (fallbackProvider == null)
-            {
-                throw new InvalidOperationException("No AI providers available");
-            }
-
-            _logger.LogWarning($"?? Provider '{activeProviderName}' not found, using fallback: {fallbackProvider.ProviderName}");
-            return fallbackProvider;
+            return result.BodyAnalysis.BMI > 0 &&
+                   result.BodyAnalysis.EstimatedBodyFatPercentage >= 0 &&
+                   result.BodyAnalysis.EstimatedMusclePercentage >= 0;
         }
 
-        public async Task<Dictionary<string, bool>> GetProviderHealthStatusAsync()
+        private bool ValidateVoiceWorkoutResult(VoiceWorkoutResponse result)
         {
-            var providers = new Dictionary<string, bool>();
+            if (result?.WorkoutData == null)
+                return false;
 
-            try
-            {
-                // Тест Vertex AI
-                providers["Vertex AI (Gemini Pro 2.5)"] = await IsHealthyAsync();
+            return !string.IsNullOrEmpty(result.WorkoutData.Type) &&
+                   result.WorkoutData.StartTime != default;
+        }
 
-                // Здесь можно добавить тесты других провайдеров
-                // providers["OpenAI GPT-4"] = await TestOpenAI();
+        private bool ValidateVoiceFoodResult(VoiceFoodResponse result)
+        {
+            if (result?.FoodItems == null || !result.FoodItems.Any())
+                return false;
 
-                return providers;
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError($"Error checking provider health: {ex.Message}");
-                return new Dictionary<string, bool> { { "Vertex AI (Gemini Pro 2.5)", false } };
-            }
+            return result.FoodItems.All(item =>
+                !string.IsNullOrEmpty(item.Name) &&
+                item.EstimatedWeight > 0);
         }
     }
 }

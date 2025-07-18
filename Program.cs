@@ -17,14 +17,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpContextAccessor();
 
-// ✅ НОВОЕ: Улучшенное логирование для AI запросов
 builder.Services.AddLogging(logging =>
 {
     logging.ClearProviders();
     logging.AddConsole();
     logging.SetMinimumLevel(LogLevel.Information);
 
-    // Специальные правила для AI сервисов
     logging.AddFilter("FitnessTracker.API.Services.AI", LogLevel.Debug);
     logging.AddFilter("FitnessTracker.API.Controllers.AIController", LogLevel.Debug);
 });
@@ -119,9 +117,10 @@ builder.Services.AddHttpClient<VertexAIProvider>(client =>
 builder.Services.AddScoped<IGoogleCloudTokenService, GoogleCloudTokenService>();
 builder.Services.AddScoped<IAIProvider, VertexAIProvider>();
 
+builder.Services.AddScoped<IAIErrorHandlerService, AIErrorHandlerService>();
+
 builder.Services.AddScoped<IGeminiService, UniversalAIService>();
 
-// Основные сервисы
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
@@ -139,7 +138,7 @@ builder.Services.AddScoped<IExperienceService, ExperienceService>();
 builder.Services.AddScoped<IGoalService, GoalService>();
 builder.Services.AddScoped<IImageService, ImageService>();
 builder.Services.AddScoped<IVoiceFileService, VoiceFileService>();
-// Repositories (без изменений)
+
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IFoodIntakeRepository, FoodIntakeRepository>();
 builder.Services.AddScoped<IActivityRepository, ActivityRepository>();
