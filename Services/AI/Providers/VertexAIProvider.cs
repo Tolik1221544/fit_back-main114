@@ -688,7 +688,6 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
         }
 
-  ////////////
         private bool ValidateBodyScanResult(BodyScanResponse result)
         {
             if (result?.BodyAnalysis == null)
@@ -719,8 +718,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                     < 18.5m => "Недостаточный вес",
                     >= 18.5m and < 25m => "Нормальный вес",
                     >= 25m and < 30m => "Избыточный вес",
-                    >= 30m => "Ожирение",
-                    _ => "Нормальный вес"
+                    _ => "Ожирение" // >= 30m - убрано, проблема
                 };
 
                 if (age.HasValue && age > 0)
@@ -748,7 +746,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                 < 20m => (12m, 45m, "Эктоморф - стройное телосложение", 70m, 90m, 85m),
                 >= 20m and < 25m => (18m, 40m, "Мезоморф - среднее телосложение", 80m, 100m, 95m),
                 >= 25m and < 30m => (25m, 35m, "Эндоморф - плотное телосложение", 90m, 110m, 105m),
-                _ => (30m, 30m, "Эндоморф - полное телосложение", 100m, 120m, 115m)
+                _ => (30m, 30m, "Эндоморф - полное телосложение", 100m, 120m, 115m) // Покрывает >= 30m
             };
 
             return new BodyScanResponse
