@@ -356,9 +356,9 @@ namespace FitnessTracker.API.Services.AI.Providers
             jsonText = Regex.Replace(jsonText, @"//.*$", "", RegexOptions.Multiline);
             jsonText = Regex.Replace(jsonText, @"/\*.*?\*/", "", RegexOptions.Singleline);
 
-            jsonText = jsonText.Replace("'", "\""); 
-            jsonText = Regex.Replace(jsonText, @",\s*}", "}"); 
-            jsonText = Regex.Replace(jsonText, @",\s*]", "]"); 
+            jsonText = jsonText.Replace("'", "\"");
+            jsonText = Regex.Replace(jsonText, @",\s*}", "}");
+            jsonText = Regex.Replace(jsonText, @",\s*]", "]");
 
             return jsonText.Trim();
         }
@@ -609,8 +609,8 @@ namespace FitnessTracker.API.Services.AI.Providers
             },
                     generation_config = new
                     {
-                        temperature = 0.3,  
-                        max_output_tokens = 4096,  
+                        temperature = 0.3,
+                        max_output_tokens = 4096,
                         top_p = 0.8,
                         top_k = 40
                     },
@@ -1282,7 +1282,7 @@ namespace FitnessTracker.API.Services.AI.Providers
             },
                     generation_config = new
                     {
-                        temperature = 0.7,  
+                        temperature = 0.7,
                         max_output_tokens = 3072,
                         top_p = 0.9,
                         top_k = 40
@@ -1455,7 +1455,7 @@ namespace FitnessTracker.API.Services.AI.Providers
         private string DetermineWorkoutType(string? workoutType)
         {
             if (string.IsNullOrEmpty(workoutType))
-                return "strength"; 
+                return "strength";
 
             return workoutType.ToLowerInvariant() switch
             {
@@ -2062,6 +2062,665 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
         }
 
+        public async Task<TextWorkoutResponse> AnalyzeTextWorkoutAsync(string workoutText, string? workoutType = null)
+        {
+            try
+            {
+                var projectId = _configuration["GoogleCloud:ProjectId"];
+                var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
+                var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
+
+                var accessToken = await _tokenService.GetAccessTokenAsync();
+                var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
+
+                var prompt = $@"
+Ты - продвинутый ИИ-тренер, который анализирует текстовые описания тренировок и создает структурированные данные.
+
+Текст тренировки: ""{workoutText}""
+Тип тренировки: {workoutType ?? "автоопределение"}
+
+ПОДДЕРЖИВАЕМЫЕ ТИПЫ АКТИВНОСТИ:
+1. ""strength"" - силовые упражнения (жим, приседания, тяга, ПЛАНКА и т.д.)
+2. ""cardio"" - кардио (бег, велосипед, плавание, СКАКАЛКА и т.д.)
+
+ПРАВИЛА ОПРЕДЕЛЕНИЯ ТИПА:
+- Если упоминается планка → type: ""strength"" + plankData внутри strengthData
+- Если упоминается скакалка → type: ""cardio"" + jumpRopeData внутри cardioData
+- Если силовые упражнения → type: ""strength""
+- Если кардио → type: ""cardio""
+
+ОБЯЗАТЕЛЬНО верни ТОЛЬКО валидный JSON:
+{{
+  ""processedText"": ""обработанное описание тренировки"",
+  ""workoutData"": {{
+    ""type"": ""strength"", // или ""cardio""
+    ""startTime"": ""2025-07-17T17:00:00Z"",
+    ""endTime"": ""2025-07-17T17:45:00Z"",
+    ""estimatedCalories"": число_калорий,
+    ""strengthData"": {{ // для type: ""strength""
+      ""name"": ""название упражнения"",
+      ""muscleGroup"": ""группа мышц"",
+      ""equipment"": ""оборудование"",
+      ""workingWeight"": вес,
+      ""restTimeSeconds"": 120,
+      ""sets"": [{{
+        ""setNumber"": 1,
+        ""weight"": вес,
+        ""reps"": повторения,
+        ""isCompleted"": true,
+        ""notes"": ""заметки""
+      }}],
+      ""plankData"": {{ // ТОЛЬКО если это планка
+        ""durationSeconds"": время,
+        ""plankType"": ""тип планки"",
+        ""notes"": ""заметки""
+      }}
+    }},
+    ""cardioData"": {{ // для type: ""cardio""
+      ""cardioType"": ""тип кардио"",
+      ""distanceKm"": расстояние_или_null,
+      ""avgPulse"": пульс_или_null,
+      ""maxPulse"": пульс_или_null,
+      ""avgPace"": ""темп"",
+      ""jumpRopeData"": {{ // ТОЛЬКО если это скакалка
+        ""jumpCount"": количество_прыжков,
+        ""durationSeconds"": время_в_секундах,
+        ""ropeType"": ""тип скакалки"",
+        ""intervalsCount"": количество_интервалов,
+        ""notes"": ""заметки""
+      }}
+    }},
+    ""notes"": [""заметка о тренировке""]
+  }}
+}}
+
+ПРИМЕРЫ:
+Планка 2 минуты:
+{{
+  ""processedText"": ""Выполнена планка в течение 2 минут"",
+  ""workoutData"": {{
+    ""type"": ""strength"",
+    ""startTime"": ""2025-07-17T17:00:00Z"",
+    ""endTime"": ""2025-07-17T17:02:00Z"",
+    ""estimatedCalories"": 15,
+    ""strengthData"": {{
+      ""name"": ""Планка"",
+      ""muscleGroup"": ""Корпус"",
+      ""equipment"": ""Собственный вес"",
+      ""workingWeight"": 0,
+      ""restTimeSeconds"": 0,
+      ""sets"": [],
+      ""plankData"": {{
+        ""durationSeconds"": 120,
+        ""plankType"": ""классическая планка"",
+        ""notes"": ""Удержание классической планки""
+      }}
+    }},
+    ""notes"": [""Планка на 2 минуты выполнена успешно""]
+  }}
+}}
+
+Скакалка 500 раз:
+{{
+  ""processedText"": ""Прыжки на скакалке: 500 раз за 5 минут"",
+  ""workoutData"": {{
+    ""type"": ""cardio"",
+    ""startTime"": ""2025-07-17T17:00:00Z"",
+    ""endTime"": ""2025-07-17T17:05:00Z"",
+    ""estimatedCalories"": 50,
+    ""cardioData"": {{
+      ""cardioType"": ""Скакалка"",
+      ""distanceKm"": null,
+      ""avgPulse"": 140,
+      ""maxPulse"": 160,
+      ""avgPace"": ""высокий"",
+      ""jumpRopeData"": {{
+        ""jumpCount"": 500,
+        ""durationSeconds"": 300,
+        ""ropeType"": ""обычная скакалка"",
+        ""intervalsCount"": 1,
+        ""notes"": ""Непрерывные прыжки""
+      }}
+    }},
+    ""notes"": [""Кардио тренировка со скакалкой""]
+  }}
+}}
+";
+                var request = new
+                {
+                    contents = new[]
+                    {
+                        new
+                        {
+                            role = "user",
+                            parts = new[] { new { text = prompt } }
+                        }
+                    },
+                    generation_config = new
+                    {
+                        temperature = 0.3,
+                        max_output_tokens = 2048
+                    }
+                };
+
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
+
+                var json = JsonSerializer.Serialize(request);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync(url, content);
+                var responseText = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return new TextWorkoutResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Ошибка обращения к ИИ сервису"
+                    };
+                }
+
+                return ParseTextWorkoutResponse(responseText);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error analyzing text workout: {ex.Message}");
+                return new TextWorkoutResponse
+                {
+                    Success = false,
+                    ErrorMessage = $"Ошибка анализа: {ex.Message}"
+                };
+            }
+        }
+
+        public async Task<TextFoodResponse> AnalyzeTextFoodAsync(string foodText, string? mealType = null)
+        {
+            try
+            {
+                var projectId = _configuration["GoogleCloud:ProjectId"];
+                var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
+                var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
+
+                var accessToken = await _tokenService.GetAccessTokenAsync();
+                var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
+
+                var prompt = $@"
+Проанализируй текстовое описание еды и создай структурированные данные о питании.
+
+Описание еды: ""{foodText}""
+Тип приема пищи: {mealType ?? "любой"}
+
+ПРАВИЛА ДЛЯ ЕДИНИЦ ИЗМЕРЕНИЯ:
+1. Для ЖИДКИХ продуктов используй ""weightType"": ""ml""
+2. Для ТВЕРДЫХ продуктов используй ""weightType"": ""g""
+
+ОБЯЗАТЕЛЬНО верни ТОЛЬКО валидный JSON:
+{{
+  ""processedText"": ""обработанное описание еды"",
+  ""foodItems"": [
+    {{
+      ""name"": ""название блюда"",
+      ""estimatedWeight"": количество,
+      ""weightType"": ""g или ml"",
+      ""description"": ""описание блюда"",
+      ""nutritionPer100g"": {{
+        ""calories"": калории_на_100г,
+        ""proteins"": белки_на_100г,
+        ""fats"": жиры_на_100г,
+        ""carbs"": углеводы_на_100г
+      }},
+      ""totalCalories"": общие_калории,
+      ""confidence"": уверенность_от_0_до_1
+    }}
+  ],
+  ""estimatedTotalCalories"": сумма_калорий
+}}
+";
+
+                var request = new
+                {
+                    contents = new[]
+                    {
+                        new
+                        {
+                            role = "user",
+                            parts = new[] { new { text = prompt } }
+                        }
+                    },
+                    generation_config = new
+                    {
+                        temperature = 0.3,
+                        max_output_tokens = 2048
+                    }
+                };
+
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
+
+                var json = JsonSerializer.Serialize(request);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync(url, content);
+                var responseText = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return new TextFoodResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Ошибка обращения к ИИ сервису"
+                    };
+                }
+
+                return ParseTextFoodResponse(responseText);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error analyzing text food: {ex.Message}");
+                return new TextFoodResponse
+                {
+                    Success = false,
+                    ErrorMessage = $"Ошибка анализа: {ex.Message}"
+                };
+            }
+        }
+
+        public async Task<FoodCorrectionResponse> CorrectFoodItemAsync(string originalFoodName, string correctionText)
+        {
+            try
+            {
+                var projectId = _configuration["GoogleCloud:ProjectId"];
+                var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
+                var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
+
+                var accessToken = await _tokenService.GetAccessTokenAsync();
+                var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
+
+                var prompt = $@"
+Пересчитай питательную ценность блюда с учетом дополнительной информации об ингредиентах.
+
+Исходное блюдо: ""{originalFoodName}""
+Дополнительная информация: ""{correctionText}""
+
+ЗАДАЧА: Учесть новую информацию и пересчитать БЖУ и калории блюда.
+
+ОБЯЗАТЕЛЬНО верни ТОЛЬКО валидный JSON:
+{{
+  ""correctedFoodItem"": {{
+    ""name"": ""обновленное название блюда"",
+    ""estimatedWeight"": количество,
+    ""weightType"": ""g или ml"",
+    ""description"": ""подробное описание с учетом начинки/ингредиентов"",
+    ""nutritionPer100g"": {{
+      ""calories"": калории_на_100г,
+      ""proteins"": белки_на_100г,
+      ""fats"": жиры_на_100г,
+      ""carbs"": углеводы_на_100г
+    }},
+    ""totalCalories"": общие_калории,
+    ""confidence"": 0.8
+  }},
+  ""correctionExplanation"": ""объяснение как изменились БЖУ с учетом новой информации"",
+  ""ingredients"": [""список основных ингредиентов блюда""]
+}}
+
+ПРИМЕР:
+Исходное: ""Пирожок""
+Коррекция: ""начинка вишня""
+Результат:
+{{
+  ""correctedFoodItem"": {{
+    ""name"": ""Пирожок с вишней"",
+    ""estimatedWeight"": 80,
+    ""weightType"": ""g"",
+    ""description"": ""Сладкий пирожок с вишневой начинкой"",
+    ""nutritionPer100g"": {{
+      ""calories"": 285,
+      ""proteins"": 6.5,
+      ""fats"": 8.2,
+      ""carbs"": 48.5
+    }},
+    ""totalCalories"": 228,
+    ""confidence"": 0.8
+  }},
+  ""correctionExplanation"": ""Добавлена вишневая начинка, что увеличило содержание углеводов и общую калорийность за счет натурального сахара в вишне"",
+  ""ingredients"": [""мука пшеничная"", ""вишня"", ""сахар"", ""дрожжи"", ""масло растительное"", ""яйцо""]
+}}
+";
+
+                var request = new
+                {
+                    contents = new[]
+                    {
+                        new
+                        {
+                            role = "user",
+                            parts = new[] { new { text = prompt } }
+                        }
+                    },
+                    generation_config = new
+                    {
+                        temperature = 0.3,
+                        max_output_tokens = 2048
+                    }
+                };
+
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
+
+                var json = JsonSerializer.Serialize(request);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync(url, content);
+                var responseText = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return new FoodCorrectionResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Ошибка обращения к ИИ сервису"
+                    };
+                }
+
+                return ParseFoodCorrectionResponse(responseText);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error correcting food item: {ex.Message}");
+                return new FoodCorrectionResponse
+                {
+                    Success = false,
+                    ErrorMessage = $"Ошибка коррекции: {ex.Message}"
+                };
+            }
+        }
+
+        private TextWorkoutResponse ParseTextWorkoutResponse(string responseText)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(responseText);
+                if (document.RootElement.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
+                {
+                    var firstCandidate = candidates[0];
+                    if (firstCandidate.TryGetProperty("content", out var content) &&
+                        content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
+                    {
+                        var textPart = parts[0];
+                        if (textPart.TryGetProperty("text", out var textElement))
+                        {
+                            var responseContent = textElement.GetString() ?? "";
+                            return ParseTextWorkoutJson(responseContent);
+                        }
+                    }
+                }
+                return new TextWorkoutResponse { Success = false, ErrorMessage = "Invalid response format" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error parsing text workout response: {ex.Message}");
+                return new TextWorkoutResponse { Success = false, ErrorMessage = "Failed to parse response" };
+            }
+        }
+
+        private TextFoodResponse ParseTextFoodResponse(string responseText)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(responseText);
+                if (document.RootElement.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
+                {
+                    var firstCandidate = candidates[0];
+                    if (firstCandidate.TryGetProperty("content", out var content) &&
+                        content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
+                    {
+                        var textPart = parts[0];
+                        if (textPart.TryGetProperty("text", out var textElement))
+                        {
+                            var responseContent = textElement.GetString() ?? "";
+                            return ParseTextFoodJson(responseContent);
+                        }
+                    }
+                }
+                return new TextFoodResponse { Success = false, ErrorMessage = "Invalid response format" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error parsing text food response: {ex.Message}");
+                return new TextFoodResponse { Success = false, ErrorMessage = "Failed to parse response" };
+            }
+        }
+
+        private FoodCorrectionResponse ParseFoodCorrectionResponse(string responseText)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(responseText);
+                if (document.RootElement.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
+                {
+                    var firstCandidate = candidates[0];
+                    if (firstCandidate.TryGetProperty("content", out var content) &&
+                        content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
+                    {
+                        var textPart = parts[0];
+                        if (textPart.TryGetProperty("text", out var textElement))
+                        {
+                            var responseContent = textElement.GetString() ?? "";
+                            return ParseFoodCorrectionJson(responseContent);
+                        }
+                    }
+                }
+                return new FoodCorrectionResponse { Success = false, ErrorMessage = "Invalid response format" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error parsing food correction response: {ex.Message}");
+                return new FoodCorrectionResponse { Success = false, ErrorMessage = "Failed to parse response" };
+            }
+        }
+
+        private TextWorkoutResponse ParseTextWorkoutJson(string jsonText)
+        {
+            try
+            {
+                var startIndex = jsonText.IndexOf('{');
+                var lastIndex = jsonText.LastIndexOf('}');
+
+                if (startIndex >= 0 && lastIndex > startIndex)
+                {
+                    var cleanJson = jsonText.Substring(startIndex, lastIndex - startIndex + 1);
+                    using var document = JsonDocument.Parse(cleanJson);
+                    var root = document.RootElement;
+
+                    var response = new TextWorkoutResponse
+                    {
+                        Success = true,
+                        ProcessedText = SafeGetString(root, "processedText", "")
+                    };
+
+                    if (root.TryGetProperty("workoutData", out var workoutData))
+                    {
+                        response.WorkoutData = new WorkoutDataResponse
+                        {
+                            Type = SafeGetString(workoutData, "type", "strength"),
+                            StartTime = SafeParseDateTime(workoutData, "startTime"),
+                            EndTime = SafeParseDateTime(workoutData, "endTime"),
+                            EstimatedCalories = SafeGetInt(workoutData, "estimatedCalories", 200)
+                        };
+
+                        // Parse specific data based on type
+                        var workoutType = response.WorkoutData.Type;
+                        if (workoutType == "strength" && workoutData.TryGetProperty("strengthData", out var strengthData))
+                        {
+                            response.WorkoutData.StrengthData = ParseStrengthData(strengthData);
+                        }
+                        else if (workoutType == "cardio" && workoutData.TryGetProperty("cardioData", out var cardioData))
+                        {
+                            response.WorkoutData.CardioData = ParseCardioData(cardioData);
+                        }
+                        else if (workoutType == "plank" && workoutData.TryGetProperty("plankData", out var plankData))
+                        {
+                            response.WorkoutData.PlankData = new PlankDataDto
+                            {
+                                DurationSeconds = SafeGetInt(plankData, "durationSeconds", 60),
+                                PlankType = SafeGetString(plankData, "plankType", "стандартная планка"),
+                                Notes = SafeGetString(plankData, "notes", "")
+                            };
+                        }
+                        else if (workoutType == "jump_rope" && workoutData.TryGetProperty("jumpRopeData", out var jumpRopeData))
+                        {
+                            response.WorkoutData.JumpRopeData = new JumpRopeDataDto
+                            {
+                                JumpCount = SafeGetInt(jumpRopeData, "jumpCount", 100),
+                                DurationSeconds = SafeGetInt(jumpRopeData, "durationSeconds", 60),
+                                RopeType = SafeGetString(jumpRopeData, "ropeType", "обычная скакалка"),
+                                IntervalsCount = SafeGetNullableInt(jumpRopeData, "intervalsCount"),
+                                Notes = SafeGetString(jumpRopeData, "notes", "")
+                            };
+                        }
+
+                        response.WorkoutData.Notes = ParseNotes(workoutData);
+                    }
+
+                    return response;
+                }
+                return new TextWorkoutResponse { Success = false, ErrorMessage = "Invalid JSON format" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error parsing text workout JSON: {ex.Message}");
+                return new TextWorkoutResponse { Success = false, ErrorMessage = "Failed to parse workout data" };
+            }
+        }
+
+        private TextFoodResponse ParseTextFoodJson(string jsonText)
+        {
+            try
+            {
+                var startIndex = jsonText.IndexOf('{');
+                var lastIndex = jsonText.LastIndexOf('}');
+
+                if (startIndex >= 0 && lastIndex > startIndex)
+                {
+                    var cleanJson = jsonText.Substring(startIndex, lastIndex - startIndex + 1);
+                    using var document = JsonDocument.Parse(cleanJson);
+                    var root = document.RootElement;
+
+                    var foodItems = new List<FoodItemResponse>();
+
+                    if (root.TryGetProperty("foodItems", out var foodItemsArray))
+                    {
+                        foreach (var item in foodItemsArray.EnumerateArray())
+                        {
+                            var foodItem = new FoodItemResponse
+                            {
+                                Name = SafeGetString(item, "name", ""),
+                                EstimatedWeight = SafeGetDecimal(item, "estimatedWeight", 0),
+                                WeightType = SafeGetString(item, "weightType", "g"),
+                                Description = SafeGetString(item, "description", ""),
+                                Confidence = SafeGetDecimal(item, "confidence", 0.8m)
+                            };
+
+                            if (item.TryGetProperty("nutritionPer100g", out var nutrition))
+                            {
+                                foodItem.NutritionPer100g = new NutritionPer100gDto
+                                {
+                                    Calories = SafeGetDecimal(nutrition, "calories", 0),
+                                    Proteins = SafeGetDecimal(nutrition, "proteins", 0),
+                                    Fats = SafeGetDecimal(nutrition, "fats", 0),
+                                    Carbs = SafeGetDecimal(nutrition, "carbs", 0)
+                                };
+                            }
+
+                            foodItem.TotalCalories = SafeGetInt(item, "totalCalories", 0);
+                            foodItems.Add(foodItem);
+                        }
+                    }
+
+                    return new TextFoodResponse
+                    {
+                        Success = true,
+                        ProcessedText = SafeGetString(root, "processedText", ""),
+                        FoodItems = foodItems,
+                        EstimatedTotalCalories = SafeGetInt(root, "estimatedTotalCalories", 0)
+                    };
+                }
+                return new TextFoodResponse { Success = false, ErrorMessage = "Invalid JSON format" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error parsing text food JSON: {ex.Message}");
+                return new TextFoodResponse { Success = false, ErrorMessage = "Failed to parse food data" };
+            }
+        }
+
+        private FoodCorrectionResponse ParseFoodCorrectionJson(string jsonText)
+        {
+            try
+            {
+                var startIndex = jsonText.IndexOf('{');
+                var lastIndex = jsonText.LastIndexOf('}');
+
+                if (startIndex >= 0 && lastIndex > startIndex)
+                {
+                    var cleanJson = jsonText.Substring(startIndex, lastIndex - startIndex + 1);
+                    using var document = JsonDocument.Parse(cleanJson);
+                    var root = document.RootElement;
+
+                    var correctedItem = new FoodItemResponse();
+                    if (root.TryGetProperty("correctedFoodItem", out var foodItem))
+                    {
+                        correctedItem = new FoodItemResponse
+                        {
+                            Name = SafeGetString(foodItem, "name", ""),
+                            EstimatedWeight = SafeGetDecimal(foodItem, "estimatedWeight", 0),
+                            WeightType = SafeGetString(foodItem, "weightType", "g"),
+                            Description = SafeGetString(foodItem, "description", ""),
+                            Confidence = SafeGetDecimal(foodItem, "confidence", 0.8m)
+                        };
+
+                        if (foodItem.TryGetProperty("nutritionPer100g", out var nutrition))
+                        {
+                            correctedItem.NutritionPer100g = new NutritionPer100gDto
+                            {
+                                Calories = SafeGetDecimal(nutrition, "calories", 0),
+                                Proteins = SafeGetDecimal(nutrition, "proteins", 0),
+                                Fats = SafeGetDecimal(nutrition, "fats", 0),
+                                Carbs = SafeGetDecimal(nutrition, "carbs", 0)
+                            };
+                        }
+
+                        correctedItem.TotalCalories = SafeGetInt(foodItem, "totalCalories", 0);
+                    }
+
+                    var ingredients = new List<string>();
+                    if (root.TryGetProperty("ingredients", out var ingredientsArray))
+                    {
+                        ingredients = ingredientsArray.EnumerateArray()
+                            .Select(x => x.GetString() ?? "")
+                            .Where(x => !string.IsNullOrEmpty(x))
+                            .ToList();
+                    }
+
+                    return new FoodCorrectionResponse
+                    {
+                        Success = true,
+                        CorrectedFoodItem = correctedItem,
+                        CorrectionExplanation = SafeGetString(root, "correctionExplanation", ""),
+                        Ingredients = ingredients
+                    };
+                }
+                return new FoodCorrectionResponse { Success = false, ErrorMessage = "Invalid JSON format" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error parsing food correction JSON: {ex.Message}");
+                return new FoodCorrectionResponse { Success = false, ErrorMessage = "Failed to parse correction data" };
+            }
+        }
+
         private string SafeGetString(JsonElement element, string propertyName, string defaultValue = "")
         {
             try
@@ -2166,7 +2825,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                 }
             }
 
-            return DateTime.UtcNow; 
+            return DateTime.UtcNow;
         }
 
         public async Task<bool> IsHealthyAsync()

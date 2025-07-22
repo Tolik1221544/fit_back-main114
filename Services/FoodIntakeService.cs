@@ -136,5 +136,14 @@ namespace FitnessTracker.API.Services
                 Items = mockFoodItems
             });
         }
+
+        public async Task<FoodIntakeDto?> GetFoodItemByIdAsync(string userId, string foodIntakeId)
+        {
+            var foodIntake = await _foodIntakeRepository.GetByIdAsync(foodIntakeId);
+            if (foodIntake == null || foodIntake.UserId != userId)
+                return null;
+
+            return _mapper.Map<FoodIntakeDto>(foodIntake);
+        }
     }
 }

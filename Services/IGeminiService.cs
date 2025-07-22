@@ -4,14 +4,7 @@ namespace FitnessTracker.API.Services
 {
     public interface IGeminiService
     {
-        /// <summary>
-        /// 🍎 Анализ изображения еды с помощью Gemini
-        /// </summary>
         Task<FoodScanResponse> AnalyzeFoodImageAsync(byte[] imageData, string? userPrompt = null);
-
-        /// <summary>
-        /// 💪 Анализ изображений тела с помощью Gemini
-        /// </summary>
         Task<BodyScanResponse> AnalyzeBodyImagesAsync(
             byte[]? frontImageData,
             byte[]? sideImageData,
@@ -21,35 +14,17 @@ namespace FitnessTracker.API.Services
             int? age = null,
             string? gender = null,
             string? goals = null);
-
-        /// <summary>
-        /// 🎤 Распознавание речи и анализ тренировки
-        /// </summary>
         Task<VoiceWorkoutResponse> AnalyzeVoiceWorkoutAsync(byte[] audioData, string? workoutType = null);
-
-        /// <summary>
-        /// 🗣️ Распознавание речи и анализ питания
-        /// </summary>
         Task<VoiceFoodResponse> AnalyzeVoiceFoodAsync(byte[] audioData, string? mealType = null);
+        Task<TextWorkoutResponse> AnalyzeTextWorkoutAsync(string workoutText, string? workoutType = null);
+        Task<TextFoodResponse> AnalyzeTextFoodAsync(string foodText, string? mealType = null);
+        Task<FoodCorrectionResponse> CorrectFoodItemAsync(string originalFoodName, string correctionText);
 
-        /// <summary>
-        /// 🧠 Общий метод для отправки запроса к Gemini API
-        /// </summary>
-        Task<GeminiResponse> SendGeminiRequestAsync(List<GeminiContent> contents, GeminiGenerationConfig? config = null);
-
-        /// <summary>
-        /// 🔄 Конвертация изображения в base64 для Gemini
-        /// </summary>
+        Task<bool> IsHealthyAsync();
+        Task<Dictionary<string, bool>> GetProviderHealthStatusAsync();
+        Task<bool> ValidateImageQualityAsync(byte[] imageData);
         string ConvertImageToBase64(byte[] imageData, string mimeType);
 
-        /// <summary>
-        /// 📝 Проверка качества изображения
-        /// </summary>
-        Task<bool> ValidateImageQualityAsync(byte[] imageData);
-
-        /// <summary>
-        /// 🏥 Проверка здоровья сервиса
-        /// </summary>
-        Task<bool> IsHealthyAsync();
+        Task<GeminiResponse> SendGeminiRequestAsync(List<GeminiContent> contents, GeminiGenerationConfig? config = null);
     }
 }

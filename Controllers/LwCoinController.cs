@@ -216,30 +216,29 @@ namespace FitnessTracker.API.Controllers
                 lwCoinPricing = new
                 {
                     photoCost = 2.5m,        // Фото-анализ: 2.5 монеты
-                    voiceCost = 1.5m,        // Голосовой ввод: 1.5 монеты
+                    voiceCost = 1.5m,        // Голосовой ввод: 1.5 монеты  
                     textCost = 1.0m,         // Текстовый ввод: 1.0 монета
                     exerciseTrackingCost = 0,
-                    archiveCost = 0,
-                    bodyAnalysisCost = 0     // Анализ тела остается бесплатным
+                    bodyAnalysisCost = 0     // ✅ Анализ тела бесплатно
                 },
 
                 statisticalLimits = new
                 {
-                    averageDailyUsage = 10.0m,  // 300 монет / 30 дней = 10 монет/день (только для статистики)
+                    averageDailyUsage = 10.0m,
                     baseDailyUsageExample = new
                     {
                         photos = 3,     // 3 фото * 2.5 = 7.5 монеты
-                        voice = 1,      // 1 голос * 1.5 = 1.5 монеты  
+                        voiceWorkouts = 1,      // 1 голосовая тренировка * 1.5 = 1.5 монеты  
                         text = 2,       // 2 текста * 1.0 = 2.0 монеты
-                        total = 11.0m,   // Итого: 11 монет (среднее использование)
-                        note = "Статистический расчет среднего использования, НЕ ограничение"
+                        total = 11.0m,
+                        note = "Анализ тренировки = голосовой ввод тренировки (1.5 монеты)"
                     },
                     optimizedDailyUsage = new
                     {
-                        photos = 3,     // 3 фото * 2.5 = 7.5 монеты
-                        voice = 1,      // 1 голос * 1.5 = 1.5 монеты
-                        text = 1,       // 1 текст * 1.0 = 1.0 монета
-                        total = 10.0m,   // Итого: 10 монет (оптимальное использование)
+                        photos = 3,
+                        voiceWorkouts = 1,      // 1 голосовая тренировка * 1.5 = 1.5 монеты
+                        text = 1,
+                        total = 10.0m,
                         note = "Рекомендуемое распределение трат для экономии монет"
                     }
                 },
@@ -286,10 +285,9 @@ namespace FitnessTracker.API.Controllers
                 freeFeatures = new[]
                 {
                     "Exercise tracking",
-                    "Progress archive",
                     "Basic statistics",
                     "Skin system with XP boost",
-                    "Body analysis (unlimited)", 
+                    "Body analysis (unlimited)",
                     "Weekly body scans"
                 },
                 monthlyAllowance = new
@@ -308,7 +306,7 @@ namespace FitnessTracker.API.Controllers
                     targetDailyUsage = new
                     {
                         photos = 3,
-                        voice = 1,
+                        voiceWorkouts = 1,    
                         text = 2,
                         totalCost = 11.0m,
                         note = "Средний пользователь тарифа 'База' делает примерно столько операций в день"
@@ -316,9 +314,10 @@ namespace FitnessTracker.API.Controllers
                     costBreakdown = new
                     {
                         photoAnalysis = "2.5 монеты за анализ фото еды",
-                        voiceInput = "1.5 монеты за голосовой ввод тренировки/питания",
+                        voiceWorkoutAnalysis = "1.5 монеты за голосовой анализ тренировки",   
+                        voiceFoodAnalysis = "1.5 монеты за голосовой анализ питания",
                         textAnalysis = "1.0 монета за текстовый анализ",
-                        bodyAnalysis = "0 монет - бесплатно для всех",
+                        bodyAnalysis = "0 монет - бесплатно для всех",                       
                         exerciseTracking = "0 монет - бесплатно для всех"
                     },
                     flexibilityNote = "Хотите потратить все 300 монет за один день? Пожалуйста! Хотите растянуть на месяц? Тоже отлично!"

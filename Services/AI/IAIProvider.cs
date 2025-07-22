@@ -17,6 +17,9 @@ namespace FitnessTracker.API.Services.AI
 			string? goals = null);
 		Task<VoiceWorkoutResponse> AnalyzeVoiceWorkoutAsync(byte[] audioData, string? workoutType = null);
 		Task<VoiceFoodResponse> AnalyzeVoiceFoodAsync(byte[] audioData, string? mealType = null);
-		Task<bool> IsHealthyAsync();
+        Task<TextWorkoutResponse> AnalyzeTextWorkoutAsync(string workoutText, string? workoutType = null);
+        Task<TextFoodResponse> AnalyzeTextFoodAsync(string foodText, string? mealType = null);
+        Task<FoodCorrectionResponse> CorrectFoodItemAsync(string originalFoodName, string correctionText);
+        Task<bool> IsHealthyAsync();
 	}
 }

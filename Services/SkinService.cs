@@ -8,14 +8,21 @@ namespace FitnessTracker.API.Services
     public class SkinService : ISkinService
     {
         private readonly ISkinRepository _skinRepository;
-        private readonly ILwCoinService _lwCoinService;
+        private readonly IUserRepository _userRepository;       
+        private readonly ILwCoinRepository _lwCoinRepository;    
         private readonly IMapper _mapper;
         private readonly ILogger<SkinService> _logger;
 
-        public SkinService(ISkinRepository skinRepository, ILwCoinService lwCoinService, IMapper mapper, ILogger<SkinService> logger)
+        public SkinService(
+            ISkinRepository skinRepository,
+            IUserRepository userRepository,     
+            ILwCoinRepository lwCoinRepository, 
+            IMapper mapper,
+            ILogger<SkinService> logger)
         {
             _skinRepository = skinRepository;
-            _lwCoinService = lwCoinService;
+            _userRepository = userRepository;        
+            _lwCoinRepository = lwCoinRepository;    
             _mapper = mapper;
             _logger = logger;
         }
@@ -34,11 +41,10 @@ namespace FitnessTracker.API.Services
                 skinDto.IsActive = skinDto.Id == activeSkinId;
             }
 
-            // ✅ ИСПРАВЛЕНО: Правильный порядок сортировки
             return skinDtos
-                .OrderBy(s => s.Tier)           // Сначала по уровню (1, 2, 3)
-                .ThenBy(s => s.Cost)            // Затем по цене (100, 200, 400...)
-                .ThenBy(s => s.Name);           // И по имени для стабильности
+                .OrderBy(s => s.Tier)
+                .ThenBy(s => s.Cost)
+                .ThenBy(s => s.Name);
         }
 
         public async Task<bool> PurchaseSkinAsync(string userId, PurchaseSkinRequest request)
@@ -46,35 +52,74 @@ namespace FitnessTracker.API.Services
             var skin = await _skinRepository.GetSkinByIdAsync(request.SkinId);
             if (skin == null)
             {
-                _logger.LogWarning($"Skin {request.SkinId} not found");
+                _logger.LogWarning($"❌ Skin {request.SkinId} not found");
                 return false;
             }
 
             if (await _skinRepository.UserOwnsSkinAsync(userId, request.SkinId))
             {
-                _logger.LogWarning($"User {userId} already owns skin {request.SkinId}");
+                _logger.LogWarning($"❌ User {userId} already owns skin {request.SkinId}");
                 return false;
             }
 
-            // ✅ ИСПРАВЛЕНО: Используем правильную стоимость и систему трат
-            if (!await _lwCoinService.SpendLwCoinsAsync(userId, skin.Cost, "skin_purchase",
-                $"Purchased skin: {skin.Name}", "skin"))
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null)
             {
-                _logger.LogWarning($"User {userId} doesn't have enough LW Coins for skin {request.SkinId}. Required: {skin.Cost}");
+                _logger.LogError($"❌ User {userId} not found");
+                return false;
+            }
+            decimal currentBalance = user.FractionalLwCoins > 0 ? (decimal)user.FractionalLwCoins : user.LwCoins;
+            decimal skinCost = skin.Cost;
+
+            if (currentBalance < skinCost)
+            {
+                _logger.LogWarning($"❌ Insufficient coins: user={userId}, balance={currentBalance}, required={skinCost}");
                 return false;
             }
 
-            var userSkin = new UserSkin
+            var newBalance = currentBalance - skinCost;
+            user.FractionalLwCoins = (double)newBalance;
+            user.LwCoins = (int)Math.Floor(newBalance);
+
+            try
             {
-                UserId = userId,
-                SkinId = request.SkinId,
-                IsActive = false // По умолчанию не активен
-            };
+                await _userRepository.UpdateAsync(user);
 
-            await _skinRepository.PurchaseSkinAsync(userSkin);
+                var transaction = new LwCoinTransaction
+                {
+                    UserId = userId,
+                    Amount = -(int)Math.Ceiling(skinCost),
+                    FractionalAmount = (double)skinCost,
+                    Type = "spent",
+                    Description = $"Purchased skin: {skin.Name}",
+                    FeatureUsed = "skin_purchase",
+                    UsageDate = DateTime.UtcNow.Date.ToString("yyyy-MM-dd")
+                };
 
-            _logger.LogInformation($"✅ User {userId} purchased skin '{skin.Name}' (Tier {skin.Tier}, {skin.ExperienceBoost}x XP boost) for {skin.Cost} coins");
-            return true;
+                await _lwCoinRepository.CreateTransactionAsync(transaction);
+
+                var userSkin = new UserSkin
+                {
+                    UserId = userId,
+                    SkinId = request.SkinId,
+                    IsActive = false
+                };
+
+                await _skinRepository.PurchaseSkinAsync(userSkin);
+
+                _logger.LogInformation($"✅ User {userId} purchased skin '{skin.Name}' (Tier {skin.Tier}, {skin.ExperienceBoost}x XP) for {skinCost} coins. Balance: {currentBalance} → {newBalance}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error purchasing skin: {ex.Message}");
+
+                user.FractionalLwCoins = (double)currentBalance;
+                user.LwCoins = (int)Math.Floor(currentBalance);
+                await _userRepository.UpdateAsync(user);
+
+                return false;
+            }
         }
 
         public async Task<IEnumerable<SkinDto>> GetUserSkinsAsync(string userId)
@@ -96,17 +141,13 @@ namespace FitnessTracker.API.Services
 
         public async Task<bool> ActivateSkinAsync(string userId, ActivateSkinRequest request)
         {
-            // Проверяем, что пользователь владеет скином
             if (!await _skinRepository.UserOwnsSkinAsync(userId, request.SkinId))
             {
-                _logger.LogWarning($"User {userId} doesn't own skin {request.SkinId}");
+                _logger.LogWarning($"❌ User {userId} doesn't own skin {request.SkinId}");
                 return false;
             }
 
-            // Деактивируем все скины пользователя
             await _skinRepository.DeactivateAllUserSkinsAsync(userId);
-
-            // Активируем выбранный скин
             var success = await _skinRepository.ActivateUserSkinAsync(userId, request.SkinId);
 
             if (success)

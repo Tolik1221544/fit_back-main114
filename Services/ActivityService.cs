@@ -100,7 +100,6 @@ namespace FitnessTracker.API.Services
                     var sets = new List<StrengthSet>();
                     if (request.StrengthData.Sets?.Any() == true)
                     {
-                        // Используем подходы из запроса
                         sets = request.StrengthData.Sets.Select((setDto, index) => new StrengthSet
                         {
                             SetNumber = setDto.SetNumber > 0 ? setDto.SetNumber : index + 1,
@@ -112,12 +111,11 @@ namespace FitnessTracker.API.Services
                     }
                     else if (request.StrengthData.WorkingWeight > 0)
                     {
-                        // Создаем один подход на основе старых данных для совместимости
                         sets.Add(new StrengthSet
                         {
                             SetNumber = 1,
                             Weight = request.StrengthData.WorkingWeight,
-                            Reps = 10, // Дефолтное значение
+                            Reps = 10, 
                             IsCompleted = true,
                             Notes = "Автоматически созданный подход"
                         });
@@ -130,10 +128,15 @@ namespace FitnessTracker.API.Services
                         Equipment = request.StrengthData.Equipment?.Trim() ?? "Не указано",
                         WorkingWeight = sets.Any() ? sets.Average(s => s.Weight) : request.StrengthData.WorkingWeight,
                         RestTimeSeconds = Math.Max(0, request.StrengthData.RestTimeSeconds),
-                        Sets = sets
+                        Sets = sets,
+                        PlankData = request.StrengthData.PlankData != null ? new PlankData
+                        {
+                            DurationSeconds = request.StrengthData.PlankData.DurationSeconds,
+                            PlankType = request.StrengthData.PlankData.PlankType ?? "Классическая планка",
+                            Notes = request.StrengthData.PlankData.Notes ?? ""
+                        } : null
                     };
 
-                    // Явно устанавливаем CardioData в null
                     activity.CardioData = null;
                 }
 
@@ -148,13 +151,19 @@ namespace FitnessTracker.API.Services
                         DistanceKm = request.CardioData.DistanceKm.HasValue ? Math.Max(0, request.CardioData.DistanceKm.Value) : null,
                         AvgPulse = request.CardioData.AvgPulse.HasValue ? Math.Max(0, request.CardioData.AvgPulse.Value) : null,
                         MaxPulse = request.CardioData.MaxPulse.HasValue ? Math.Max(0, request.CardioData.MaxPulse.Value) : null,
-                        AvgPace = request.CardioData.AvgPace?.Trim() ?? ""
+                        AvgPace = request.CardioData.AvgPace?.Trim() ?? "",
+                        JumpRopeData = request.CardioData.JumpRopeData != null ? new JumpRopeData
+                        {
+                            JumpCount = request.CardioData.JumpRopeData.JumpCount,
+                            DurationSeconds = request.CardioData.JumpRopeData.DurationSeconds,
+                            RopeType = request.CardioData.JumpRopeData.RopeType ?? "Обычная скакалка",
+                            IntervalsCount = request.CardioData.JumpRopeData.IntervalsCount,
+                            Notes = request.CardioData.JumpRopeData.Notes ?? ""
+                        } : null
                     };
-                    // Явно устанавливаем StrengthData в null
                     activity.StrengthData = null;
                 }
 
-                // Создаем дефолтные данные если они отсутствуют
                 if (activityType == "strength" && activity.StrengthData == null)
                 {
                     activity.StrengthData = new StrengthData
@@ -165,16 +174,16 @@ namespace FitnessTracker.API.Services
                         WorkingWeight = 0,
                         RestTimeSeconds = 0,
                         Sets = new List<StrengthSet>
-                {
-                    new StrengthSet
-                    {
-                        SetNumber = 1,
-                        Weight = 0,
-                        Reps = 0,
-                        IsCompleted = false,
-                        Notes = "Данные не указаны"
-                    }
-                }
+                        {
+                            new StrengthSet
+                            {
+                                SetNumber = 1,
+                                Weight = 0,
+                                Reps = 0,
+                                IsCompleted = false,
+                                Notes = "Данные не указаны"
+                            }
+                        }
                     };
                 }
 
@@ -263,7 +272,6 @@ namespace FitnessTracker.API.Services
                 }
                 else
                 {
-                    // Сохраняем существующие подходы или создаем новый
                     sets = activity.StrengthData?.Sets ?? new List<StrengthSet>();
                     if (!sets.Any() && request.StrengthData.WorkingWeight > 0)
                     {
@@ -287,7 +295,13 @@ namespace FitnessTracker.API.Services
                     Equipment = request.StrengthData.Equipment?.Trim() ?? activity.StrengthData?.Equipment ?? "Не указано",
                     WorkingWeight = sets.Any() ? sets.Average(s => s.Weight) : Math.Max(0, request.StrengthData.WorkingWeight),
                     RestTimeSeconds = Math.Max(0, request.StrengthData.RestTimeSeconds),
-                    Sets = sets
+                    Sets = sets,
+                    PlankData = request.StrengthData.PlankData != null ? new PlankData
+                    {
+                        DurationSeconds = request.StrengthData.PlankData.DurationSeconds,
+                        PlankType = request.StrengthData.PlankData.PlankType ?? "Классическая планка",
+                        Notes = request.StrengthData.PlankData.Notes ?? ""
+                    } : activity.StrengthData?.PlankData
                 };
                 activity.CardioData = null;
             }
@@ -302,7 +316,15 @@ namespace FitnessTracker.API.Services
                     DistanceKm = request.CardioData.DistanceKm.HasValue ? Math.Max(0, request.CardioData.DistanceKm.Value) : activity.CardioData?.DistanceKm,
                     AvgPulse = request.CardioData.AvgPulse.HasValue ? Math.Max(0, request.CardioData.AvgPulse.Value) : activity.CardioData?.AvgPulse,
                     MaxPulse = request.CardioData.MaxPulse.HasValue ? Math.Max(0, request.CardioData.MaxPulse.Value) : activity.CardioData?.MaxPulse,
-                    AvgPace = request.CardioData.AvgPace?.Trim() ?? activity.CardioData?.AvgPace ?? ""
+                    AvgPace = request.CardioData.AvgPace?.Trim() ?? activity.CardioData?.AvgPace ?? "",
+                    JumpRopeData = request.CardioData.JumpRopeData != null ? new JumpRopeData
+                    {
+                        JumpCount = request.CardioData.JumpRopeData.JumpCount,
+                        DurationSeconds = request.CardioData.JumpRopeData.DurationSeconds,
+                        RopeType = request.CardioData.JumpRopeData.RopeType ?? "Обычная скакалка",
+                        IntervalsCount = request.CardioData.JumpRopeData.IntervalsCount,
+                        Notes = request.CardioData.JumpRopeData.Notes ?? ""
+                    } : activity.CardioData?.JumpRopeData
                 };
                 activity.StrengthData = null;
             }
@@ -334,8 +356,6 @@ namespace FitnessTracker.API.Services
                 .Select(g => new { Type = g.Key, Count = g.Count() });
 
             var activityCalories = activities.Where(a => a.Calories.HasValue).Sum(a => a.Calories!.Value);
-
-            // Получаем калории от шагов за тот же период
             var stepsCalories = await GetStepsCaloriesForPeriodAsync(userId, startDate, endDate);
 
             var totalCalories = activityCalories + stepsCalories;
@@ -365,14 +385,12 @@ namespace FitnessTracker.API.Services
                 var targetDate = request.Date.Date;
                 _logger.LogInformation($"Adding/updating steps for user {userId} on {targetDate:yyyy-MM-dd}: {request.Steps} steps");
 
-                // Ищем существующую запись за этот день
                 var existingSteps = await _stepsRepository.GetByUserIdAndDateAsync(userId, targetDate);
 
                 Steps stepsRecord;
 
                 if (existingSteps != null)
                 {
-                    // Обновляем существующую запись
                     existingSteps.StepsCount = request.Steps;
                     existingSteps.Calories = request.Calories.HasValue ? Math.Max(0, request.Calories.Value) : null;
                     stepsRecord = await _stepsRepository.UpdateAsync(existingSteps);
@@ -381,7 +399,6 @@ namespace FitnessTracker.API.Services
                 }
                 else
                 {
-                    // Создаем новую запись
                     stepsRecord = new Steps
                     {
                         Id = Guid.NewGuid().ToString(),
@@ -396,7 +413,6 @@ namespace FitnessTracker.API.Services
                     _logger.LogInformation($"Created new steps record for user {userId} on {targetDate:yyyy-MM-dd}: {request.Steps} steps");
                 }
 
-                // Добавляем опыт за шаги
                 try
                 {
                     var experienceAmount = CalculateExperienceForSteps(request.Steps);
@@ -409,10 +425,7 @@ namespace FitnessTracker.API.Services
                 catch (Exception ex)
                 {
                     _logger.LogError($"Error adding experience for steps: {ex.Message}");
-                    // Не прерываем выполнение, если не удалось добавить опыт
                 }
-
-                // Обновляем прогресс миссий
                 try
                 {
                     await _missionService.UpdateMissionProgressAsync(userId, "daily_steps");
@@ -420,7 +433,6 @@ namespace FitnessTracker.API.Services
                 catch (Exception ex)
                 {
                     _logger.LogError($"Error updating mission progress: {ex.Message}");
-                    // Не прерываем выполнение
                 }
 
                 return _mapper.Map<StepsDto>(stepsRecord);
@@ -439,20 +451,17 @@ namespace FitnessTracker.API.Services
 
             if (date.HasValue)
             {
-                // Получаем шаги за конкретный день
                 var targetDate = date.Value.Date;
                 var singleSteps = await _stepsRepository.GetByUserIdAndDateAsync(userId, targetDate);
                 steps = singleSteps != null ? new[] { singleSteps } : Array.Empty<Steps>();
             }
             else
             {
-                // Получаем все шаги (по одной записи на день)
                 steps = await _stepsRepository.GetByUserIdAsync(userId);
             }
 
             return _mapper.Map<IEnumerable<StepsDto>>(steps);
         }
-
 
         private async Task<int> GetStepsCaloriesForPeriodAsync(string userId, DateTime? startDate, DateTime? endDate)
         {
@@ -465,91 +474,6 @@ namespace FitnessTracker.API.Services
                 allSteps = allSteps.Where(s => s.Date <= endDate.Value.Date);
 
             return allSteps.Where(s => s.Calories.HasValue).Sum(s => s.Calories!.Value);
-        }
-
-        private int CalculateStepsStreak(IEnumerable<Steps> orderedSteps)
-        {
-            var steps = orderedSteps.ToList();
-            if (!steps.Any()) return 0;
-
-            int streak = 0;
-            var today = DateTime.UtcNow.Date;
-
-            foreach (var step in steps)
-            {
-                var expectedDate = today.AddDays(-streak);
-                if (step.Date.Date == expectedDate && step.StepsCount >= 1000) // Минимум 1000 шагов для streak
-                {
-                    streak++;
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            return streak;
-        }
-
-        private decimal GetCaloriesPerDay(IEnumerable<Activity> activities, IEnumerable<Steps> steps, DateTime? startDate, DateTime? endDate)
-        {
-            var totalDays = 1;
-
-            if (startDate.HasValue && endDate.HasValue)
-            {
-                totalDays = Math.Max(1, (endDate.Value - startDate.Value).Days + 1);
-            }
-            else
-            {
-                var activityDays = activities.Select(a => a.CreatedAt.Date).Distinct().Count();
-                var stepsDays = steps.Select(s => s.Date.Date).Distinct().Count();
-                totalDays = Math.Max(1, Math.Max(activityDays, stepsDays));
-            }
-
-            var activityCalories = activities.Where(a => a.Calories.HasValue).Sum(a => a.Calories!.Value);
-            var stepsCalories = steps.Where(s => s.Calories.HasValue).Sum(s => s.Calories!.Value);
-
-            return Math.Round((decimal)(activityCalories + stepsCalories) / totalDays, 1);
-        }
-
-        private decimal GetWorkoutsPerWeek(IEnumerable<Activity> activities, DateTime? startDate, DateTime? endDate)
-        {
-            if (!activities.Any()) return 0;
-
-            var totalWeeks = 1m;
-
-            if (startDate.HasValue && endDate.HasValue)
-            {
-                totalWeeks = Math.Max(1, (decimal)(endDate.Value - startDate.Value).TotalDays / 7);
-            }
-            else
-            {
-                var firstActivity = activities.Min(a => a.CreatedAt);
-                var lastActivity = activities.Max(a => a.CreatedAt);
-                totalWeeks = Math.Max(1, (decimal)(lastActivity - firstActivity).TotalDays / 7);
-            }
-
-            return Math.Round(activities.Count() / totalWeeks, 1);
-        }
-
-        private decimal GetStepsPerWeek(IEnumerable<Steps> steps, DateTime? startDate, DateTime? endDate)
-        {
-            if (!steps.Any()) return 0;
-
-            var totalWeeks = 1m;
-
-            if (startDate.HasValue && endDate.HasValue)
-            {
-                totalWeeks = Math.Max(1, (decimal)(endDate.Value - startDate.Value).TotalDays / 7);
-            }
-            else
-            {
-                var firstStep = steps.Min(s => s.Date);
-                var lastStep = steps.Max(s => s.Date);
-                totalWeeks = Math.Max(1, (decimal)(lastStep - firstStep).TotalDays / 7);
-            }
-
-            return Math.Round(steps.Sum(s => s.StepsCount) / totalWeeks, 0);
         }
 
         private int CalculateExperienceForActivity(AddActivityRequest activity)
@@ -579,16 +503,42 @@ namespace FitnessTracker.API.Services
                 var setsCount = activity.StrengthData.Sets.Count;
                 var totalReps = activity.StrengthData.Sets.Sum(s => s.Reps);
 
-                setsBonus = Math.Min(25, setsCount * 3); // 3 опыта за подход, максимум 25
-
-                // Дополнительный бонус за большое количество повторений
+                setsBonus = Math.Min(25, setsCount * 3); 
+              
                 if (totalReps > 50)
                     setsBonus += 10;
                 else if (totalReps > 30)
                     setsBonus += 5;
             }
 
-            return baseExperience + calorieBonus + durationBonus + setsBonus;
+            int plankBonus = 0;
+            if (activity.Type?.ToLowerInvariant() == "strength" && activity.StrengthData?.PlankData != null)
+            {
+                var duration = activity.StrengthData.PlankData.DurationSeconds;
+                plankBonus = duration switch
+                {
+                    >= 120 => 15, 
+                    >= 60 => 10,  
+                    >= 30 => 5,   
+                    _ => 2        
+                };
+            }
+
+            int jumpRopeBonus = 0;
+            if (activity.Type?.ToLowerInvariant() == "cardio" && activity.CardioData?.JumpRopeData != null)
+            {
+                var jumpCount = activity.CardioData.JumpRopeData.JumpCount;
+                jumpRopeBonus = jumpCount switch
+                {
+                    >= 1000 => 20, 
+                    >= 500 => 15,  
+                    >= 200 => 10,  
+                    >= 100 => 5,   
+                    _ => 2        
+                };
+            }
+
+            return baseExperience + calorieBonus + durationBonus + setsBonus + plankBonus + jumpRopeBonus;
         }
 
         private int CalculateExperienceForSteps(int steps)

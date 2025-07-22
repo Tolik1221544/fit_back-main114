@@ -114,15 +114,16 @@ namespace FitnessTracker.API.Services
         {
             return featureUsed.ToLowerInvariant() switch
             {
-                "photo" or "ai_food_scan" or "food_scan" => PHOTO_COST,
-                "voice" or "ai_voice_workout" or "ai_voice_food" => VOICE_COST,
-                "text" or "ai_text" => TEXT_COST,
+                // Платные функции
+                "photo" or "ai_food_scan" or "food_scan" => PHOTO_COST,           
+                "voice" or "ai_voice_workout" or "ai_voice_food" => VOICE_COST,   
+                "text" or "ai_text" => TEXT_COST,                             
 
-                "ai_body_scan" or "body_analysis" => 0.0m,
-                "exercise" or "activity" => 0.0m,
-                "archive" => 0.0m,
+                // Бесплатные функции  
+                "ai_body_scan" or "body_analysis" => 0.0m,                        
+                "exercise" or "activity" => 0.0m,                                
 
-                _ => 1.0m 
+                _ => 1.0m  
             };
         }
 

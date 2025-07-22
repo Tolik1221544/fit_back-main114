@@ -34,6 +34,12 @@ namespace FitnessTracker.API.Mapping
 
             CreateMap<CardioData, CardioDataDto>();
             CreateMap<CardioDataDto, CardioData>();
+           
+            CreateMap<PlankData, PlankDataDto>();
+            CreateMap<PlankDataDto, PlankData>();
+
+            CreateMap<JumpRopeData, JumpRopeDataDto>();
+            CreateMap<JumpRopeDataDto, JumpRopeData>();
 
             // Steps mappings
             CreateMap<Steps, StepsDto>();

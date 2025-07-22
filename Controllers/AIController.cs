@@ -428,7 +428,7 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
-                _logger.LogInformation($"💪 Starting body analysis for user {userId}");
+                _logger.LogInformation($"💪 Starting FREE body analysis for user {userId}");
                 _logger.LogInformation($"💪 Request data - Weight: {request.CurrentWeight}, Height: {request.Height}, Age: {request.Age}, Gender: {request.Gender}");
 
                 if (request.FrontImage == null && request.SideImage == null && request.BackImage == null)
@@ -618,6 +618,226 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
+        /// 📝 Текстовый ввод тренировки (требует LW Coins)
+        /// </summary>
+        [HttpPost("text-workout")]
+        [ProducesResponseType(typeof(TextWorkoutResponse), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> TextWorkout([FromBody] TextWorkoutRequest request)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                if (string.IsNullOrWhiteSpace(request.WorkoutDescription))
+                {
+                    return BadRequest(new { error = "Описание тренировки не предоставлено" });
+                }
+
+                var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_text_workout",
+                    "AI Text Workout", "text");
+
+                if (!canSpend)
+                {
+                    return BadRequest(new { error = "Недостаточно LW Coins для текстового ввода тренировки" });
+                }
+
+                _logger.LogInformation($"📝 Processing text workout for user {userId}: {request.WorkoutDescription}");
+
+                var result = await _geminiService.AnalyzeTextWorkoutAsync(request.WorkoutDescription, request.WorkoutType);
+
+                if (!result.Success)
+                {
+                    return BadRequest(new { error = result.ErrorMessage ?? "Не удалось обработать описание тренировки" });
+                }
+
+                if (request.SaveResults && result.WorkoutData != null)
+                {
+                    try
+                    {
+                        var addActivityRequest = new AddActivityRequest
+                        {
+                            Type = result.WorkoutData.Type,
+                            StartDate = result.WorkoutData.StartTime.Date,
+                            StartTime = result.WorkoutData.StartTime,
+                            EndDate = result.WorkoutData.EndTime?.Date,
+                            EndTime = result.WorkoutData.EndTime,
+                            Calories = result.WorkoutData.EstimatedCalories,
+                            StrengthData = result.WorkoutData.StrengthData,
+                            CardioData = result.WorkoutData.CardioData,
+                            PlankData = result.WorkoutData.PlankData,
+                            JumpRopeData = result.WorkoutData.JumpRopeData
+                        };
+
+                        await _activityService.AddActivityAsync(userId, addActivityRequest);
+                        _logger.LogInformation($"✅ Saved text workout to database for user {userId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"❌ Error saving text workout to database: {ex.Message}");
+                    }
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Unexpected error processing text workout: {ex.Message}");
+                return BadRequest(new { error = "Произошла системная ошибка при обработке текстового ввода тренировки" });
+            }
+        }
+
+        /// <summary>
+        /// 📝 Текстовый ввод питания (требует LW Coins)
+        /// </summary>
+        [HttpPost("text-food")]
+        [ProducesResponseType(typeof(TextFoodResponse), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> TextFood([FromBody] TextFoodRequest request)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                if (string.IsNullOrWhiteSpace(request.FoodDescription))
+                {
+                    return BadRequest(new { error = "Описание еды не предоставлено" });
+                }
+
+                var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_text_food",
+                    "AI Text Food", "text");
+
+                if (!canSpend)
+                {
+                    return BadRequest(new { error = "Недостаточно LW Coins для текстового ввода питания" });
+                }
+
+                _logger.LogInformation($"📝 Processing text food for user {userId}: {request.FoodDescription}");
+
+                var result = await _geminiService.AnalyzeTextFoodAsync(request.FoodDescription, request.MealType);
+
+                if (!result.Success)
+                {
+                    return BadRequest(new { error = result.ErrorMessage ?? "Не удалось обработать описание еды" });
+                }
+
+                if (request.SaveResults && result.FoodItems?.Any() == true)
+                {
+                    try
+                    {
+                        var addFoodRequest = new AddFoodIntakeRequest
+                        {
+                            Items = result.FoodItems.Select(fi => new FoodItemRequest
+                            {
+                                Name = fi.Name,
+                                Weight = fi.EstimatedWeight,
+                                WeightType = fi.WeightType,
+                                NutritionPer100g = fi.NutritionPer100g
+                            }).ToList(),
+                            DateTime = DateTime.UtcNow
+                        };
+
+                        await _foodIntakeService.AddFoodIntakeAsync(userId, addFoodRequest);
+                        _logger.LogInformation($"✅ Saved {result.FoodItems.Count} text food items for user {userId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"❌ Error saving text food: {ex.Message}");
+                    }
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error processing text food: {ex.Message}");
+                return BadRequest(new { error = "Произошла системная ошибка при обработке текстового ввода питания" });
+            }
+        }
+
+        /// <summary>
+        /// 🔧 Коррекция продукта с указанием ингредиентов/начинки
+        /// </summary>
+        [HttpPost("correct-food")]
+        public async Task<IActionResult> CorrectFood([FromBody] FoodCorrectionRequest request)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                if (string.IsNullOrWhiteSpace(request.CorrectionText))
+                {
+                    return BadRequest(new { error = "Текст коррекции не предоставлен" });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.FoodItem?.Name))
+                {
+                    return BadRequest(new { error = "Данные о блюде не предоставлены" });
+                }
+
+                var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_food_correction",
+                    "AI Food Correction", "text");
+
+                if (!canSpend)
+                {
+                    return BadRequest(new { error = "Недостаточно LW Coins для коррекции продукта" });
+                }
+
+                _logger.LogInformation($"🔧 Correcting food: {request.FoodItem.Name} + {request.CorrectionText}");
+
+                var result = await _geminiService.CorrectFoodItemAsync(request.FoodItem.Name, request.CorrectionText);
+
+                if (!result.Success)
+                {
+                    return BadRequest(new { error = result.ErrorMessage ?? "Не удалось скорректировать продукт" });
+                }
+
+                if (request.SaveResults)
+                {
+                    try
+                    {
+                        var addFoodRequest = new AddFoodIntakeRequest
+                        {
+                            Items = new List<FoodItemRequest>
+                            {
+                                new FoodItemRequest
+                                {
+                                    Name = result.CorrectedFoodItem.Name,
+                                    Weight = result.CorrectedFoodItem.EstimatedWeight,
+                                    WeightType = result.CorrectedFoodItem.WeightType,
+                                    NutritionPer100g = result.CorrectedFoodItem.NutritionPer100g
+                                }
+                            },
+                            DateTime = DateTime.UtcNow
+                        };
+
+                        await _foodIntakeService.AddFoodIntakeAsync(userId, addFoodRequest);
+                        _logger.LogInformation($"✅ Saved corrected food for user {userId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"❌ Error saving: {ex.Message}");
+                    }
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error: {ex.Message}");
+                return BadRequest(new { error = "Системная ошибка" });
+            }
+        }
+
+        /// <summary>
         /// 🧠 Проверка статуса ИИ сервиса
         /// </summary>
         /// <returns>Статус работы Gemini API</returns>
@@ -698,14 +918,12 @@ namespace FitnessTracker.API.Controllers
                         FoodScans = aiTransactions.Count(t => t.FeatureUsed == "photo" || t.FeatureUsed == "ai_food_scan"),
                         VoiceWorkouts = aiTransactions.Count(t => t.FeatureUsed == "ai_voice_workout"),
                         VoiceFood = aiTransactions.Count(t => t.FeatureUsed == "ai_voice_food"),
-                        BodyAnalysis = aiTransactions.Count(t => t.FeatureUsed == "ai_body_scan")
                     },
                     MonthlyFeatureUsage = new
                     {
                         FoodScans = monthlyUsage.Count(t => t.FeatureUsed == "photo" || t.FeatureUsed == "ai_food_scan"),
                         VoiceWorkouts = monthlyUsage.Count(t => t.FeatureUsed == "ai_voice_workout"),
                         VoiceFood = monthlyUsage.Count(t => t.FeatureUsed == "ai_voice_food"),
-                        BodyAnalysis = monthlyUsage.Count(t => t.FeatureUsed == "ai_body_scan")
                     },
                     VoiceFiles = new
                     {
@@ -715,6 +933,11 @@ namespace FitnessTracker.API.Controllers
                         TotalSizeMB = voiceFilesStats.TotalSizeMB,
                         FilesToday = voiceFilesStats.FilesToday,
                         FilesThisMonth = voiceFilesStats.FilesThisMonth
+                    },
+                    FreeFeatures = new
+                    {
+                        BodyAnalysisCount = "Неограниченно (бесплатно)",
+                        TotalBodyAnalysis = "Статистика недоступна для бесплатных функций"
                     },
                     LastUsed = aiTransactions.OrderByDescending(t => t.CreatedAt).FirstOrDefault()?.CreatedAt,
                     TotalCoinsSpent = Math.Abs(aiTransactions.Sum(t => t.Amount))

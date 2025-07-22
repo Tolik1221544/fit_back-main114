@@ -33,6 +33,7 @@ namespace FitnessTracker.API.Models
             get => string.IsNullOrEmpty(CardioDataJson) ? null : JsonSerializer.Deserialize<CardioData>(CardioDataJson);
             set => CardioDataJson = value == null ? null : JsonSerializer.Serialize(value);
         }
+
     }
 
     public class StrengthData
@@ -46,6 +47,8 @@ namespace FitnessTracker.API.Models
         public List<StrengthSet> Sets { get; set; } = new List<StrengthSet>();
         public int TotalSets => Sets.Count;
         public int TotalReps => Sets.Sum(s => s.Reps);
+
+        public PlankData? PlankData { get; set; }
     }
 
     public class StrengthSet
@@ -64,5 +67,22 @@ namespace FitnessTracker.API.Models
         public int? AvgPulse { get; set; }
         public int? MaxPulse { get; set; }
         public string AvgPace { get; set; } = string.Empty;
+        public JumpRopeData? JumpRopeData { get; set; }
+    }
+
+    public class PlankData
+    {
+        public int DurationSeconds { get; set; }
+        public string PlankType { get; set; } = string.Empty;
+        public string Notes { get; set; } = string.Empty;
+    }
+
+    public class JumpRopeData
+    {
+        public int JumpCount { get; set; }
+        public int DurationSeconds { get; set; }
+        public string RopeType { get; set; } = string.Empty;
+        public int? IntervalsCount { get; set; }
+        public string Notes { get; set; } = string.Empty;
     }
 }

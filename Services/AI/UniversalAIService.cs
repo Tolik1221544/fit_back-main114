@@ -213,6 +213,133 @@ namespace FitnessTracker.API.Services.AI
             return _errorHandler.CreateFallbackVoiceFoodResponse($"Analysis failed: {lastException.Message}", mealType);
         }
 
+        public async Task<TextWorkoutResponse> AnalyzeTextWorkoutAsync(string workoutText, string? workoutType = null)
+        {
+            const int maxAttempts = 2;
+            var lastException = new Exception("Unknown error");
+
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    _logger.LogInformation($"📝 Text workout analysis attempt {attempt}/{maxAttempts}");
+
+                    var result = await _primaryProvider.AnalyzeTextWorkoutAsync(workoutText, workoutType);
+
+                    if (result.Success && ValidateTextWorkoutResult(result))
+                    {
+                        _logger.LogInformation($"✅ Text workout analysis successful on attempt {attempt}");
+                        return result;
+                    }
+
+                    _logger.LogWarning($"❌ Text workout analysis failed on attempt {attempt}: {result.ErrorMessage}");
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    _logger.LogError($"❌ Text workout analysis error on attempt {attempt}: {ex.Message}");
+
+                    if (!_errorHandler.ShouldRetryRequest(ex, attempt))
+                    {
+                        break;
+                    }
+
+                    if (attempt < maxAttempts)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+                    }
+                }
+            }
+
+            _logger.LogError($"❌ All text workout attempts failed. Creating fallback response.");
+            return _errorHandler.CreateFallbackTextWorkoutResponse($"Analysis failed: {lastException.Message}", workoutType);
+        }
+
+        public async Task<TextFoodResponse> AnalyzeTextFoodAsync(string foodText, string? mealType = null)
+        {
+            const int maxAttempts = 2;
+            var lastException = new Exception("Unknown error");
+
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    _logger.LogInformation($"📝 Text food analysis attempt {attempt}/{maxAttempts}");
+
+                    var result = await _primaryProvider.AnalyzeTextFoodAsync(foodText, mealType);
+
+                    if (result.Success && ValidateTextFoodResult(result))
+                    {
+                        _logger.LogInformation($"✅ Text food analysis successful on attempt {attempt}");
+                        return result;
+                    }
+
+                    _logger.LogWarning($"❌ Text food analysis failed on attempt {attempt}: {result.ErrorMessage}");
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    _logger.LogError($"❌ Text food analysis error on attempt {attempt}: {ex.Message}");
+
+                    if (!_errorHandler.ShouldRetryRequest(ex, attempt))
+                    {
+                        break;
+                    }
+
+                    if (attempt < maxAttempts)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+                    }
+                }
+            }
+
+            _logger.LogError($"❌ All text food attempts failed. Creating fallback response.");
+            return _errorHandler.CreateFallbackTextFoodResponse($"Analysis failed: {lastException.Message}", mealType);
+        }
+
+        public async Task<FoodCorrectionResponse> CorrectFoodItemAsync(string originalFoodName, string correctionText)
+        {
+            try
+            {
+                _logger.LogInformation($"🔧 Food correction: {originalFoodName} + {correctionText}");
+
+                var result = await _primaryProvider.CorrectFoodItemAsync(originalFoodName, correctionText);
+
+                if (result.Success)
+                {
+                    _logger.LogInformation($"✅ Food correction successful");
+                    return result;
+                }
+
+                _logger.LogWarning($"❌ Food correction failed: {result.ErrorMessage}");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Food correction error: {ex.Message}");
+                return _errorHandler.CreateFallbackFoodCorrectionResponse($"Correction failed: {ex.Message}");
+            }
+        }
+
+        private bool ValidateTextWorkoutResult(TextWorkoutResponse result)
+        {
+            if (result?.WorkoutData == null)
+                return false;
+
+            return !string.IsNullOrEmpty(result.WorkoutData.Type) &&
+                   result.WorkoutData.StartTime != default;
+        }
+
+        private bool ValidateTextFoodResult(TextFoodResponse result)
+        {
+            if (result?.FoodItems == null || !result.FoodItems.Any())
+                return false;
+
+            return result.FoodItems.All(item =>
+                !string.IsNullOrEmpty(item.Name) &&
+                item.EstimatedWeight > 0);
+        }
+
         public async Task<bool> IsHealthyAsync()
         {
             try

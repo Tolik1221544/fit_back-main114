@@ -95,12 +95,12 @@ namespace FitnessTracker.API.DTOs
     /// </summary>
     public class WorkoutDataResponse
     {
-        public string Type { get; set; } = string.Empty;
-        public DateTime StartTime { get; set; } = DateTime.UtcNow;
+        public string Type { get; set; } = string.Empty; 
+        public DateTime StartTime { get; set; }
         public DateTime? EndTime { get; set; }
-        public int? EstimatedCalories { get; set; }
-        public StrengthDataDto? StrengthData { get; set; }
-        public CardioDataDto? CardioData { get; set; }
+        public int EstimatedCalories { get; set; }
+        public StrengthDataDto? StrengthData { get; set; } 
+        public CardioDataDto? CardioData { get; set; } 
         public List<string> Notes { get; set; } = new List<string>();
     }
 

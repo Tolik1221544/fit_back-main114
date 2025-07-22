@@ -8,6 +8,9 @@ namespace FitnessTracker.API.Services.AI
         VoiceWorkoutResponse CreateFallbackWorkoutResponse(string reason, string? workoutType = null);
         VoiceFoodResponse CreateFallbackVoiceFoodResponse(string reason, string? mealType = null);
         BodyScanResponse CreateFallbackBodyResponse(string reason);
+        TextWorkoutResponse CreateFallbackTextWorkoutResponse(string reason, string? workoutType = null);
+        TextFoodResponse CreateFallbackTextFoodResponse(string reason, string? mealType = null);
+        FoodCorrectionResponse CreateFallbackFoodCorrectionResponse(string reason);
         bool ShouldRetryRequest(Exception ex, int currentAttempt);
     }
 
@@ -22,61 +25,113 @@ namespace FitnessTracker.API.Services.AI
 
         public FoodScanResponse CreateFallbackFoodResponse(string reason, byte[]? imageData = null)
         {
-            _logger.LogInformation($"🍎 Creating fallback food response: {reason}");
+            _logger.LogInformation($"🍎 Food analysis failed: {reason}");
 
-            var defaultFood = DetermineDefaultFood(imageData);
+            var noFoodKeywords = new[]
+            {
+                "не обнаружены продукты питания",
+                "не содержит еду",
+                "не является едой",
+                "no food detected"
+            };
+
+            bool isNoFoodDetected = noFoodKeywords.Any(keyword =>
+                reason.ToLowerInvariant().Contains(keyword.ToLowerInvariant()));
+
+            if (isNoFoodDetected)
+            {
+                return new FoodScanResponse
+                {
+                    Success = false,
+                    ErrorMessage = "На изображении не обнаружены продукты питания. Пожалуйста, сфотографируйте еду или продукты.",
+                    FoodItems = new List<FoodItemResponse>(),
+                    EstimatedCalories = 0,
+                    FullDescription = "Еда не найдена на изображении"
+                };
+            }
 
             return new FoodScanResponse
             {
-                Success = true,
-                ErrorMessage = null,
-                FoodItems = new List<FoodItemResponse>
-                {
-                    new FoodItemResponse
-                    {
-                        Name = defaultFood.Name,
-                        EstimatedWeight = defaultFood.Weight,
-                        WeightType = defaultFood.WeightType,
-                        Description = $"Не удалось точно определить блюдо ({reason}). Данные приблизительные.",
-                        NutritionPer100g = defaultFood.Nutrition,
-                        TotalCalories = (int)Math.Round((defaultFood.Nutrition.Calories * defaultFood.Weight) / 100),
-                        Confidence = 0.3m
-                    }
-                },
-                EstimatedCalories = (int)Math.Round((defaultFood.Nutrition.Calories * defaultFood.Weight) / 100),
-                FullDescription = $"Автоматически созданная запись ({reason}). Пожалуйста, отредактируйте данные вручную для точности."
+                Success = false,
+                ErrorMessage = $"Техническая ошибка анализа: {reason}. Попробуйте сделать более четкое фото еды.",
+                FoodItems = new List<FoodItemResponse>(),
+                EstimatedCalories = 0,
+                FullDescription = "Анализ не выполнен из-за технической ошибки"
             };
         }
 
         public VoiceWorkoutResponse CreateFallbackWorkoutResponse(string reason, string? workoutType = null)
         {
-            _logger.LogInformation($"🎤 Creating fallback workout response: {reason}");
+            _logger.LogInformation($"🎤 Workout analysis failed: {reason}");
 
-            var type = DetermineWorkoutType(workoutType);
-            var defaultWorkout = CreateDefaultWorkoutData(reason, type);
+            var noWorkoutKeywords = new[]
+            {
+                "не удалось распознать информацию о тренировке",
+                "отсутствует речь",
+                "только фоновые звуки",
+                "тишина",
+                "не о тренировках"
+            };
+
+            bool isNoWorkoutDetected = noWorkoutKeywords.Any(keyword =>
+                reason.ToLowerInvariant().Contains(keyword.ToLowerInvariant()));
+
+            if (isNoWorkoutDetected)
+            {
+                return new VoiceWorkoutResponse
+                {
+                    Success = false,
+                    ErrorMessage = "Не удалось распознать информацию о тренировке в аудиозаписи. Убедитесь, что говорите о физических упражнениях.",
+                    TranscribedText = "Информация о тренировке не найдена",
+                    WorkoutData = null
+                };
+            }
 
             return new VoiceWorkoutResponse
             {
-                Success = true,
-                ErrorMessage = null,
-                TranscribedText = $"Не удалось распознать аудио ({reason}), создана базовая тренировка",
-                WorkoutData = defaultWorkout
+                Success = false,
+                ErrorMessage = $"Техническая ошибка анализа: {reason}. Попробуйте записать аудио заново.",
+                TranscribedText = "Анализ не выполнен",
+                WorkoutData = null
             };
         }
 
+
         public VoiceFoodResponse CreateFallbackVoiceFoodResponse(string reason, string? mealType = null)
         {
-            _logger.LogInformation($"🗣️ Creating fallback voice food response: {reason}");
+            _logger.LogInformation($"🗣️ Food voice analysis failed: {reason}");
 
-            var defaultFood = GetDefaultFoodForMeal(mealType);
+            var noFoodKeywords = new[]
+            {
+                "не удалось распознать информацию о питании",
+                "отсутствует речь",
+                "только фоновые звуки",
+                "тишина",
+                "не о еде"
+            };
+
+            bool isNoFoodDetected = noFoodKeywords.Any(keyword =>
+                reason.ToLowerInvariant().Contains(keyword.ToLowerInvariant()));
+
+            if (isNoFoodDetected)
+            {
+                return new VoiceFoodResponse
+                {
+                    Success = false,
+                    ErrorMessage = "Не удалось распознать информацию о питании в аудиозаписи. Убедитесь, что говорите о еде или напитках.",
+                    TranscribedText = "Информация о питании не найдена",
+                    FoodItems = new List<FoodItemResponse>(),
+                    EstimatedTotalCalories = 0
+                };
+            }
 
             return new VoiceFoodResponse
             {
-                Success = true,
-                ErrorMessage = null,
-                TranscribedText = $"Не удалось распознать аудио ({reason}), создана базовая запись о питании",
-                FoodItems = new List<FoodItemResponse> { defaultFood },
-                EstimatedTotalCalories = defaultFood.TotalCalories
+                Success = false,
+                ErrorMessage = $"Техническая ошибка анализа: {reason}. Попробуйте записать аудио заново.",
+                TranscribedText = "Анализ не выполнен",
+                FoodItems = new List<FoodItemResponse>(),
+                EstimatedTotalCalories = 0
             };
         }
 
@@ -153,6 +208,67 @@ namespace FitnessTracker.API.Services.AI
                 Fats = 8,
                 Carbs = 25
             });
+        }
+
+        public TextWorkoutResponse CreateFallbackTextWorkoutResponse(string reason, string? workoutType = null)
+        {
+            _logger.LogInformation($"📝 Creating fallback text workout response: {reason}");
+
+            var type = DetermineWorkoutType(workoutType);
+            var defaultWorkout = CreateDefaultWorkoutData(reason, type);
+
+            return new TextWorkoutResponse
+            {
+                Success = true,
+                ErrorMessage = null,
+                ProcessedText = $"Не удалось обработать текст ({reason}), создана базовая тренировка",
+                WorkoutData = defaultWorkout
+            };
+        }
+
+        public TextFoodResponse CreateFallbackTextFoodResponse(string reason, string? mealType = null)
+        {
+            _logger.LogInformation($"📝 Creating fallback text food response: {reason}");
+
+            var defaultFood = GetDefaultFoodForMeal(mealType);
+
+            return new TextFoodResponse
+            {
+                Success = true,
+                ErrorMessage = null,
+                ProcessedText = $"Не удалось обработать текст ({reason}), создана базовая запись о питании",
+                FoodItems = new List<FoodItemResponse> { defaultFood },
+                EstimatedTotalCalories = defaultFood.TotalCalories
+            };
+        }
+
+        public FoodCorrectionResponse CreateFallbackFoodCorrectionResponse(string reason)
+        {
+            _logger.LogInformation($"🔧 Creating fallback food correction response: {reason}");
+
+            return new FoodCorrectionResponse
+            {
+                Success = true,
+                ErrorMessage = null,
+                CorrectedFoodItem = new FoodItemResponse
+                {
+                    Name = "Исправленное блюдо",
+                    EstimatedWeight = 150,
+                    WeightType = "g",
+                    Description = $"Коррекция не удалась ({reason}), данные приблизительные",
+                    NutritionPer100g = new NutritionPer100gDto
+                    {
+                        Calories = 200,
+                        Proteins = 10,
+                        Fats = 8,
+                        Carbs = 25
+                    },
+                    TotalCalories = 300,
+                    Confidence = 0.3m
+                },
+                CorrectionExplanation = $"Автоматическая коррекция не удалась: {reason}",
+                Ingredients = new List<string> { "основной ингредиент", "дополнительные компоненты" }
+            };
         }
 
         private string DetermineWorkoutType(string? workoutType)
