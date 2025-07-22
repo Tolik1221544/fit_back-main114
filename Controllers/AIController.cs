@@ -668,8 +668,6 @@ namespace FitnessTracker.API.Controllers
                             Calories = result.WorkoutData.EstimatedCalories,
                             StrengthData = result.WorkoutData.StrengthData,
                             CardioData = result.WorkoutData.CardioData,
-                            PlankData = result.WorkoutData.PlankData,
-                            JumpRopeData = result.WorkoutData.JumpRopeData
                         };
 
                         await _activityService.AddActivityAsync(userId, addActivityRequest);

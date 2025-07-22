@@ -43,69 +43,70 @@ namespace FitnessTracker.API.Services.AI.Providers
                 var mimeType = GetImageMimeType(imageData);
 
                 var prompt = $@"
-Проанализируй изображение еды и предоставь детальную информацию в СТРОГОМ JSON формате.
-
+Analyze the image of food or beverages and return STRICTLY valid JSON (Locale('ru_RU')).  
+If JSON generation fails — return exactly: ERROR_JSON
 {userPrompt ?? ""}
-
-ВАЖНЫЕ ПРАВИЛА ДЛЯ ЕДИНИЦ ИЗМЕРЕНИЯ:
-1. Для ЖИДКИХ продуктов используй ""weightType"": ""ml"":
-   - Супы, бульоны, борщ, щи
-   - Напитки (чай, кофе, сок, компот)
-   - Соусы, подливы, жидкие каши
-
-2. Для ТВЕРДЫХ продуктов используй ""weightType"": ""g"":
-   - Хлеб, мясо, рыба, овощи, фрукты
-   - Каши, гарниры, выпечка, салаты
-
-ОБЯЗАТЕЛЬНЫЕ ТРЕБОВАНИЯ К JSON:
-- Используй ТОЛЬКО правильные числа без текста
-- Все строки в двойных кавычках
-- Не добавляй комментарии в JSON
-- Проверь валидность JSON структуры
-
-Верни ТОЛЬКО этот JSON БЕЗ дополнительного текста:
+1. Units:
+   - If the item is fluid (soups, broths, drinks, sauces, liquid porridges, etc.) — weightType = ""ml"".  
+   - Otherwise — weightType = ""g"".  
+   - If you can read an exact weight or volume from packaging/label (e.g., ""250 g"" or ""0,5 L"") — use that for estimatedWeight and the corresponding weightType.
+2. JSON STRUCTURE:
 {{
   ""foodItems"": [
     {{
-      ""name"": ""название блюда"",
-      ""estimatedWeight"": 100,
-      ""weightType"": ""g"",
-      ""description"": ""описание блюда"",
-      ""nutritionPer100g"": {{
-        ""calories"": 250,
-        ""proteins"": 15.5,
-        ""fats"": 10.2,
-        ""carbs"": 30.8
+      ""name"": string,             // name of the dish/beverage in ru
+      ""estimatedWeight"": float,   // numeric value (g or ml depending on weightType)
+      ""weightType"": ""g""|""ml"",
+      ""description"": string,      // 1–2 sentences, ≤120 characters
+      ""nutritionPer100g"": {{      // if weightType == ""ml"", interpret as per 100 ml
+        ""calories"": float,
+        ""proteins"": float,
+        ""fats"": float,
+        ""carbs"": float
       }},
-      ""totalCalories"": 250,
-      ""confidence"": 0.85
+      ""totalCalories"": float,     // nutritionPer100g.calories × estimatedWeight / 100
+      ""confidence"": float         // 0,0–1,0, see scale below
     }}
+    // … can include multiple items
   ],
-  ""estimatedCalories"": 250,
-  ""fullDescription"": ""подробное описание всех блюд на изображении""
-}}";
+  ""estimatedCalories"": float,    // sum of totalCalories for all foodItems
+  ""fullDescription"": string      // ≤300 characters, list all dishes/beverages with key traits
+}}
+3. Confidence scale:
+   - 0,0–0,3: purely visual guess without weight/volume cues  
+   - 0,3–0,7: partial information (shape, context, packaging without exact figures)  
+   - 0,7–1,0: clear label on packaging or explicit portion size
+4. Handling unknown data:
+   - Whenever possible, make an approximate estimate based on visual cues or typical portion sizes.  
+   - Only if no reasonable estimate can be made, set the field to null and reduce confidence accordingly.
+5. Additional rules:
+   - All numbers must be floats formatted in Russian locale (e.g., ""250,5"").  
+   - All strings in double quotes.  
+   - Do not include comments or extra fields.  
+   - Return ONLY valid JSON or ERROR_JSON.  
+";
 
                 var request = new
                 {
                     contents = new[]
                     {
+                new
+                {
+                    role = "user",
+                    parts = new object[]
+                    {
+                        new { text = prompt },
                         new
                         {
-                            role = "user",
-                            parts = new object[]
+                            inline_data = new
                             {
-                                new { text = prompt },
-                                new
-                                {
-                                    inline_data = new
-                                    {
-                                        mime_type = mimeType,
-                                        data = base64Image
-                                    }
-                                }
+                                mime_type = mimeType,
+                                data = base64Image
                             }
                         }
-                    },
+                    }
+                }
+            },
                     generation_config = new
                     {
                         temperature = 0.1,
@@ -114,11 +115,11 @@ namespace FitnessTracker.API.Services.AI.Providers
                     },
                     safety_settings = new[]
                     {
-                        new { category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE" },
-                        new { category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE" },
-                        new { category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold = "BLOCK_NONE" },
-                        new { category = "HARM_CATEGORY_DANGEROUS_CONTENT", threshold = "BLOCK_NONE" }
-                    }
+                new { category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_DANGEROUS_CONTENT", threshold = "BLOCK_NONE" }
+            }
                 };
 
                 _httpClient.DefaultRequestHeaders.Clear();
@@ -133,64 +134,31 @@ namespace FitnessTracker.API.Services.AI.Providers
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.LogError($"Vertex AI API error: {response.StatusCode} - {responseText}");
-                    return CreateFallbackFoodResponse("API error");
+                    return new FoodScanResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Ошибка обращения к ИИ сервису"
+                    };
                 }
 
-                var result = ParseFoodScanResponseWithFallback(responseText);
-
-                if (result.Success && (result.FoodItems == null || !result.FoodItems.Any()))
-                {
-                    _logger.LogWarning("Empty food items in response, creating fallback");
-                    return CreateFallbackFoodResponse("No food items detected");
-                }
-
-                return result;
+                return ParseSimpleFoodResponse(responseText);
             }
             catch (Exception ex)
             {
                 _logger.LogError($"Error analyzing food image: {ex.Message}");
-                return CreateFallbackFoodResponse($"Analysis error: {ex.Message}");
+                return new FoodScanResponse
+                {
+                    Success = false,
+                    ErrorMessage = $"Ошибка анализа: {ex.Message}"
+                };
             }
         }
 
-        private FoodScanResponse CreateFallbackFoodResponse(string reason)
-        {
-            _logger.LogInformation($"🍎 Creating fallback food response: {reason}");
-
-            return new FoodScanResponse
-            {
-                Success = true,
-                ErrorMessage = null,
-                FoodItems = new List<FoodItemResponse>
-                {
-                    new FoodItemResponse
-                    {
-                        Name = "Неопознанное блюдо",
-                        EstimatedWeight = 150,
-                        WeightType = "g",
-                        Description = $"Не удалось определить блюдо ({reason})",
-                        NutritionPer100g = new NutritionPer100gDto
-                        {
-                            Calories = 200,
-                            Proteins = 10,
-                            Fats = 8,
-                            Carbs = 25
-                        },
-                        TotalCalories = 300,
-                        Confidence = 0.3m
-                    }
-                },
-                EstimatedCalories = 300,
-                FullDescription = $"Автоматически созданная запись ({reason}). Отредактируйте данные вручную."
-            };
-        }
-
-        private FoodScanResponse ParseFoodScanResponseWithFallback(string responseText)
+        // Новый упрощенный метод парсинга
+        private FoodScanResponse ParseSimpleFoodResponse(string responseText)
         {
             try
             {
-                _logger.LogDebug($"🍎 Raw Gemini response: {responseText.Substring(0, Math.Min(500, responseText.Length))}...");
-
                 using var document = JsonDocument.Parse(responseText);
 
                 if (document.RootElement.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
@@ -203,236 +171,105 @@ namespace FitnessTracker.API.Services.AI.Providers
                         if (textPart.TryGetProperty("text", out var textElement))
                         {
                             var responseContent = textElement.GetString() ?? "";
-                            _logger.LogDebug($"🍎 Extracted content: {responseContent.Substring(0, Math.Min(300, responseContent.Length))}...");
 
-                            var result = ParseFoodJsonResponseWithFallback(responseContent);
-                            if (result.Success)
+                            // Проверяем на ERROR_JSON
+                            if (responseContent.Trim() == "ERROR_JSON")
                             {
-                                return result;
+                                return new FoodScanResponse
+                                {
+                                    Success = false,
+                                    ErrorMessage = "ИИ не смог проанализировать изображение"
+                                };
                             }
+
+                            // Парсим JSON напрямую
+                            return ParseFoodJsonDirectly(responseContent);
                         }
                     }
                 }
 
-                _logger.LogWarning("Invalid Gemini response structure, using fallback");
-                return CreateFallbackFoodResponse("Invalid response structure");
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogError($"JSON parsing error: {ex.Message}");
-                return CreateFallbackFoodResponse("JSON parsing error");
+                return new FoodScanResponse { Success = false, ErrorMessage = "Invalid response format" };
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Unexpected parsing error: {ex.Message}");
-                return CreateFallbackFoodResponse("Parsing error");
+                _logger.LogError($"Error parsing food response: {ex.Message}");
+                return new FoodScanResponse { Success = false, ErrorMessage = "Failed to parse response" };
             }
         }
 
-        private FoodScanResponse ParseFoodJsonResponseWithFallback(string jsonText)
+        private FoodScanResponse ParseFoodJsonDirectly(string jsonText)
         {
             try
             {
-                var jsonMatch = Regex.Match(jsonText, @"\{(?:[^{}]|(?<open>\{)|(?<-open>\}))*(?(open)(?!))\}", RegexOptions.Singleline);
-
-                if (jsonMatch.Success)
-                {
-                    var cleanJson = jsonMatch.Value;
-                    _logger.LogDebug($"🍎 Extracted JSON: {cleanJson.Substring(0, Math.Min(200, cleanJson.Length))}...");
-
-                    var result = TryParseValidFoodJson(cleanJson);
-                    if (result.Success)
-                    {
-                        return result;
-                    }
-                }
-
+                // Извлекаем JSON из текста (простой поиск фигурных скобок)
                 var startIndex = jsonText.IndexOf('{');
                 var lastIndex = jsonText.LastIndexOf('}');
 
                 if (startIndex >= 0 && lastIndex > startIndex)
                 {
                     var cleanJson = jsonText.Substring(startIndex, lastIndex - startIndex + 1);
-                    var result = TryParseValidFoodJson(cleanJson);
-                    if (result.Success)
+
+                    using var document = JsonDocument.Parse(cleanJson);
+                    var root = document.RootElement;
+
+                    var foodItems = new List<FoodItemResponse>();
+
+                    if (root.TryGetProperty("foodItems", out var foodItemsArray))
                     {
-                        return result;
-                    }
-                }
-
-                var reconstructedResult = TryReconstructFoodData(jsonText);
-                if (reconstructedResult.Success)
-                {
-                    return reconstructedResult;
-                }
-
-                _logger.LogWarning($"Failed to parse food JSON from: {jsonText.Substring(0, Math.Min(300, jsonText.Length))}...");
-                return CreateFallbackFoodResponse("JSON parsing failed");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error in ParseFoodJsonResponseWithFallback: {ex.Message}");
-                return CreateFallbackFoodResponse("JSON processing error");
-            }
-        }
-
-        private FoodScanResponse TryParseValidFoodJson(string jsonText)
-        {
-            try
-            {
-                var cleanedJson = CleanJsonText(jsonText);
-
-                using var document = JsonDocument.Parse(cleanedJson);
-                var root = document.RootElement;
-
-                var foodItems = new List<FoodItemResponse>();
-
-                if (root.TryGetProperty("foodItems", out var foodItemsArray))
-                {
-                    foreach (var item in foodItemsArray.EnumerateArray())
-                    {
-                        try
+                        foreach (var item in foodItemsArray.EnumerateArray())
                         {
                             var foodItem = new FoodItemResponse
                             {
-                                Name = SafeGetString(item, "name", "Неизвестное блюдо"),
-                                EstimatedWeight = SafeGetDecimal(item, "estimatedWeight", 100),
+                                Name = SafeGetString(item, "name", ""),
+                                EstimatedWeight = SafeGetDecimal(item, "estimatedWeight", 0),
                                 WeightType = SafeGetString(item, "weightType", "g"),
                                 Description = SafeGetString(item, "description", ""),
-                                Confidence = SafeGetDecimal(item, "confidence", 0.7m)
+                                Confidence = SafeGetDecimal(item, "confidence", 0.8m)
                             };
 
                             if (item.TryGetProperty("nutritionPer100g", out var nutrition))
                             {
                                 foodItem.NutritionPer100g = new NutritionPer100gDto
                                 {
-                                    Calories = SafeGetDecimal(nutrition, "calories", 200),
-                                    Proteins = SafeGetDecimal(nutrition, "proteins", 10),
-                                    Fats = SafeGetDecimal(nutrition, "fats", 5),
-                                    Carbs = SafeGetDecimal(nutrition, "carbs", 30)
+                                    Calories = SafeGetDecimal(nutrition, "calories", 0),
+                                    Proteins = SafeGetDecimal(nutrition, "proteins", 0),
+                                    Fats = SafeGetDecimal(nutrition, "fats", 0),
+                                    Carbs = SafeGetDecimal(nutrition, "carbs", 0)
                                 };
                             }
 
-                            foodItem.TotalCalories = SafeGetInt(item, "totalCalories",
-                                (int)Math.Round((foodItem.NutritionPer100g.Calories * foodItem.EstimatedWeight) / 100));
-
+                            foodItem.TotalCalories = SafeGetInt(item, "totalCalories", 0);
                             foodItems.Add(foodItem);
                         }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning($"Error parsing food item: {ex.Message}");
-                            continue;
-                        }
                     }
-                }
 
-                if (foodItems.Any())
-                {
                     return new FoodScanResponse
                     {
                         Success = true,
                         FoodItems = foodItems,
-                        EstimatedCalories = SafeGetInt(root, "estimatedCalories", foodItems.Sum(f => f.TotalCalories)),
-                        FullDescription = SafeGetString(root, "fullDescription", "Анализ выполнен успешно")
+                        EstimatedCalories = SafeGetInt(root, "estimatedCalories", 0),
+                        FullDescription = SafeGetString(root, "fullDescription", "")
                     };
                 }
 
-                return new FoodScanResponse { Success = false };
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogWarning($"JSON parsing failed: {ex.Message}");
-                return new FoodScanResponse { Success = false };
+                return new FoodScanResponse { Success = false, ErrorMessage = "Invalid JSON format" };
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Unexpected error in TryParseValidFoodJson: {ex.Message}");
-                return new FoodScanResponse { Success = false };
+                _logger.LogError($"Error parsing food JSON: {ex.Message}");
+                return new FoodScanResponse { Success = false, ErrorMessage = "Failed to parse food data" };
             }
-        }
-
-        private string CleanJsonText(string jsonText)
-        {
-            jsonText = Regex.Replace(jsonText, @"//.*$", "", RegexOptions.Multiline);
-            jsonText = Regex.Replace(jsonText, @"/\*.*?\*/", "", RegexOptions.Singleline);
-
-            jsonText = jsonText.Replace("'", "\"");
-            jsonText = Regex.Replace(jsonText, @",\s*}", "}");
-            jsonText = Regex.Replace(jsonText, @",\s*]", "]");
-
-            return jsonText.Trim();
-        }
-
-        private FoodScanResponse TryReconstructFoodData(string text)
-        {
-            try
-            {
-                _logger.LogInformation("🍎 Attempting to reconstruct food data from text");
-
-                var foodKeywords = new[] { "хлеб", "мясо", "рыба", "курица", "говядина", "свинина", "овощи", "фрукты",
-                                         "картофель", "рис", "гречка", "макароны", "салат", "суп", "борщ", "каша" };
-
-                var detectedFood = foodKeywords.FirstOrDefault(keyword =>
-                    text.ToLowerInvariant().Contains(keyword));
-
-                if (!string.IsNullOrEmpty(detectedFood))
-                {
-                    return new FoodScanResponse
-                    {
-                        Success = true,
-                        FoodItems = new List<FoodItemResponse>
-                        {
-                            new FoodItemResponse
-                            {
-                                Name = char.ToUpper(detectedFood[0]) + detectedFood[1..],
-                                EstimatedWeight = 150,
-                                WeightType = "g",
-                                Description = $"Обнаружено по ключевому слову: {detectedFood}",
-                                NutritionPer100g = GetDefaultNutrition(detectedFood),
-                                TotalCalories = (int)(GetDefaultNutrition(detectedFood).Calories * 1.5m),
-                                Confidence = 0.5m
-                            }
-                        },
-                        EstimatedCalories = (int)(GetDefaultNutrition(detectedFood).Calories * 1.5m),
-                        FullDescription = $"Восстановленные данные на основе анализа текста"
-                    };
-                }
-
-                return new FoodScanResponse { Success = false };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error in TryReconstructFoodData: {ex.Message}");
-                return new FoodScanResponse { Success = false };
-            }
-        }
-
-        private NutritionPer100gDto GetDefaultNutrition(string foodType)
-        {
-            return foodType.ToLowerInvariant() switch
-            {
-                var x when x.Contains("хлеб") => new NutritionPer100gDto { Calories = 250, Proteins = 8, Fats = 3, Carbs = 50 },
-                var x when x.Contains("мясо") || x.Contains("говядина") => new NutritionPer100gDto { Calories = 250, Proteins = 26, Fats = 15, Carbs = 0 },
-                var x when x.Contains("курица") => new NutritionPer100gDto { Calories = 165, Proteins = 31, Fats = 3.6m, Carbs = 0 },
-                var x when x.Contains("рыба") => new NutritionPer100gDto { Calories = 200, Proteins = 20, Fats = 12, Carbs = 0 },
-                var x when x.Contains("картофель") => new NutritionPer100gDto { Calories = 80, Proteins = 2, Fats = 0.1m, Carbs = 17 },
-                var x when x.Contains("рис") => new NutritionPer100gDto { Calories = 130, Proteins = 2.7m, Fats = 0.3m, Carbs = 28 },
-                var x when x.Contains("гречка") => new NutritionPer100gDto { Calories = 340, Proteins = 13, Fats = 3.4m, Carbs = 62 },
-                var x when x.Contains("овощи") => new NutritionPer100gDto { Calories = 25, Proteins = 1.2m, Fats = 0.2m, Carbs = 5 },
-                var x when x.Contains("фрукты") => new NutritionPer100gDto { Calories = 60, Proteins = 0.8m, Fats = 0.2m, Carbs = 15 },
-                _ => new NutritionPer100gDto { Calories = 200, Proteins = 10, Fats = 8, Carbs = 25 }
-            };
         }
 
         public async Task<BodyScanResponse> AnalyzeBodyImagesAsync(
-    byte[]? frontImageData,
-    byte[]? sideImageData,
-    byte[]? backImageData,
-    decimal? weight = null,
-    decimal? height = null,
-    int? age = null,
-    string? gender = null,
-    string? goals = null)
+            byte[]? frontImageData,
+            byte[]? sideImageData,
+            byte[]? backImageData,
+            decimal? weight = null,
+            decimal? height = null,
+            int? age = null,
+            string? gender = null,
+            string? goals = null)
         {
             try
             {
@@ -1705,70 +1542,6 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
         }
 
-        private FoodScanResponse ParseFoodJsonResponse(string jsonText)
-        {
-            try
-            {
-                // Извлекаем JSON из текста
-                var startIndex = jsonText.IndexOf('{');
-                var lastIndex = jsonText.LastIndexOf('}');
-
-                if (startIndex >= 0 && lastIndex > startIndex)
-                {
-                    var cleanJson = jsonText.Substring(startIndex, lastIndex - startIndex + 1);
-
-                    using var document = JsonDocument.Parse(cleanJson);
-                    var root = document.RootElement;
-
-                    var foodItems = new List<FoodItemResponse>();
-
-                    if (root.TryGetProperty("foodItems", out var foodItemsArray))
-                    {
-                        foreach (var item in foodItemsArray.EnumerateArray())
-                        {
-                            var foodItem = new FoodItemResponse
-                            {
-                                Name = item.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
-                                EstimatedWeight = item.TryGetProperty("estimatedWeight", out var weight) ? weight.GetDecimal() : 0,
-                                WeightType = item.TryGetProperty("weightType", out var weightType) ? weightType.GetString() ?? "g" : "g",
-                                Description = item.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : "",
-                                Confidence = item.TryGetProperty("confidence", out var conf) ? conf.GetDecimal() : 0.8m
-                            };
-
-                            if (item.TryGetProperty("nutritionPer100g", out var nutrition))
-                            {
-                                foodItem.NutritionPer100g = new NutritionPer100gDto
-                                {
-                                    Calories = nutrition.TryGetProperty("calories", out var cal) ? cal.GetDecimal() : 0,
-                                    Proteins = nutrition.TryGetProperty("proteins", out var prot) ? prot.GetDecimal() : 0,
-                                    Fats = nutrition.TryGetProperty("fats", out var fats) ? fats.GetDecimal() : 0,
-                                    Carbs = nutrition.TryGetProperty("carbs", out var carbs) ? carbs.GetDecimal() : 0
-                                };
-                            }
-
-                            foodItem.TotalCalories = item.TryGetProperty("totalCalories", out var itemTotalCal) ? itemTotalCal.GetInt32() : 0;
-                            foodItems.Add(foodItem);
-                        }
-                    }
-
-                    return new FoodScanResponse
-                    {
-                        Success = true,
-                        FoodItems = foodItems,
-                        EstimatedCalories = root.TryGetProperty("estimatedCalories", out var estCal) ? estCal.GetInt32() : 0,
-                        FullDescription = root.TryGetProperty("fullDescription", out var fullDesc) ? fullDesc.GetString() : ""
-                    };
-                }
-
-                return new FoodScanResponse { Success = false, ErrorMessage = "Invalid JSON format" };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error parsing food JSON: {ex.Message}");
-                return new FoodScanResponse { Success = false, ErrorMessage = "Failed to parse food data" };
-            }
-        }
-
         private BodyScanResponse ParseBodyJsonResponse(string jsonText)
         {
             try
@@ -2338,57 +2111,126 @@ namespace FitnessTracker.API.Services.AI.Providers
                 var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
 
                 var prompt = $@"
-Пересчитай питательную ценность блюда с учетом дополнительной информации об ингредиентах.
+Recalculate the nutritional values of a dish based on additional ingredient information.
 
-Исходное блюдо: ""{originalFoodName}""
-Дополнительная информация: ""{correctionText}""
+Original dish: ""{originalFoodName}""
+Additional information: ""{correctionText}""
 
-ЗАДАЧА: Учесть новую информацию и пересчитать БЖУ и калории блюда.
+TASK: Incorporate the new information and recalculate the dish's macronutrients (proteins, fats, carbohydrates) and calories.
 
-ОБЯЗАТЕЛЬНО верни ТОЛЬКО валидный JSON:
+IMPORTANT: Always output ONLY valid JSON formatted for Locale('ru_RU'). If generation fails, output exactly: ERROR_JSON
+
+RULES:
+1. JSON FORMAT:
+   - Return ONLY a valid JSON object.
+   - If any error occurs during JSON generation, return exactly: ERROR_JSON
+
+2. TYPES & UNITS:
+   - All numeric fields must be floats.
+   - Units:
+     • estimatedWeight — in the unit specified by weightType (grams (g) or milliliters (ml))  
+     • nutritionPer100g.calories — kilocalories (kcal)  
+     • nutritionPer100g.proteins, fats, carbs — grams (g)  
+
+3. FIELDS:
 {{
   ""correctedFoodItem"": {{
-    ""name"": ""обновленное название блюда"",
-    ""estimatedWeight"": количество,
-    ""weightType"": ""g или ml"",
-    ""description"": ""подробное описание с учетом начинки/ингредиентов"",
+    ""name"": ""updated dish name (preserve the original root and append words from correctionText)"",
+    ""estimatedWeight"": 0.0,           // float, in g or ml as indicated by weightType
+    ""weightType"": ""g or ml"",        // string, either ""g"" or ""ml""
+    ""description"": ""one sentence up to 120 characters describing texture and taste"",
     ""nutritionPer100g"": {{
-      ""calories"": калории_на_100г,
-      ""proteins"": белки_на_100г,
-      ""fats"": жиры_на_100г,
-      ""carbs"": углеводы_на_100г
+      ""calories"": 0.0,    // kcal per 100 g
+      ""proteins"": 0.0,    // g per 100 g
+      ""fats"": 0.0,        // g per 100 г
+      ""carbs"": 0.0        // g per 100 г
     }},
-    ""totalCalories"": общие_калории,
-    ""confidence"": 0.8
+    ""totalCalories"": 0.0,              // kcal total
+    ""confidence"": 0.0                  // float 0.0–1.0, confidence score based on data completeness
   }},
-  ""correctionExplanation"": ""объяснение как изменились БЖУ с учетом новой информации"",
-  ""ingredients"": [""список основных ингредиентов блюда""]
+  ""correctionExplanation"": ""briefly explain how macros and calories changed (1–2 sentences)"",
+  ""ingredients"": [                   // list of main ingredients sorted by descending mass
+    // ...
+  ]
 }}
 
-ПРИМЕР:
-Исходное: ""Пирожок""
-Коррекция: ""начинка вишня""
-Результат:
+4. MISSING DATA:
+   - If an exact value is not known, use null.
+
+5. JSON LOCALE:
+   - Ensure all JSON output is fully localized to Locale('ru_RU').
+
+EXAMPLES:
+
+Example 1 — adding a filling:
+Original: ""Пирожок""
+Correction: ""cherry filling""
+Result:
 {{
   ""correctedFoodItem"": {{
     ""name"": ""Пирожок с вишней"",
-    ""estimatedWeight"": 80,
+    ""estimatedWeight"": 80,0,
     ""weightType"": ""g"",
-    ""description"": ""Сладкий пирожок с вишневой начинкой"",
+    ""description"": ""Сладкий пирожок с мягкой вишнёвой начинкой, слегка сочный внутри."",
     ""nutritionPer100g"": {{
-      ""calories"": 285,
-      ""proteins"": 6.5,
-      ""fats"": 8.2,
-      ""carbs"": 48.5
+      ""calories"": 285,0,
+      ""proteins"": 6,5,
+      ""fats"": 8,2,
+      ""carbs"": 48,5
     }},
-    ""totalCalories"": 228,
-    ""confidence"": 0.8
+    ""totalCalories"": 228,0,
+    ""confidence"": 0,8
   }},
-  ""correctionExplanation"": ""Добавлена вишневая начинка, что увеличило содержание углеводов и общую калорийность за счет натурального сахара в вишне"",
-  ""ingredients"": [""мука пшеничная"", ""вишня"", ""сахар"", ""дрожжи"", ""масло растительное"", ""яйцо""]
+  ""correctionExplanation"": ""Вишнёвая начинка добавила натуральный сахар, увеличив углеводы и общую калорийность."",
+  ""ingredients"": [""вишня"",""мука пшеничная"",""сахар"",""дрожжи"",""масло растительное"",""яйцо""]
+}}
+
+Example 2 — ingredient swap:
+Original: ""Beef patty""
+Correction: ""replace beef with chicken""
+Result:
+{{
+  ""correctedFoodItem"": {{
+    ""name"": ""Котлета из курицы"",
+    ""estimatedWeight"": 120,0,
+    ""weightType"": ""g"",
+    ""description"": ""Нежная куриная котлета с золотистой корочкой, сочная внутри."",
+    ""nutritionPer100g"": {{
+      ""calories"": 195,0,
+      ""proteins"": 22,0,
+      ""fats"": 10,5,
+      ""carbs"": 0,0
+    }},
+    ""totalCalories"": 234,0,
+    ""confidence"": 0,85
+  }},
+  ""correctionExplanation"": ""Курица содержит меньше жира и калорий, поэтому общая калорийность снизилась, а белок остался высоким."",
+  ""ingredients"": [""курятина"",""панировочные сухари"",""яйцо"",""соль"",""перец""]
+}}
+
+Example 3 — sauce volume adjustment:
+Original: ""Caesar Salad""
+Correction: ""100 ml Caesar dressing instead of 30 ml""
+Result:
+{{
+  ""correctedFoodItem"": {{
+    ""name"": ""Салат Цезарь"",
+    ""estimatedWeight"": 350,0,
+    ""weightType"": ""g"",
+    ""description"": ""Свежий салат с листьями ромэн, хрустящими сухариками и щедрым слоем соуса Цезарь."",
+    ""nutritionPer100g"": {{
+      ""calories"": 150,0,
+      ""proteins"": 5,5,
+      ""fats"": 12,0,
+      ""carbs"": 4,5
+    }},
+    ""totalCalories"": 525,0,
+    ""confidence"": 0,9
+  }},
+  ""correctionExplanation"": ""Увеличен объём соуса в 3,3 раза, что повысило содержание жиров и калорий."",
+  ""ingredients"": [""листья ромэн"",""соус Цезарь"",""курица"",""пармезан"",""сухарики"",""оливковое масло""]
 }}
 ";
-
                 var request = new
                 {
                     contents = new[]
@@ -2424,7 +2266,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                     };
                 }
 
-                return ParseFoodCorrectionResponse(responseText);
+                return ParseSimpleFoodCorrectionResponse(responseText);
             }
             catch (Exception ex)
             {
@@ -2434,6 +2276,45 @@ namespace FitnessTracker.API.Services.AI.Providers
                     Success = false,
                     ErrorMessage = $"Ошибка коррекции: {ex.Message}"
                 };
+            }
+        }
+
+        private FoodCorrectionResponse ParseSimpleFoodCorrectionResponse(string responseText)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(responseText);
+                if (document.RootElement.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
+                {
+                    var firstCandidate = candidates[0];
+                    if (firstCandidate.TryGetProperty("content", out var content) &&
+                        content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
+                    {
+                        var textPart = parts[0];
+                        if (textPart.TryGetProperty("text", out var textElement))
+                        {
+                            var responseContent = textElement.GetString() ?? "";
+
+                            if (responseContent.Trim() == "ERROR_JSON")
+                            {
+                                return new FoodCorrectionResponse
+                                {
+                                    Success = false,
+                                    ErrorMessage = "ИИ не смог обработать коррекцию"
+                                };
+                            }
+
+                            return ParseFoodCorrectionDirectly(responseContent);
+                        }
+                    }
+                }
+
+                return new FoodCorrectionResponse { Success = false, ErrorMessage = "Invalid response format" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error parsing food correction response: {ex.Message}");
+                return new FoodCorrectionResponse { Success = false, ErrorMessage = "Failed to parse response" };
             }
         }
 
@@ -2560,27 +2441,6 @@ namespace FitnessTracker.API.Services.AI.Providers
                         {
                             response.WorkoutData.CardioData = ParseCardioData(cardioData);
                         }
-                        else if (workoutType == "plank" && workoutData.TryGetProperty("plankData", out var plankData))
-                        {
-                            response.WorkoutData.PlankData = new PlankDataDto
-                            {
-                                DurationSeconds = SafeGetInt(plankData, "durationSeconds", 60),
-                                PlankType = SafeGetString(plankData, "plankType", "стандартная планка"),
-                                Notes = SafeGetString(plankData, "notes", "")
-                            };
-                        }
-                        else if (workoutType == "jump_rope" && workoutData.TryGetProperty("jumpRopeData", out var jumpRopeData))
-                        {
-                            response.WorkoutData.JumpRopeData = new JumpRopeDataDto
-                            {
-                                JumpCount = SafeGetInt(jumpRopeData, "jumpCount", 100),
-                                DurationSeconds = SafeGetInt(jumpRopeData, "durationSeconds", 60),
-                                RopeType = SafeGetString(jumpRopeData, "ropeType", "обычная скакалка"),
-                                IntervalsCount = SafeGetNullableInt(jumpRopeData, "intervalsCount"),
-                                Notes = SafeGetString(jumpRopeData, "notes", "")
-                            };
-                        }
-
                         response.WorkoutData.Notes = ParseNotes(workoutData);
                     }
 
@@ -2653,71 +2513,6 @@ namespace FitnessTracker.API.Services.AI.Providers
             {
                 _logger.LogError($"Error parsing text food JSON: {ex.Message}");
                 return new TextFoodResponse { Success = false, ErrorMessage = "Failed to parse food data" };
-            }
-        }
-
-        private FoodCorrectionResponse ParseFoodCorrectionJson(string jsonText)
-        {
-            try
-            {
-                var startIndex = jsonText.IndexOf('{');
-                var lastIndex = jsonText.LastIndexOf('}');
-
-                if (startIndex >= 0 && lastIndex > startIndex)
-                {
-                    var cleanJson = jsonText.Substring(startIndex, lastIndex - startIndex + 1);
-                    using var document = JsonDocument.Parse(cleanJson);
-                    var root = document.RootElement;
-
-                    var correctedItem = new FoodItemResponse();
-                    if (root.TryGetProperty("correctedFoodItem", out var foodItem))
-                    {
-                        correctedItem = new FoodItemResponse
-                        {
-                            Name = SafeGetString(foodItem, "name", ""),
-                            EstimatedWeight = SafeGetDecimal(foodItem, "estimatedWeight", 0),
-                            WeightType = SafeGetString(foodItem, "weightType", "g"),
-                            Description = SafeGetString(foodItem, "description", ""),
-                            Confidence = SafeGetDecimal(foodItem, "confidence", 0.8m)
-                        };
-
-                        if (foodItem.TryGetProperty("nutritionPer100g", out var nutrition))
-                        {
-                            correctedItem.NutritionPer100g = new NutritionPer100gDto
-                            {
-                                Calories = SafeGetDecimal(nutrition, "calories", 0),
-                                Proteins = SafeGetDecimal(nutrition, "proteins", 0),
-                                Fats = SafeGetDecimal(nutrition, "fats", 0),
-                                Carbs = SafeGetDecimal(nutrition, "carbs", 0)
-                            };
-                        }
-
-                        correctedItem.TotalCalories = SafeGetInt(foodItem, "totalCalories", 0);
-                    }
-
-                    var ingredients = new List<string>();
-                    if (root.TryGetProperty("ingredients", out var ingredientsArray))
-                    {
-                        ingredients = ingredientsArray.EnumerateArray()
-                            .Select(x => x.GetString() ?? "")
-                            .Where(x => !string.IsNullOrEmpty(x))
-                            .ToList();
-                    }
-
-                    return new FoodCorrectionResponse
-                    {
-                        Success = true,
-                        CorrectedFoodItem = correctedItem,
-                        CorrectionExplanation = SafeGetString(root, "correctionExplanation", ""),
-                        Ingredients = ingredients
-                    };
-                }
-                return new FoodCorrectionResponse { Success = false, ErrorMessage = "Invalid JSON format" };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error parsing food correction JSON: {ex.Message}");
-                return new FoodCorrectionResponse { Success = false, ErrorMessage = "Failed to parse correction data" };
             }
         }
 

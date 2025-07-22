@@ -10,7 +10,6 @@ namespace FitnessTracker.API.Services.AI
         BodyScanResponse CreateFallbackBodyResponse(string reason);
         TextWorkoutResponse CreateFallbackTextWorkoutResponse(string reason, string? workoutType = null);
         TextFoodResponse CreateFallbackTextFoodResponse(string reason, string? mealType = null);
-        FoodCorrectionResponse CreateFallbackFoodCorrectionResponse(string reason);
         bool ShouldRetryRequest(Exception ex, int currentAttempt);
     }
 
@@ -239,35 +238,6 @@ namespace FitnessTracker.API.Services.AI
                 ProcessedText = $"Не удалось обработать текст ({reason}), создана базовая запись о питании",
                 FoodItems = new List<FoodItemResponse> { defaultFood },
                 EstimatedTotalCalories = defaultFood.TotalCalories
-            };
-        }
-
-        public FoodCorrectionResponse CreateFallbackFoodCorrectionResponse(string reason)
-        {
-            _logger.LogInformation($"🔧 Creating fallback food correction response: {reason}");
-
-            return new FoodCorrectionResponse
-            {
-                Success = true,
-                ErrorMessage = null,
-                CorrectedFoodItem = new FoodItemResponse
-                {
-                    Name = "Исправленное блюдо",
-                    EstimatedWeight = 150,
-                    WeightType = "g",
-                    Description = $"Коррекция не удалась ({reason}), данные приблизительные",
-                    NutritionPer100g = new NutritionPer100gDto
-                    {
-                        Calories = 200,
-                        Proteins = 10,
-                        Fats = 8,
-                        Carbs = 25
-                    },
-                    TotalCalories = 300,
-                    Confidence = 0.3m
-                },
-                CorrectionExplanation = $"Автоматическая коррекция не удалась: {reason}",
-                Ingredients = new List<string> { "основной ингредиент", "дополнительные компоненты" }
             };
         }
 
