@@ -317,7 +317,11 @@ namespace FitnessTracker.API.Services.AI
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Food correction error: {ex.Message}");
-                return _errorHandler.CreateFallbackFoodCorrectionResponse($"Correction failed: {ex.Message}");
+                return new FoodCorrectionResponse
+                {
+                    Success = false,
+                    ErrorMessage = $"Системная ошибка: {ex.Message}"
+                };
             }
         }
 

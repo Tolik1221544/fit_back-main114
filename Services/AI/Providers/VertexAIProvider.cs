@@ -1412,7 +1412,7 @@ If JSON generation fails — return exactly: ERROR_JSON
                         if (textPart.TryGetProperty("text", out var textElement))
                         {
                             var responseContent = textElement.GetString() ?? "";
-                            return ParseFoodJsonResponse(responseContent);
+                            return ParseFoodJsonDirectly(responseContent);
                         }
                     }
                 }
@@ -1423,6 +1423,78 @@ If JSON generation fails — return exactly: ERROR_JSON
             {
                 _logger.LogError($"Error parsing food scan response: {ex.Message}");
                 return new FoodScanResponse { Success = false, ErrorMessage = "Failed to parse response" };
+            }
+        }
+
+        private FoodCorrectionResponse ParseFoodCorrectionDirectly(string responseContent)
+        {
+            try
+            {
+                var startIndex = responseContent.IndexOf('{');
+                var lastIndex = responseContent.LastIndexOf('}');
+
+                if (startIndex >= 0 && lastIndex > startIndex)
+                {
+                    var cleanJson = responseContent.Substring(startIndex, lastIndex - startIndex + 1);
+
+                    cleanJson = cleanJson.Replace(",0", ".0").Replace(",1", ".1").Replace(",2", ".2")
+                                         .Replace(",3", ".3").Replace(",4", ".4").Replace(",5", ".5")
+                                         .Replace(",6", ".6").Replace(",7", ".7").Replace(",8", ".8")
+                                         .Replace(",9", ".9");
+
+                    using var document = JsonDocument.Parse(cleanJson);
+                    var root = document.RootElement;
+
+                    var correctedItem = new FoodItemResponse();
+                    if (root.TryGetProperty("correctedFoodItem", out var foodItem))
+                    {
+                        correctedItem = new FoodItemResponse
+                        {
+                            Name = SafeGetString(foodItem, "name", ""),
+                            EstimatedWeight = SafeGetDecimal(foodItem, "estimatedWeight", 0),
+                            WeightType = SafeGetString(foodItem, "weightType", "g"),
+                            Description = SafeGetString(foodItem, "description", ""),
+                            Confidence = SafeGetDecimal(foodItem, "confidence", 0.8m)
+                        };
+
+                        if (foodItem.TryGetProperty("nutritionPer100g", out var nutrition))
+                        {
+                            correctedItem.NutritionPer100g = new NutritionPer100gDto
+                            {
+                                Calories = SafeGetDecimal(nutrition, "calories", 0),
+                                Proteins = SafeGetDecimal(nutrition, "proteins", 0),
+                                Fats = SafeGetDecimal(nutrition, "fats", 0),
+                                Carbs = SafeGetDecimal(nutrition, "carbs", 0)
+                            };
+                        }
+
+                        correctedItem.TotalCalories = SafeGetInt(foodItem, "totalCalories", 0);
+                    }
+
+                    var ingredients = new List<string>();
+                    if (root.TryGetProperty("ingredients", out var ingredientsArray))
+                    {
+                        ingredients = ingredientsArray.EnumerateArray()
+                            .Select(x => x.GetString() ?? "")
+                            .Where(x => !string.IsNullOrEmpty(x))
+                            .ToList();
+                    }
+
+                    return new FoodCorrectionResponse
+                    {
+                        Success = true,
+                        CorrectedFoodItem = correctedItem,
+                        CorrectionExplanation = SafeGetString(root, "correctionExplanation", ""),
+                        Ingredients = ingredients
+                    };
+                }
+
+                return new FoodCorrectionResponse { Success = false, ErrorMessage = "Invalid JSON format" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error parsing food correction JSON: {ex.Message}");
+                return new FoodCorrectionResponse { Success = false, ErrorMessage = "Failed to parse correction data" };
             }
         }
 
@@ -2389,7 +2461,7 @@ Result:
                         if (textPart.TryGetProperty("text", out var textElement))
                         {
                             var responseContent = textElement.GetString() ?? "";
-                            return ParseFoodCorrectionJson(responseContent);
+                            return ParseFoodCorrectionDirectly(responseContent);
                         }
                     }
                 }
