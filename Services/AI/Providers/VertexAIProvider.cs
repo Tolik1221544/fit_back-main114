@@ -274,41 +274,17 @@ CRITICAL: Return ONLY the JSON object, no other text.";
 
         private string CreateBodyAnalysisPrompt(decimal? weight, decimal? height, int? age, string? gender, string? goals)
         {
-            return $@"Analyze these body images and calculate body composition.
+            var w = weight ?? 70;
+            var h = height ?? 170;
+            var a = age ?? 25;
+            var g = gender ?? "not specified";
+            var bmr = g.ToLowerInvariant().Contains("male") && !g.ToLowerInvariant().Contains("female")
+                ? (int)(10 * (double)w + 6.25 * (double)h - 5 * a + 5)
+                : (int)(10 * (double)w + 6.25 * (double)h - 5 * a - 161);
 
-User data:
-- Weight: {weight ?? 70}kg
-- Height: {height ?? 170}cm  
-- Age: {age ?? 25}
-- Gender: {gender ?? "not specified"}
-- Goals: {goals ?? "general fitness"}
+            return $@"Analyze body images. User: {w}kg, {h}cm, {a}y, {g}. IMPORTANT: All text fields must be in Russian. Return JSON only:
 
-Calculate BMR using Mifflin-St Jeor equation:
-- Male: BMR = 10 × weight + 6.25 × height - 5 × age + 5
-- Female: BMR = 10 × weight + 6.25 × height - 5 × age - 161
-
-Return ONLY this JSON:
-{{
-  ""bodyAnalysis"": {{
-    ""estimatedBodyFatPercentage"": 15.0,
-    ""estimatedMusclePercentage"": 40.0,
-    ""bodyType"": ""Athletic build"",
-    ""postureAnalysis"": ""Good posture"",
-    ""overallCondition"": ""Good physical condition"",
-    ""bmi"": 22.0,
-    ""bmiCategory"": ""Normal weight"",
-    ""estimatedWaistCircumference"": 80.0,
-    ""estimatedChestCircumference"": 100.0,
-    ""estimatedHipCircumference"": 95.0,
-    ""basalMetabolicRate"": 1600,
-    ""metabolicRateCategory"": ""Normal"",
-    ""exerciseRecommendations"": [""Strength training"", ""Cardio exercises""],
-    ""nutritionRecommendations"": [""Balanced diet"", ""Adequate protein""],
-    ""trainingFocus"": ""General fitness""
-  }},
-  ""recommendations"": [""Continue regular exercise""],
-  ""fullAnalysis"": ""Detailed analysis text""
-}}";
+{{""bodyAnalysis"":{{""estimatedBodyFatPercentage"":15.0,""estimatedMusclePercentage"":40.0,""bodyType"":""Атлетическое телосложение"",""postureAnalysis"":""Хорошая осанка"",""overallCondition"":""Хорошее состояние"",""bmi"":{Math.Round((double)w / Math.Pow((double)h / 100, 2), 1)},""bmiCategory"":""Нормальный вес"",""estimatedWaistCircumference"":80.0,""estimatedChestCircumference"":100.0,""estimatedHipCircumference"":95.0,""basalMetabolicRate"":{bmr},""metabolicRateCategory"":""Нормальный"",""exerciseRecommendations"":[""Силовые тренировки"",""Кардио упражнения""],""nutritionRecommendations"":[""Сбалансированное питание"",""Достаточное количество белка""],""trainingFocus"":""Общая физическая подготовка""}},""recommendations"":[""Продолжайте тренировки"",""Следите за питанием""],""fullAnalysis"":""Подробный анализ состояния тела на русском языке""}}";
         }
 
         private string CreateVoiceWorkoutPrompt(string? workoutType)
@@ -524,24 +500,16 @@ Return ONLY this JSON:
             {
                 contents = new[]
                 {
-                    new
-                    {
-                        role = "user",
-                        parts = parts.ToArray()
-                    }
-                },
+            new
+            {
+                role = "user",
+                parts = parts.ToArray()
+            }
+        },
                 generation_config = new
                 {
                     temperature = 0.2,
-                    max_output_tokens = 3072,
                     top_p = 0.9
-                },
-                safety_settings = new[]
-                {
-                    new { category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE" },
-                    new { category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE" },
-                    new { category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold = "BLOCK_NONE" },
-                    new { category = "HARM_CATEGORY_DANGEROUS_CONTENT", threshold = "BLOCK_NONE" }
                 }
             };
         }
@@ -719,24 +687,65 @@ Return ONLY this JSON:
         {
             try
             {
+                _logger.LogInformation($"💪 Raw Gemini body response: {responseText}");
+
                 using var document = JsonDocument.Parse(responseText);
-                var candidates = document.RootElement.GetProperty("candidates");
-                var firstCandidate = candidates[0];
-                var content = firstCandidate.GetProperty("content");
-                var parts = content.GetProperty("parts");
-                var text = parts[0].GetProperty("text").GetString() ?? "";
+                var root = document.RootElement;
 
-                var startIndex = text.IndexOf('{');
-                var lastIndex = text.LastIndexOf('}');
+                string fullText = "";
 
-                if (startIndex >= 0 && lastIndex > startIndex)
+                // Безопасное извлечение текста
+                if (root.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
                 {
-                    var jsonText = text.Substring(startIndex, lastIndex - startIndex + 1);
+                    var firstCandidate = candidates[0];
+
+                    // Проверяем finishReason
+                    if (firstCandidate.TryGetProperty("finishReason", out var finishReason))
+                    {
+                        var reason = finishReason.GetString();
+                        if (reason == "MAX_TOKENS")
+                        {
+                            _logger.LogWarning($"💪 Body analysis response cut off due to MAX_TOKENS");
+                            return CreateFallbackBodyResponse("Response cut off - MAX_TOKENS limit", weight, height, age, gender);
+                        }
+                    }
+
+                    if (firstCandidate.TryGetProperty("content", out var content))
+                    {
+                        if (content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
+                        {
+                            var firstPart = parts[0];
+                            if (firstPart.TryGetProperty("text", out var textProperty))
+                            {
+                                fullText = textProperty.GetString() ?? "";
+                            }
+                        }
+                    }
+                }
+
+                _logger.LogInformation($"💪 Extracted body text: {fullText}");
+
+                if (string.IsNullOrEmpty(fullText))
+                {
+                    return CreateFallbackBodyResponse("Empty response text", weight, height, age, gender);
+                }
+
+                var jsonStart = fullText.IndexOf('{');
+                var jsonEnd = fullText.LastIndexOf('}');
+
+                if (jsonStart >= 0 && jsonEnd > jsonStart)
+                {
+                    var jsonText = fullText.Substring(jsonStart, jsonEnd - jsonStart + 1);
+                    _logger.LogInformation($"💪 Extracted JSON: {jsonText}");
+
+                    jsonText = FixInvalidJson(jsonText);
+                    _logger.LogInformation($"💪 Fixed JSON: {jsonText}");
+
                     using var bodyDoc = JsonDocument.Parse(jsonText);
-                    var root = bodyDoc.RootElement;
+                    var jsonRoot = bodyDoc.RootElement;
 
                     var bodyAnalysis = new BodyAnalysisDto();
-                    if (root.TryGetProperty("bodyAnalysis", out var analysis))
+                    if (jsonRoot.TryGetProperty("bodyAnalysis", out var analysis))
                     {
                         bodyAnalysis.EstimatedBodyFatPercentage = GetDecimal(analysis, "estimatedBodyFatPercentage");
                         bodyAnalysis.EstimatedMusclePercentage = GetDecimal(analysis, "estimatedMusclePercentage");
@@ -759,12 +768,12 @@ Return ONLY this JSON:
                     {
                         Success = true,
                         BodyAnalysis = bodyAnalysis,
-                        Recommendations = GetStringArray(root, "recommendations"),
-                        FullAnalysis = GetString(root, "fullAnalysis")
+                        Recommendations = GetStringArray(jsonRoot, "recommendations"),
+                        FullAnalysis = GetString(jsonRoot, "fullAnalysis")
                     };
                 }
 
-                return CreateFallbackBodyResponse("Invalid JSON format", weight, height, age, gender);
+                return CreateFallbackBodyResponse("No JSON found in response", weight, height, age, gender);
             }
             catch (Exception ex)
             {
