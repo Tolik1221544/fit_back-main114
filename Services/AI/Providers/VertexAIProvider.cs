@@ -236,7 +236,6 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
         }
 
-        // ПРОМПТЫ ОПТИМИЗИРОВАННЫЕ ДЛЯ GEMINI
         private string CreateFoodAnalysisPrompt(string? userPrompt)
         {
             return $@"Analyze this food image and return ONLY valid JSON.
@@ -314,42 +313,14 @@ Return ONLY this JSON:
 
         private string CreateVoiceWorkoutPrompt(string? workoutType)
         {
-            return $@"Transcribe this Russian audio about a workout and analyze what exercises were mentioned.
+            return @"Transcribe Russian workout audio. Determine workout type by exercises mentioned:
 
-Expected workout type: {workoutType ?? "any type"}
+STRENGTH exercises: жим, приседания, отжимания, планка, подтягивания, качание пресса, махи, выпады, становая тяга
+CARDIO exercises: бег, велосипед, кардио, ходьба, плавание, скакалка, прыжки
 
-IMPORTANT: You must return ONLY a valid JSON object, no other text before or after.
+Return JSON only:
 
-If you hear exercises like жим, приседания, отжимания, планка - make it ""type"": ""strength""
-If you hear бег, велосипед, кардио, ходьба - make it ""type"": ""cardio""
-
-JSON format to return:
-{{
-  ""transcribedText"": ""точный текст что услышали на русском"",
-  ""workoutData"": {{
-    ""type"": ""strength"",
-    ""startTime"": ""2025-07-23T17:00:00Z"",
-    ""endTime"": ""2025-07-23T17:45:00Z"",
-    ""estimatedCalories"": 250,
-    ""strengthData"": {{
-      ""name"": ""Название упражнения"",
-      ""muscleGroup"": ""Группа мышц"",
-      ""equipment"": ""Оборудование"",
-      ""workingWeight"": 50.0,
-      ""restTimeSeconds"": 120,
-      ""sets"": [{{
-        ""setNumber"": 1,
-        ""weight"": 50.0,
-        ""reps"": 10,
-        ""isCompleted"": true,
-        ""notes"": ""Выполнено""
-      }}]
-    }},
-    ""notes"": [""Тренировка записана""]
-  }}
-}}
-
-CRITICAL: Return ONLY the JSON object above, nothing else.";
+{""transcribedText"":""what you heard"",""workoutData"":{""type"":""strength"",""startTime"":""" + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") + @""",""endTime"":""" + DateTime.UtcNow.AddMinutes(30).ToString("yyyy-MM-ddTHH:mm:ssZ") + @""",""estimatedCalories"":200,""strengthData"":{""name"":""Exercise"",""muscleGroup"":""Muscles"",""equipment"":""None"",""workingWeight"":50,""restTimeSeconds"":90,""sets"":[{""setNumber"":1,""weight"":50,""reps"":10,""isCompleted"":true,""notes"":""Done""}]},""notes"":[""Recorded""]}}";
         }
 
         private string CreateVoiceFoodPrompt(string? mealType)
@@ -581,27 +552,26 @@ Return ONLY this JSON:
             {
                 contents = new[]
                 {
+            new
+            {
+                role = "user",
+                parts = new object[]
+                {
+                    new { text = prompt },
                     new
                     {
-                        role = "user",
-                        parts = new object[]
+                        inline_data = new
                         {
-                            new { text = prompt },
-                            new
-                            {
-                                inline_data = new
-                                {
-                                    mime_type = mimeType,
-                                    data = base64Audio
-                                }
-                            }
+                            mime_type = mimeType,
+                            data = base64Audio
                         }
                     }
-                },
+                }
+            }
+        },
                 generation_config = new
                 {
-                    temperature = 0.3,
-                    max_output_tokens = 2048,
+                    temperature = 0.1,
                     top_p = 0.9
                 }
             };
@@ -807,47 +777,149 @@ Return ONLY this JSON:
         {
             try
             {
-                var jsonText = ExtractJsonFromResponse(responseText);
-                if (string.IsNullOrEmpty(jsonText))
-                    return CreateFallbackWorkoutResponse("No JSON found", workoutType);
+                _logger.LogInformation($"🎤 Raw Gemini response: {responseText}");
 
-                using var document = JsonDocument.Parse(jsonText);
+                using var document = JsonDocument.Parse(responseText);
                 var root = document.RootElement;
 
-                var response = new VoiceWorkoutResponse
-                {
-                    Success = true,
-                    TranscribedText = GetString(root, "transcribedText")
-                };
+                string fullText = "";
 
-                if (root.TryGetProperty("workoutData", out var workoutData))
+                if (root.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
                 {
-                    response.WorkoutData = new WorkoutDataResponse
-                    {
-                        Type = GetString(workoutData, "type", "strength"),
-                        StartTime = GetDateTime(workoutData, "startTime"),
-                        EndTime = GetDateTime(workoutData, "endTime"),
-                        EstimatedCalories = GetInt(workoutData, "estimatedCalories"),
-                        Notes = GetStringArray(workoutData, "notes")
-                    };
+                    var firstCandidate = candidates[0];
 
-                    if (workoutData.TryGetProperty("strengthData", out var strengthData))
+                    if (firstCandidate.TryGetProperty("finishReason", out var finishReason))
                     {
-                        response.WorkoutData.StrengthData = ParseStrengthData(strengthData);
+                        var reason = finishReason.GetString();
+                        _logger.LogInformation($"🎤 Finish reason: {reason}");
+
+                        if (reason == "MAX_TOKENS")
+                        {
+                            _logger.LogWarning($"🎤 Response was cut off due to MAX_TOKENS limit");
+                            return CreateFallbackWorkoutResponse("Response cut off - MAX_TOKENS limit reached", workoutType);
+                        }
                     }
 
-                    if (workoutData.TryGetProperty("cardioData", out var cardioData))
+                    if (firstCandidate.TryGetProperty("content", out var content))
                     {
-                        response.WorkoutData.CardioData = ParseCardioData(cardioData);
+                        if (content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
+                        {
+                            var firstPart = parts[0];
+                            if (firstPart.TryGetProperty("text", out var textProperty))
+                            {
+                                fullText = textProperty.GetString() ?? "";
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogWarning($"🎤 No 'parts' field found in content");
+                            return CreateFallbackWorkoutResponse("No parts field in response", workoutType);
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"🎤 No 'content' field found in candidate");
+                        return CreateFallbackWorkoutResponse("No content field in response", workoutType);
                     }
                 }
+                else
+                {
+                    _logger.LogWarning($"🎤 No 'candidates' field found or empty");
+                    return CreateFallbackWorkoutResponse("No candidates in response", workoutType);
+                }
 
-                return response;
+                _logger.LogInformation($"🎤 Extracted text: {fullText}");
+
+                if (string.IsNullOrEmpty(fullText))
+                {
+                    _logger.LogWarning($"🎤 Empty text extracted from response");
+                    return CreateFallbackWorkoutResponse("Empty response text", workoutType);
+                }
+
+                var jsonStart = fullText.IndexOf('{');
+                var jsonEnd = fullText.LastIndexOf('}');
+
+                if (jsonStart >= 0 && jsonEnd > jsonStart)
+                {
+                    var jsonText = fullText.Substring(jsonStart, jsonEnd - jsonStart + 1);
+                    _logger.LogInformation($"🎤 Extracted JSON: {jsonText}");
+
+                    using var workoutDoc = JsonDocument.Parse(jsonText);
+                    var jsonRoot = workoutDoc.RootElement;
+
+                    var response = new VoiceWorkoutResponse
+                    {
+                        Success = true,
+                        TranscribedText = GetString(jsonRoot, "transcribedText")
+                    };
+
+                    if (jsonRoot.TryGetProperty("workoutData", out var workoutData))
+                    {
+                        response.WorkoutData = new WorkoutDataResponse
+                        {
+                            Type = GetString(workoutData, "type", "strength"),
+                            StartTime = GetDateTime(workoutData, "startTime"),
+                            EndTime = GetDateTime(workoutData, "endTime"),
+                            EstimatedCalories = GetInt(workoutData, "estimatedCalories"),
+                            Notes = GetStringArray(workoutData, "notes")
+                        };
+
+                        if (workoutData.TryGetProperty("strengthData", out var strengthData))
+                        {
+                            response.WorkoutData.StrengthData = ParseStrengthData(strengthData);
+                        }
+                    }
+
+                    return response;
+                }
+                else
+                {
+                    _logger.LogWarning($"🎤 No JSON found in response text");
+                    return CreateFallbackWorkoutResponse("No JSON found in response", workoutType);
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Voice workout parse error: {ex.Message}");
                 return CreateFallbackWorkoutResponse($"Parse error: {ex.Message}", workoutType);
+            }
+        }
+
+        private string FixInvalidJson(string jsonText)
+        {
+            try
+            {
+                jsonText = jsonText.Trim();
+
+                int openBraces = jsonText.Count(c => c == '{');
+                int closeBraces = jsonText.Count(c => c == '}');
+                int openBrackets = jsonText.Count(c => c == '[');
+                int closeBrackets = jsonText.Count(c => c == ']');
+
+                while (closeBraces < openBraces)
+                {
+                    jsonText += "}";
+                    closeBraces++;
+                }
+
+                while (closeBrackets < openBrackets)
+                {
+                    jsonText += "]";
+                    closeBrackets++;
+                }
+
+                var lastBrace = jsonText.LastIndexOf('}');
+                if (lastBrace > 0 && lastBrace < jsonText.Length - 1)
+                {
+                    jsonText = jsonText.Substring(0, lastBrace + 1);
+                }
+
+                return jsonText;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error fixing JSON: {ex.Message}");
+                return jsonText; 
             }
         }
 
