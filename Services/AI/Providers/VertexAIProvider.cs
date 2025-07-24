@@ -13,7 +13,7 @@ namespace FitnessTracker.API.Services.AI.Providers
         private readonly IConfiguration _configuration;
         private readonly ILogger<VertexAIProvider> _logger;
 
-        public string ProviderName => "Vertex AI (Gemini Pro 2.5)";
+        public string ProviderName => "Vertex AI (Gemini 1.5 Flash)";
 
         public VertexAIProvider(
             HttpClient httpClient,
@@ -425,12 +425,11 @@ Return ONLY this JSON:
 }}";
         }
 
-        // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
         private async Task<(string url, string accessToken)> GetApiEndpointAsync()
         {
             var projectId = _configuration["GoogleCloud:ProjectId"];
             var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
-            var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro";
+            var model = _configuration["GoogleCloud:Model"] ?? "gemini-1.5-flash";
 
             if (string.IsNullOrEmpty(projectId))
                 throw new InvalidOperationException("GoogleCloud:ProjectId not configured");
@@ -447,36 +446,36 @@ Return ONLY this JSON:
             {
                 contents = new[]
                 {
+            new
+            {
+                role = "user",
+                parts = new object[]
+                {
+                    new { text = prompt },
                     new
                     {
-                        role = "user",
-                        parts = new object[]
+                        inline_data = new
                         {
-                            new { text = prompt },
-                            new
-                            {
-                                inline_data = new
-                                {
-                                    mime_type = mimeType,
-                                    data = base64Image
-                                }
-                            }
+                            mime_type = mimeType,
+                            data = base64Image
                         }
                     }
-                },
+                }
+            }
+        },
                 generation_config = new
                 {
                     temperature = 0.1,
-                    max_output_tokens = 2048,
-                    top_p = 0.95
+                    top_p = 0.8, 
+                    candidate_count = 1
                 },
                 safety_settings = new[]
                 {
-                    new { category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE" },
-                    new { category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE" },
-                    new { category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold = "BLOCK_NONE" },
-                    new { category = "HARM_CATEGORY_DANGEROUS_CONTENT", threshold = "BLOCK_NONE" }
-                }
+            new { category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE" },
+            new { category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE" },
+            new { category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold = "BLOCK_NONE" },
+            new { category = "HARM_CATEGORY_DANGEROUS_CONTENT", threshold = "BLOCK_NONE" }
+        }
             };
         }
 
@@ -508,9 +507,17 @@ Return ONLY this JSON:
         },
                 generation_config = new
                 {
-                    temperature = 0.2,
-                    top_p = 0.9
-                }
+                    temperature = 0.1,
+                    top_p = 0.8, 
+                    candidate_count = 1
+                },
+                safety_settings = new[]
+                {
+            new { category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE" },
+            new { category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE" },
+            new { category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold = "BLOCK_NONE" },
+            new { category = "HARM_CATEGORY_DANGEROUS_CONTENT", threshold = "BLOCK_NONE" }
+        }
             };
         }
 
@@ -540,7 +547,8 @@ Return ONLY this JSON:
                 generation_config = new
                 {
                     temperature = 0.1,
-                    top_p = 0.9
+                    top_p = 0.8, 
+                    candidate_count = 1
                 }
             };
         }
@@ -551,17 +559,17 @@ Return ONLY this JSON:
             {
                 contents = new[]
                 {
-                    new
-                    {
-                        role = "user",
-                        parts = new[] { new { text = prompt } }
-                    }
-                },
+            new
+            {
+                role = "user",
+                parts = new[] { new { text = prompt } }
+            }
+        },
                 generation_config = new
                 {
                     temperature = 0.1,
-                    max_output_tokens = 2048,
-                    top_p = 0.95
+                    top_p = 0.8, 
+                    candidate_count = 1
                 }
             };
         }

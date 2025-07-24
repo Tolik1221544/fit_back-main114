@@ -54,7 +54,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "🏃‍♂️ Fitness Tracker API с Universal AI",
         Version = "v3.0.0",
-        Description = "Полнофункциональный API для фитнес-трекера с универсальной AI архитектурой (Vertex AI Gemini Pro 2.5 + OpenAI + другие)"
+        Description = "Полнофункциональный API для фитнес-трекера с универсальной AI архитектурой (Vertex AI Gemini 1.5 Flash + OpenAI + другие)"
     });
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -110,7 +110,7 @@ builder.Services.AddAutoMapper(typeof(Program));
 
 builder.Services.AddHttpClient<VertexAIProvider>(client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(120);
+    client.Timeout = TimeSpan.FromSeconds(45); 
     client.DefaultRequestHeaders.Add("User-Agent", "FitnessTracker-API/3.0.0");
 });
 
@@ -256,10 +256,10 @@ using (var scope = app.Services.CreateScope())
         var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
         Console.WriteLine("🤖 Universal AI Configuration:");
-        Console.WriteLine($"   Active Provider: {configuration["AI:ActiveProvider"] ?? "Vertex AI (Gemini Pro 2.5)"}");
+        Console.WriteLine($"   Active Provider: {configuration["AI:ActiveProvider"] ?? "Vertex AI (Gemini 1.5 Flash)"}");
         Console.WriteLine($"   Google Cloud Project: {configuration["GoogleCloud:ProjectId"] ?? "NOT SET"}");
         Console.WriteLine($"   Google Cloud Location: {configuration["GoogleCloud:Location"] ?? "us-central1"}");
-        Console.WriteLine($"   Google Cloud Model: {configuration["GoogleCloud:Model"] ?? "gemini-2.5-pro"}");
+        Console.WriteLine($"   Google Cloud Model: {configuration["GoogleCloud:Model"] ?? "gemini-1.5-flash"}");
 
         var tokenService = scope.ServiceProvider.GetRequiredService<IGoogleCloudTokenService>();
         var isValidServiceAccount = await tokenService.ValidateServiceAccountAsync();
@@ -348,7 +348,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "🏃‍♂️ Fitness Tracker API v3.0.0 with Universal AI");
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "🏃‍♂️ Fitness Tracker API v3.0.0 with Gemini 1.5 Flash");
         c.RoutePrefix = "swagger";
         c.DefaultModelsExpandDepth(-1);
         c.DisplayRequestDuration();
