@@ -851,16 +851,32 @@ namespace FitnessTracker.API.Controllers
 
                 return Ok(new
                 {
-                    Service = "Gemini AI",
+                    Service = "Gemini 2.5 Flash", 
                     Status = isWorking ? "Online" : "Offline",
                     Timestamp = DateTime.UtcNow,
+                    ModelVersion = "gemini-2.5-flash", 
                     Features = new[]
                     {
                         "Food Image Analysis",
                         "Body Analysis",
                         "Voice Workout Recognition",
                         "Voice Food Recognition",
-                        "Voice File Storage & Management"
+                        "Voice File Storage & Management",
+                        "Enhanced AI Capabilities with Gemini 2.5" 
+                    },
+                    ModelInfo = new
+                    {
+                        Name = "Gemini 2.5 Flash",
+                        Version = "2.5",
+                        Provider = "Google Vertex AI",
+                        Capabilities = new[]
+                        {
+                            "Multimodal (Text, Image, Audio)",
+                            "Improved Accuracy",
+                            "Faster Response Times",
+                            "Better Russian Language Support"
+               
+                        }
                     }
                 });
             }
@@ -869,7 +885,7 @@ namespace FitnessTracker.API.Controllers
                 _logger.LogError($"❌ AI Status check failed: {ex.Message}");
                 return StatusCode(503, new
                 {
-                    Service = "Gemini AI",
+                    Service = "Gemini 2.5 Flash",
                     Status = "Error",
                     Error = ex.Message,
                     Timestamp = DateTime.UtcNow

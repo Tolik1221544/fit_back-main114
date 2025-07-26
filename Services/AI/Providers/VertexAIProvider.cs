@@ -13,7 +13,7 @@ namespace FitnessTracker.API.Services.AI.Providers
         private readonly IConfiguration _configuration;
         private readonly ILogger<VertexAIProvider> _logger;
 
-        public string ProviderName => "Vertex AI (Gemini 1.5 Flash)";
+        public string ProviderName => "Vertex AI (Gemini 2.5 Flash)";
 
         public VertexAIProvider(
             HttpClient httpClient,
@@ -377,6 +377,10 @@ Return ONLY this JSON:
 
 Meal type: {mealType ?? "any"}
 
+Requirements:
+1. For LIQUIDS (soups, drinks, sauces): use ""weightType"": ""ml""
+2. For SOLIDS (bread, meat, fruits): use ""weightType"": ""g""
+
 Return ONLY this JSON:
 {{
   ""processedText"": ""Processed description"",
@@ -402,34 +406,41 @@ Return ONLY this JSON:
 
         private string CreateFoodCorrectionPrompt(string originalFoodName, string correctionText)
         {
-            return $@"Correct this food item: ""{originalFoodName}"" with: ""{correctionText}""
+            return $@"CORRECT (not add to) this food item: ""{originalFoodName}"" with correction: ""{correctionText}""
 
-Return ONLY this JSON:
+IMPORTANT: Replace the nutritional values, don't add to them. This is a CORRECTION, not an addition.
+
+Original item: {originalFoodName}
+Correction: {correctionText}
+
+Return ONLY this JSON with CORRECTED values:
 {{
   ""correctedFoodItem"": {{
-    ""name"": ""Updated food name"",
+    ""name"": ""Corrected food name in Russian"",
     ""estimatedWeight"": 180.0,
-    ""weightType"": ""g"",
-    ""description"": ""Updated description"",
+    ""weightType"": ""ml"",
+    ""description"": ""Updated description reflecting the correction"",
     ""nutritionPer100g"": {{
-      ""calories"": 280.0,
-      ""proteins"": 14.0,
-      ""fats"": 12.0,
-      ""carbs"": 32.0
+      ""calories"": 120.0,
+      ""proteins"": 3.5,
+      ""fats"": 2.0,
+      ""carbs"": 4.5
     }},
-    ""totalCalories"": 504,
+    ""totalCalories"": 216,
     ""confidence"": 0.85
   }},
-  ""correctionExplanation"": ""How the correction was applied"",
-  ""ingredients"": [""ingredient1"", ""ingredient2""]
-}}";
+  ""correctionExplanation"": ""Объяснение как была применена коррекция"",
+  ""ingredients"": [""безлактозное молоко"", ""кофе"", ""пена""]
+}}
+
+CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction. Return ONLY JSON.";
         }
 
         private async Task<(string url, string accessToken)> GetApiEndpointAsync()
         {
             var projectId = _configuration["GoogleCloud:ProjectId"];
             var location = _configuration["GoogleCloud:Location"] ?? "us-central1";
-            var model = _configuration["GoogleCloud:Model"] ?? "gemini-1.5-flash";
+            var model = _configuration["GoogleCloud:Model"] ?? "gemini-2.5-flash"; 
 
             if (string.IsNullOrEmpty(projectId))
                 throw new InvalidOperationException("GoogleCloud:ProjectId not configured");
@@ -437,6 +448,7 @@ Return ONLY this JSON:
             var accessToken = await _tokenService.GetAccessTokenAsync();
             var url = $"https://{location}-aiplatform.googleapis.com/v1/projects/{projectId}/locations/{location}/publishers/google/models/{model}:generateContent";
 
+            _logger.LogInformation($"🤖 Using Gemini 2.5 Flash endpoint: {url}");
             return (url, accessToken);
         }
 

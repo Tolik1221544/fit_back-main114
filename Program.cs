@@ -256,10 +256,10 @@ using (var scope = app.Services.CreateScope())
         var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
         Console.WriteLine("🤖 Universal AI Configuration:");
-        Console.WriteLine($"   Active Provider: {configuration["AI:ActiveProvider"] ?? "Vertex AI (Gemini 1.5 Flash)"}");
+        Console.WriteLine($"   Active Provider: {configuration["AI:ActiveProvider"] ?? "Vertex AI (Gemini 2.5 Flash)"}");
         Console.WriteLine($"   Google Cloud Project: {configuration["GoogleCloud:ProjectId"] ?? "NOT SET"}");
         Console.WriteLine($"   Google Cloud Location: {configuration["GoogleCloud:Location"] ?? "us-central1"}");
-        Console.WriteLine($"   Google Cloud Model: {configuration["GoogleCloud:Model"] ?? "gemini-1.5-flash"}");
+        Console.WriteLine($"   Google Cloud Model: {configuration["GoogleCloud:Model"] ?? "gemini-2.5-flash"}");
 
         var tokenService = scope.ServiceProvider.GetRequiredService<IGoogleCloudTokenService>();
         var isValidServiceAccount = await tokenService.ValidateServiceAccountAsync();
@@ -455,11 +455,13 @@ var port = Environment.GetEnvironmentVariable("PORT") ?? "60170";
 var url = $"http://0.0.0.0:{port}";
 
 Console.WriteLine("🚀 Fitness Tracker API with Universal AI starting...");
+Console.WriteLine("🤖 Now using Gemini 2.5 Flash (latest model)!");
 Console.WriteLine($"📊 Swagger: {url}/swagger");
 Console.WriteLine($"🌐 API: {url}");
 Console.WriteLine($"📚 Docs: {url}/api/docs");
 Console.WriteLine($"🤖 AI Status: {url}/api/ai/status");
 Console.WriteLine($"🔑 JWT Secret: {JWT_SECRET_KEY[..20]}...");
+Console.WriteLine("✅ Updated to Gemini 2.5 Flash - latest and greatest AI model!");
 
 try
 {
