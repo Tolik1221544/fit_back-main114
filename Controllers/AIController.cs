@@ -1,6 +1,7 @@
 ﻿using FitnessTracker.API.DTOs;
 using FitnessTracker.API.Services;
 using FitnessTracker.API.Services.AI;
+using FitnessTracker.API.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -22,7 +23,8 @@ namespace FitnessTracker.API.Controllers
         private readonly IActivityService _activityService;
         private readonly IBodyScanService _bodyScanService;
         private readonly IImageService _imageService;
-        private readonly IVoiceFileService _voiceFileService; 
+        private readonly IVoiceFileService _voiceFileService;
+        private readonly IUserRepository _userRepository;
         private readonly ILogger<AIController> _logger;
 
         public AIController(
@@ -32,7 +34,8 @@ namespace FitnessTracker.API.Controllers
             IActivityService activityService,
             IBodyScanService bodyScanService,
             IImageService imageService,
-            IVoiceFileService voiceFileService, 
+            IVoiceFileService voiceFileService,
+            IUserRepository userRepository,
             ILogger<AIController> logger)
         {
             _geminiService = geminiService;
@@ -41,7 +44,8 @@ namespace FitnessTracker.API.Controllers
             _activityService = activityService;
             _bodyScanService = bodyScanService;
             _imageService = imageService;
-            _voiceFileService = voiceFileService; 
+            _voiceFileService = voiceFileService;
+            _userRepository = userRepository;
             _logger = logger;
         }
 
@@ -429,7 +433,27 @@ namespace FitnessTracker.API.Controllers
                     return Unauthorized();
 
                 _logger.LogInformation($"💪 Starting FREE body analysis for user {userId}");
-                _logger.LogInformation($"💪 Request data - Weight: {request.CurrentWeight}, Height: {request.Height}, Age: {request.Age}, Gender: {request.Gender}");
+
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user == null)
+                {
+                    _logger.LogError($"❌ User {userId} not found");
+                    return BadRequest(new { error = "Пользователь не найден" });
+                }
+
+                var currentWeight = request.CurrentWeight ?? user.Weight;
+                var height = request.Height ?? user.Height;
+                var age = request.Age ?? user.Age;
+                var gender = request.Gender ?? user.Gender;
+
+                if (request.CurrentWeight.HasValue && request.CurrentWeight > 0 && request.CurrentWeight != user.Weight)
+                {
+                    user.Weight = request.CurrentWeight.Value;
+                    await _userRepository.UpdateAsync(user);
+                    _logger.LogInformation($"💪 Updated user weight: {user.Weight}kg");
+                }
+
+                _logger.LogInformation($"💪 Analysis params - Weight: {currentWeight}kg, Height: {height}cm, Age: {age}, Gender: {gender}, Goals: {request.Goals}");
 
                 if (request.FrontImage == null && request.SideImage == null && request.BackImage == null)
                 {
@@ -499,17 +523,17 @@ namespace FitnessTracker.API.Controllers
                 BodyScanResponse result;
                 try
                 {
-                    _logger.LogInformation($"💪 Calling Gemini service for body analysis");
+                    _logger.LogInformation($"💪 Calling Gemini service for body analysis with accurate user data");
 
                     result = await _geminiService.AnalyzeBodyImagesAsync(
                         frontImageData,
                         sideImageData,
                         backImageData,
-                        request.CurrentWeight,
-                        request.Height,
-                        request.Age,
-                        request.Gender,
-                        request.Goals);
+                        currentWeight,     
+                        height,           
+                        age,              
+                        gender,          
+                        request.Goals);   
 
                     _logger.LogInformation($"💪 Gemini service completed. Success: {result.Success}");
 
@@ -574,7 +598,7 @@ namespace FitnessTracker.API.Controllers
                         FrontImageUrl = frontImageUrl ?? "no_image",
                         SideImageUrl = sideImageUrl ?? "no_image",
                         BackImageUrl = backImageUrl,
-                        Weight = request.CurrentWeight ?? 0,
+                        Weight = currentWeight, 
                         BodyFatPercentage = result.BodyAnalysis.EstimatedBodyFatPercentage,
                         MusclePercentage = result.BodyAnalysis.EstimatedMusclePercentage,
                         WaistCircumference = result.BodyAnalysis.EstimatedWaistCircumference,
@@ -582,20 +606,20 @@ namespace FitnessTracker.API.Controllers
                         HipCircumference = result.BodyAnalysis.EstimatedHipCircumference,
                         BasalMetabolicRate = result.BodyAnalysis.BasalMetabolicRate,
                         MetabolicRateCategory = result.BodyAnalysis.MetabolicRateCategory,
-                        Notes = $"AI Analysis: {result.BodyAnalysis.OverallCondition}. BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал ({result.BodyAnalysis.MetabolicRateCategory}). BMI: {result.BodyAnalysis.BMI} ({result.BodyAnalysis.BMICategory})",
+                        Notes = $"AI Analysis: {result.BodyAnalysis.OverallCondition}. BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал ({result.BodyAnalysis.MetabolicRateCategory}). BMI: {result.BodyAnalysis.BMI} ({result.BodyAnalysis.BMICategory}). Weight: {currentWeight}kg", // ✅ Включаем вес в заметки
                         ScanDate = DateTime.UtcNow
                     };
 
                     await _bodyScanService.AddBodyScanAsync(userId, addBodyScanRequest);
-                    _logger.LogInformation($"✅ Body scan saved for user {userId} - BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал, BMI: {result.BodyAnalysis.BMI}, Body Fat: {result.BodyAnalysis.EstimatedBodyFatPercentage}%");
+                    _logger.LogInformation($"✅ Body scan saved for user {userId} - Weight: {currentWeight}kg, BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал, BMI: {result.BodyAnalysis.BMI}, Body Fat: {result.BodyAnalysis.EstimatedBodyFatPercentage}%");
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError($"❌ Error saving body scan to database: {ex.Message}");
-                    
                 }
 
                 _logger.LogInformation($"✅ Body analysis completed successfully:");
+                _logger.LogInformation($"   Weight: {currentWeight}kg (✅ теперь отображается в архиве)");
                 _logger.LogInformation($"   BMI: {result.BodyAnalysis.BMI} ({result.BodyAnalysis.BMICategory})");
                 _logger.LogInformation($"   Body Fat: {result.BodyAnalysis.EstimatedBodyFatPercentage}%");
                 _logger.LogInformation($"   Muscle: {result.BodyAnalysis.EstimatedMusclePercentage}%");

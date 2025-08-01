@@ -278,13 +278,36 @@ CRITICAL: Return ONLY the JSON object, no other text.";
             var h = height ?? 170;
             var a = age ?? 25;
             var g = gender ?? "not specified";
-            var bmr = g.ToLowerInvariant().Contains("male") && !g.ToLowerInvariant().Contains("female")
-                ? (int)(10 * (double)w + 6.25 * (double)h - 5 * a + 5)
-                : (int)(10 * (double)w + 6.25 * (double)h - 5 * a - 161);
+
+            int bmr;
+            if (g.ToLowerInvariant().Contains("male") && !g.ToLowerInvariant().Contains("female"))
+            {
+                bmr = (int)(10 * (double)w + 6.25 * (double)h - 5 * a + 5);
+            }
+            else
+            {
+                bmr = (int)(10 * (double)w + 6.25 * (double)h - 5 * a - 161);
+            }
+
+            var bmi = Math.Round((double)w / Math.Pow((double)h / 100, 2), 1);
+            string bmiCategory = bmi switch
+            {
+                < 18.5 => "Недостаточный вес",
+                >= 18.5 and < 25 => "Нормальный вес",
+                >= 25 and < 30 => "Избыточный вес",
+                >= 30 => "Ожирение"
+            };
+
+            string bmrCategory = bmr switch
+            {
+                < 1200 => "Низкий",
+                >= 1200 and <= 2000 => "Нормальный",
+                > 2000 => "Высокий"
+            };
 
             return $@"Analyze body images. User: {w}kg, {h}cm, {a}y, {g}. IMPORTANT: All text fields must be in Russian. Return JSON only:
 
-{{""bodyAnalysis"":{{""estimatedBodyFatPercentage"":15.0,""estimatedMusclePercentage"":40.0,""bodyType"":""Атлетическое телосложение"",""postureAnalysis"":""Хорошая осанка"",""overallCondition"":""Хорошее состояние"",""bmi"":{Math.Round((double)w / Math.Pow((double)h / 100, 2), 1)},""bmiCategory"":""Нормальный вес"",""estimatedWaistCircumference"":80.0,""estimatedChestCircumference"":100.0,""estimatedHipCircumference"":95.0,""basalMetabolicRate"":{bmr},""metabolicRateCategory"":""Нормальный"",""exerciseRecommendations"":[""Силовые тренировки"",""Кардио упражнения""],""nutritionRecommendations"":[""Сбалансированное питание"",""Достаточное количество белка""],""trainingFocus"":""Общая физическая подготовка""}},""recommendations"":[""Продолжайте тренировки"",""Следите за питанием""],""fullAnalysis"":""Подробный анализ состояния тела на русском языке""}}";
+{{""bodyAnalysis"":{{""estimatedBodyFatPercentage"":15.0,""estimatedMusclePercentage"":40.0,""bodyType"":""Атлетическое телосложение"",""postureAnalysis"":""Хорошая осанка"",""overallCondition"":""Хорошее состояние"",""bmi"":{Math.Round((double)w / Math.Pow((double)h / 100, 2), 1)},""bmiCategory"":""{bmiCategory}"",""estimatedWaistCircumference"":80.0,""estimatedChestCircumference"":100.0,""estimatedHipCircumference"":95.0,""basalMetabolicRate"":{bmr},""metabolicRateCategory"":""{bmrCategory}"",""exerciseRecommendations"":[""Силовые тренировки"",""Кардио упражнения""],""nutritionRecommendations"":[""Сбалансированное питание"",""Достаточное количество белка""],""trainingFocus"":""Общая физическая подготовка""}},""recommendations"":[""Продолжайте тренировки"",""Следите за питанием""],""fullAnalysis"":""Подробный анализ состояния тела на русском языке""}}";
         }
 
         private string CreateVoiceWorkoutPrompt(string? workoutType)
