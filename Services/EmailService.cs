@@ -10,10 +10,12 @@ namespace FitnessTracker.API.Services
 
     public class EmailService : IEmailService
     {
+        private readonly IConfiguration _configuration;
         private readonly ILogger<EmailService> _logger;
 
-        public EmailService(ILogger<EmailService> logger)
+        public EmailService(IConfiguration configuration, ILogger<EmailService> logger)
         {
+            _configuration = configuration;
             _logger = logger;
         }
 
@@ -21,36 +23,42 @@ namespace FitnessTracker.API.Services
         {
             try
             {
-                var username = "fit.api@mail.ru";
-                var password = "1epwTm8IkJRjmDtQBBDB"; // App Password
+                var smtpHost = _configuration["Email:Host"] ?? "smtp.gmail.com";
+                var smtpPort = int.Parse(_configuration["Email:Port"] ?? "587");
+                var username = _configuration["Email:Username"] ?? "noreply@lightweightfit.com";
+                var password = _configuration["Email:Password"] ?? "B46mGUX5hV3u6aQ=";
+                var fromName = _configuration["Email:FromName"] ?? "Fitness Tracker";
+                var fromEmail = _configuration["Email:FromEmail"] ?? "noreply@lightweightfit.com";
 
-                _logger.LogInformation($"📧 Attempting to send email from {username} to {email}");
-                _logger.LogInformation($"🔐 Using password: {password[..4]}****");
+                _logger.LogInformation($"📧 Sending email from {username} to {email}");
 
-                var client = new SmtpClient("smtp.mail.ru", 587)
+                var client = new SmtpClient(smtpHost, smtpPort)
                 {
                     EnableSsl = true,
                     UseDefaultCredentials = false,
                     DeliveryMethod = SmtpDeliveryMethod.Network,
                     Credentials = new NetworkCredential(username, password),
-                    Timeout = 20000
+                    Timeout = 30000
                 };
 
                 var mailMessage = new MailMessage
                 {
-                    From = new MailAddress(username, "Fitness Tracker"),
+                    From = new MailAddress(fromEmail, fromName),
                     Subject = "🏃‍♂️ Verification Code - Fitness Tracker",
                     Body = $@"
-                        Welcome to Fitness Tracker!
-                        
-                        Your verification code is: {code}
-                        
-                        This code expires in 5 minutes.
-                        
-                        If you didn't request this code, please ignore this email.
-                        
-                        Best regards,
-                        Fitness Tracker Team
+Welcome to Fitness Tracker!
+
+Your verification code is: {code}
+
+This code expires in 5 minutes.
+
+If you didn't request this code, please ignore this email.
+
+Best regards,
+Fitness Tracker Team
+
+---
+This email was sent from lightweightfit.com
                     ",
                     IsBodyHtml = false
                 };
@@ -60,15 +68,14 @@ namespace FitnessTracker.API.Services
                 await client.SendMailAsync(mailMessage);
                 client.Dispose();
 
-                _logger.LogInformation($"✅ Email sent successfully to {email}!");
-                Console.WriteLine($"✅ Email sent to {email} with code {code}");
+                _logger.LogInformation($"✅ Email sent successfully from {fromEmail} to {email}!");
+                Console.WriteLine($"✅ Professional email sent to {email} with code {code}");
                 return true;
             }
             catch (Exception ex)
             {
                 _logger.LogError($"❌ SMTP Error: {ex.Message}");
 
-                // Fallback - выводим код для тестирования
                 Console.WriteLine("==================================================");
                 Console.WriteLine($"📧 EMAIL TO: {email}");
                 Console.WriteLine($"🔐 VERIFICATION CODE: {code}");
@@ -77,7 +84,7 @@ namespace FitnessTracker.API.Services
                 Console.WriteLine($"✅ Use this code in /api/auth/confirm-email");
                 Console.WriteLine("==================================================");
 
-                return true; // Возвращаем success для продолжения работы
+                return true; 
             }
         }
     }
