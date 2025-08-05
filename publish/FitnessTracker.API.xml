@@ -1,0 +1,979 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>FitnessTracker.API</name>
+    </assembly>
+    <members>
+        <member name="T:FitnessTracker.API.Controllers.ActivityController">
+            <summary>
+            🏃‍♂️ Управление активностями и тренировками
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.ActivityController.GetActivities(System.String,System.Nullable{System.DateTime},System.Nullable{System.DateTime})">
+            <summary>
+            📋 Получить список активностей с фильтрами
+            </summary>
+            <param name="type">Тип тренировки: "strength" (силовая) или "cardio" (кардио)</param>
+            <param name="startDate">Дата начала периода (YYYY-MM-DD)</param>
+            <param name="endDate">Дата окончания периода (YYYY-MM-DD)</param>
+            <returns>Список активностей пользователя</returns>
+            <response code="200">Список активностей успешно получен</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.ActivityController.AddActivity(FitnessTracker.API.DTOs.AddActivityRequest)">
+            <summary>
+            ➕ Добавить новую тренировку
+            </summary>
+            <param name="request">
+            Данные тренировки. ВАЖНО: 
+            - Для силовой тренировки заполните strengthData
+            - Для кардио тренировки заполните cardioData
+            - Нельзя заполнять оба поля одновременно
+            </param>
+            <returns>Созданная активность</returns>
+            <response code="200">Тренировка успешно добавлена</response>
+            <response code="400">Неверные данные запроса</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.ActivityController.AddSteps(FitnessTracker.API.DTOs.AddStepsRequest)">
+            <summary>
+            👣 Добавить/обновить количество шагов за день
+            </summary>
+            <param name="request">Данные о шагах</param>
+            <returns>Информация о шагах за день</returns>
+            <response code="200">Шаги успешно добавлены/обновлены</response>
+            <response code="400">Неверные данные</response>
+            <response code="401">Требуется авторизация</response>
+            <remarks>
+            Если запись за указанную дату уже существует, она будет обновлена.
+            Это позволяет часто обновлять данные о шагах без создания множественных записей.
+            </remarks>
+            <example>
+            {
+              "steps": 10000,
+              "calories": 500,
+              "date": "2025-06-26T00:00:00Z"
+            }
+            </example>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.ActivityController.GetActivityStats(System.Nullable{System.DateTime},System.Nullable{System.DateTime})">
+            <summary>
+            📊 Получить статистику активностей с общим количеством калорий
+            </summary>
+            <param name="startDate">Дата начала периода (опционально)</param>
+            <param name="endDate">Дата окончания периода (опционально)</param>
+            <returns>Статистика активностей включая общие калории от тренировок и шагов</returns>
+            <response code="200">Статистика успешно получена</response>
+            <response code="401">Требуется авторизация</response>
+            <remarks>
+            Возвращается общее количество калорий и отдельно калории от каждого источника.
+            </remarks>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.ActivityController.GetActivity(System.String)">
+            <summary>
+            🔍 Получить конкретную активность по ID
+            </summary>
+            <param name="activityId">ID активности</param>
+            <returns>Данные активности</returns>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.ActivityController.UpdateActivity(System.String,FitnessTracker.API.DTOs.UpdateActivityRequest)">
+            <summary>
+            ✏️ Обновить активность
+            </summary>
+            <param name="activityId">ID активности</param>
+            <param name="request">Обновленные данные</param>
+            <returns>Обновленная активность</returns>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.ActivityController.DeleteActivity(System.String)">
+            <summary>
+            🗑️ Удалить активность
+            </summary>
+            <param name="activityId">ID активности</param>
+            <returns>Результат удаления</returns>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.ActivityController.GetSteps(System.Nullable{System.DateTime})">
+            <summary>
+            📈 Получить шаги за определенную дату или все шаги
+            </summary>
+            <param name="date">Дата для получения шагов (опционально, по умолчанию - все записи)</param>
+            <returns>Список записей о шагах (одна запись на день)</returns>
+            <remarks>
+            Если указана дата - возвращает шаги за этот день.
+            Если дата не указана - возвращает все дневные записи.
+            </remarks>
+        </member>
+        <member name="T:FitnessTracker.API.Controllers.AIController">
+            <summary>
+            🤖 Контроллер для работы с ИИ функциями (Gemini) с сохранением аудио файлов
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.AIController.VoiceWorkout(Microsoft.AspNetCore.Http.IFormFile,System.String,System.Boolean,System.Boolean)">
+            <summary>
+            🎤 Голосовой ввод тренировки (требует LW Coins) + сохранение аудио
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.AIController.VoiceFood(Microsoft.AspNetCore.Http.IFormFile,System.String,System.Boolean,System.Boolean)">
+            <summary>
+            🗣️ Голосовой ввод питания (требует LW Coins) + сохранение аудио
+            </summary>
+            <param name="audioFile">Аудиофайл с описанием еды</param>
+            <param name="mealType">Тип приема пищи</param>
+            <param name="saveResults">Сохранить результаты в базу данных</param>
+            <param name="saveAudio">Сохранить аудио файл на сервере</param>
+            <returns>Распознанная и структурированная информация о питании + URL аудио</returns>
+            <response code="200">Питание успешно распознано</response>
+            <response code="400">Недостаточно LW Coins или ошибка обработки</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.AIController.ScanFood(Microsoft.AspNetCore.Http.IFormFile,System.String,System.Boolean)">
+            <summary>
+            🍎 Сканирование еды по фото (требует LW Coins)
+            </summary>
+            <param name="image">Изображение еды для анализа</param>
+            <param name="userPrompt">Дополнительные инструкции от пользователя</param>
+            <param name="saveResults">Сохранить результаты в базу данных</param>
+            <returns>Результат анализа еды</returns>
+            <response code="200">Еда успешно проанализирована</response>
+            <response code="400">Недостаточно LW Coins или ошибка обработки</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.AIController.AnalyzeBody(FitnessTracker.API.DTOs.BodyScanRequest)">
+            <summary>
+            💪 Анализ тела по фотографиям
+            </summary>
+            <param name="request">Данные для анализа тела</param>
+            <returns>Результат анализа тела</returns>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.AIController.TextWorkout(FitnessTracker.API.DTOs.TextWorkoutRequest)">
+            <summary>
+            📝 Текстовый ввод тренировки (требует LW Coins)
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.AIController.TextFood(FitnessTracker.API.DTOs.TextFoodRequest)">
+            <summary>
+            📝 Текстовый ввод питания (требует LW Coins)
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.AIController.CorrectFood(FitnessTracker.API.DTOs.FoodCorrectionRequest)">
+            <summary>
+            🔧 Коррекция продукта с указанием ингредиентов/начинки
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.AIController.GetAIStatus">
+            <summary>
+            🧠 Проверка статуса ИИ сервиса
+            </summary>
+            <returns>Статус работы Gemini API</returns>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.AIController.GetUsageStats">
+            <summary>
+            📊 Получить статистику использования ИИ
+            </summary>
+            <returns>Статистика использования ИИ функций пользователем</returns>
+            <response code="200">Статистика получена</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="T:FitnessTracker.API.Controllers.DebugController">
+            <summary>
+            🔧 Контроллер для отладки токенов и пользователей
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.DebugController.CheckToken">
+            <summary>
+            🔍 Проверить токен и пользователя
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.DebugController.CheckUser(System.String)">
+            <summary>
+            👤 Проверить конкретного пользователя
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.Controllers.FoodIntakeController">
+            <summary>
+            🍎 Управление питанием и приемами пищи
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.FoodIntakeController.GetFoodIntakes(System.Nullable{System.DateTime})">
+            <summary>
+            📋 Получить записи питания за день или все записи
+            </summary>
+            <param name="date">Дата в формате YYYY-MM-DD (опционально). Если не указана - возвращает все записи</param>
+            <returns>Список записей питания</returns>
+            <response code="200">Записи питания успешно получены</response>
+            <response code="401">Требуется авторизация</response>
+            <example>
+            GET /api/food-intake?date=2025-06-26
+            </example>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.FoodIntakeController.AddFoodIntake(FitnessTracker.API.DTOs.AddFoodIntakeRequest)">
+            <summary>
+            ➕ Добавить прием пищи с несколькими продуктами
+            </summary>
+            <param name="request">
+            Данные приема пищи. Можно добавить несколько продуктов за раз.
+            tempItemId - опциональный ID для связи с фронтендом
+            weightType - "g" для граммов, "ml" для миллилитров
+            image - опциональная ссылка на изображение продукта
+            </param>
+            <returns>Список добавленных записей</returns>
+            <response code="200">Прием пищи успешно добавлен</response>
+            <response code="400">Неверные данные запроса</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.FoodIntakeController.UpdateFoodIntake(System.String,FitnessTracker.API.DTOs.UpdateFoodIntakeRequest)">
+            <summary>
+            ✏️ Обновить запись о приеме пищи
+            </summary>
+            <param name="foodIntakeId">ID записи питания</param>
+            <param name="request">Обновленные данные</param>
+            <returns>Обновленная запись</returns>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.FoodIntakeController.DeleteFoodIntake(System.String)">
+            <summary>
+            🗑️ Удалить запись о приеме пищи
+            </summary>
+            <param name="foodIntakeId">ID записи питания</param>
+            <returns>Результат удаления</returns>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.FoodIntakeController.ScanFood(Microsoft.AspNetCore.Http.IFormFile,System.String)">
+            <summary>
+            📸 Сканировать продукт по фото (новая реализация с Gemini AI)
+            </summary>
+            <param name="image">Изображение продукта</param>
+            <param name="userPrompt">Дополнительные инструкции от пользователя</param>
+            <returns>Распознанная информация о продукте с URL изображения</returns>
+            <response code="200">Продукт успешно распознан</response>
+            <response code="400">Недостаточно LW Coins или ошибка обработки</response>
+            <response code="401">Требуется авторизация</response>
+            <remarks>
+            ✅ ОБНОВЛЕНО: Теперь использует Gemini AI для более точного распознавания.
+            Эта функция тратит 1 LW Coin за каждое сканирование.
+            Убедитесь что у пользователя достаточно монет или активна премиум подписка.
+            Может распознать несколько блюд на одном изображении.
+            Теперь возвращает URL сохраненного изображения.
+            </remarks>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.FoodIntakeController.AIScanFood(Microsoft.AspNetCore.Http.IFormFile,System.String,System.Boolean)">
+            <summary>
+            🤖 Новый метод: Сканирование с полным ответом от ИИ
+            </summary>
+            <param name="image">Изображение продукта</param>
+            <param name="userPrompt">Дополнительные инструкции</param>
+            <param name="saveResults">Автоматически сохранить результаты</param>
+            <returns>Полный ответ от Gemini AI с URL изображения</returns>
+            <response code="200">Анализ завершен</response>
+            <response code="400">Ошибка обработки</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="T:FitnessTracker.API.Controllers.GoalController">
+            <summary>
+            🎯 Управление целями и ежедневным прогрессом
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.GoalController.GetUserGoals">
+            <summary>
+            📋 Получить все цели пользователя
+            </summary>
+            <returns>Список целей с прогрессом</returns>
+            <response code="200">Список целей успешно получен</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.GoalController.GetActiveGoal">
+            <summary>
+            🎯 Получить активную цель пользователя
+            </summary>
+            <returns>Активная цель с прогрессом за сегодня</returns>
+            <response code="200">Активная цель получена</response>
+            <response code="404">Активная цель не найдена</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.GoalController.CreateGoal(FitnessTracker.API.DTOs.CreateGoalRequest)">
+            <summary>
+            ➕ Создать новую цель
+            </summary>
+            <param name="request">Данные новой цели</param>
+            <returns>Созданная цель</returns>
+            <response code="200">Цель успешно создана</response>
+            <response code="400">Неверные данные запроса</response>
+            <response code="401">Требуется авторизация</response>
+            <remarks>
+            Типы целей:
+            - weight_loss: Похудение
+            - weight_maintain: Поддержание веса  
+            - muscle_gain: Набор мышечной массы
+            
+            При создании новой цели, предыдущие активные цели автоматически деактивируются.
+            </remarks>
+            <example>
+            {
+              "goalType": "weight_loss",
+              "title": "Похудеть к лету",
+              "targetWeight": 70.0,
+              "currentWeight": 80.0,
+              "targetCalories": 1800,
+              "targetStepsPerDay": 10000,
+              "targetWorkoutsPerWeek": 4,
+              "endDate": "2025-08-01T00:00:00Z"
+            }
+            </example>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.GoalController.GetGoal(System.String)">
+            <summary>
+            🔍 Получить конкретную цель по ID
+            </summary>
+            <param name="goalId">ID цели</param>
+            <returns>Данные цели</returns>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.GoalController.UpdateGoal(System.String,FitnessTracker.API.DTOs.UpdateGoalRequest)">
+            <summary>
+            ✏️ Обновить цель
+            </summary>
+            <param name="goalId">ID цели</param>
+            <param name="request">Обновленные данные</param>
+            <returns>Обновленная цель</returns>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.GoalController.DeleteGoal(System.String)">
+            <summary>
+            🗑️ Удалить цель
+            </summary>
+            <param name="goalId">ID цели</param>
+            <returns>Результат удаления</returns>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.GoalController.GetTodayProgress">
+            <summary>
+            📊 Получить прогресс за сегодня
+            </summary>
+            <returns>Прогресс по активной цели за сегодня</returns>
+            <response code="200">Прогресс получен</response>
+            <response code="404">Активная цель не найдена</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.GoalController.GetProgressHistory(System.String,System.Nullable{System.DateTime},System.Nullable{System.DateTime})">
+            <summary>
+            📈 Получить историю прогресса по цели
+            </summary>
+            <param name="goalId">ID цели</param>
+            <param name="startDate">Дата начала периода (опционально)</param>
+            <param name="endDate">Дата окончания периода (опционально)</param>
+            <returns>История прогресса</returns>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.GoalController.UpdateDailyProgress(FitnessTracker.API.DTOs.UpdateDailyProgressRequest)">
+            <summary>
+            📝 Обновить прогресс за день
+            </summary>
+            <param name="request">Данные прогресса</param>
+            <returns>Обновленный прогресс</returns>
+            <response code="200">Прогресс обновлен</response>
+            <response code="400">Ошибка обновления</response>
+            <response code="401">Требуется авторизация</response>
+            <remarks>
+            Система автоматически рассчитывает большинство показателей из активностей и питания.
+            Вручную можно указать только те показатели, которые нужно переопределить.
+            </remarks>
+            <example>
+            {
+              "date": "2025-07-03T00:00:00Z",
+              "actualWeight": 79.5,
+              "manualCalories": 1850,
+              "manualSteps": 12000
+            }
+            </example>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.GoalController.RecalculateProgress(System.DateTime)">
+            <summary>
+            🔄 Пересчитать прогресс за конкретную дату
+            </summary>
+            <param name="date">Дата для пересчета</param>
+            <returns>Результат пересчета</returns>
+            <response code="200">Прогресс пересчитан</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.GoalController.GetGoalTemplates">
+            <summary>
+            📋 Получить шаблоны целей
+            </summary>
+            <returns>Список предустановленных шаблонов целей</returns>
+            <response code="200">Шаблоны получены</response>
+            <remarks>
+            Возвращает готовые шаблоны для трех типов целей:
+            - Похудение (weight_loss)
+            - Поддержание веса (weight_maintain)
+            - Набор мышечной массы (muscle_gain)
+            
+            Каждый шаблон содержит рекомендуемые значения калорий, макросов и активности.
+            </remarks>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.GoalController.GetGoalTemplate(System.String)">
+            <summary>
+            🎯 Получить конкретный шаблон цели
+            </summary>
+            <param name="goalType">Тип цели (weight_loss, weight_maintain, muscle_gain)</param>
+            <returns>Шаблон цели</returns>
+        </member>
+        <member name="T:FitnessTracker.API.Controllers.LwCoinController">
+            <summary>
+            💰 Управление LW Coins и подписками - Тратьте монеты без ограничений!
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.LwCoinController.GetBalance">
+            <summary>
+            💰 Получить баланс LW Coins
+            </summary>
+            <returns>Баланс и информация о подписке</returns>
+            <response code="200">Баланс успешно получен</response>
+            <response code="401">Требуется авторизация</response>
+            <remarks>
+            - Тратьте монеты пока они есть на балансе
+            - Премиум пользователи: безлимитное использование ИИ
+            - Цены: Фото 2.5, Голос 1.5, Текст 1.0 монеты
+            </remarks>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.LwCoinController.SpendCoins(FitnessTracker.API.DTOs.SpendLwCoinsRequest)">
+            <summary>
+            💸 Потратить LW Coins
+            </summary>
+            <param name="request">Данные о трате монет</param>
+            <returns>Результат траты</returns>
+            <response code="200">Монеты успешно потрачены</response>
+            <response code="400">Недостаточно монет на балансе</response>
+            <response code="401">Требуется авторизация</response>
+            <remarks>
+            - Фото-анализ: 2.5 монеты
+            - Голосовой ввод: 1.5 монеты  
+            - Текстовый ввод: 1.0 монета
+            - Тратьте сколько угодно, пока есть баланс
+            - Премиум пользователи: без ограничений
+            </remarks>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.LwCoinController.GetTransactions">
+            <summary>
+            📊 Получить историю транзакций
+            </summary>
+            <returns>История транзакций с дробными монетами</returns>
+            <response code="200">История успешно получена</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.LwCoinController.PurchasePremium(FitnessTracker.API.DTOs.PurchasePremiumRequest)">
+            <summary>
+            👑 Купить премиум подписку
+            </summary>
+            <param name="request">Данные о покупке премиума</param>
+            <returns>Результат покупки</returns>
+            <response code="200">Премиум подписка успешно активирована</response>
+            <response code="400">Ошибка при покупке</response>
+            <response code="401">Требуется авторизация</response>
+            <remarks>
+            Премиум подписка дает безлимитное использование всех AI функций без трат монет.
+            </remarks>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.LwCoinController.PurchaseCoins(FitnessTracker.API.DTOs.PurchaseCoinPackRequest)">
+            <summary>
+            🪙 Купить пакет LW Coins
+            </summary>
+            <param name="request">Данные о покупке пакета монет</param>
+            <returns>Результат покупки</returns>
+            <response code="200">Пакет монет успешно куплен</response>
+            <response code="400">Ошибка при покупке</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.LwCoinController.CheckFeatureLimit(System.String)">
+            <summary>
+            📊 Проверить лимиты использования
+            </summary>
+            <param name="featureType">Тип функции для проверки</param>
+            <returns>Информация о лимитах пользователя</returns>
+            <response code="200">Лимиты успешно получены</response>
+            <response code="401">Требуется авторизация</response>
+            <remarks>
+            ✅ ОБНОВЛЕНО: Больше нет дневных лимитов для трат монет.
+            </remarks>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.LwCoinController.GetPricing">
+            <summary>
+            💲 Получить обновленный прайс-лист
+            </summary>
+            <returns>Актуальные цены с новой ценовой моделью</returns>
+            <response code="200">Прайс-лист получен</response>
+            <remarks>
+            ✅ ОБНОВЛЕНО: Новая ценовая модель согласно требованиям заказчика.
+            </remarks>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.LwCoinController.ForceMonthlyRefill">
+            <summary>
+            </summary>
+            <returns>Результат обновления</returns>
+            <response code="200">Пополнение выполнено</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="T:FitnessTracker.API.Controllers.MissionController">
+            <summary>
+            🎯 Управление миссиями и достижениями
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.MissionController.GetMissions">
+            <summary>
+            📋 Получить список активных миссий пользователя
+            </summary>
+            <returns>Список миссий с прогрессом выполнения</returns>
+            <response code="200">Список миссий успешно получен</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.MissionController.GetAchievements">
+            <summary>
+            🏆 Получить список достижений пользователя
+            </summary>
+            <returns>Список достижений с прогрессом разблокировки</returns>
+            <response code="200">Список достижений успешно получен</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.MissionController.UpdateMissionProgress(System.String,System.Int32)">
+            <summary>
+            🎯 Обновить прогресс миссии вручную (для тестирования)
+            </summary>
+            <param name="missionType">Тип миссии для обновления</param>
+            <param name="increment">Количество для увеличения прогресса</param>
+            <returns>Результат обновления</returns>
+            <response code="200">Прогресс успешно обновлен</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="T:FitnessTracker.API.Controllers.SkinController">
+            <summary>
+            🎨 Управление скинами
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.SkinController.GetAllSkins">
+            <summary>
+            📋 Получить все доступные скины
+            </summary>
+            <returns>Список всех скинов с информацией о владении и experience boost</returns>
+            <response code="200">Список скинов успешно получен</response>
+            <response code="401">Требуется авторизация</response>
+            <example>
+            Возвращает:
+            [
+              {
+                "id": "skin_athlete",
+                "name": "Атлет", 
+                "cost": 200,
+                "imageUrl": "https://example.com/skins/athlete.png",
+                "description": "Скин для настоящих спортсменов",
+                "isOwned": false,
+                "experienceBoost": 1.1,
+                "tier": 1,
+                "isActive": false
+              },
+              {
+                "id": "skin_machine",
+                "name": "Машина",
+                "cost": 500,
+                "imageUrl": "https://example.com/skins/machine.png", 
+                "description": "Скин для тех, кто работает как машина",
+                "isOwned": false,
+                "experienceBoost": 1.5,
+                "tier": 2,
+                "isActive": false
+              },
+              {
+                "id": "skin_superhuman",
+                "name": "Сверхчеловек",
+                "cost": 2000,
+                "imageUrl": "https://example.com/skins/superhuman.png",
+                "description": "Скин для сверхлюдей", 
+                "isOwned": false,
+                "experienceBoost": 2.0,
+                "tier": 3,
+                "isActive": false
+              }
+            ]
+            </example>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.SkinController.GetUserSkins">
+            <summary>
+            👤 Получить скины пользователя
+            </summary>
+            <returns>Список скинов, которыми владеет пользователь</returns>
+            <response code="200">Список скинов пользователя успешно получен</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.SkinController.PurchaseSkin(FitnessTracker.API.DTOs.PurchaseSkinRequest)">
+            <summary>
+            💰 Купить скин за LW Coins
+            </summary>
+            <param name="request">Данные для покупки скина</param>
+            <returns>Результат покупки</returns>
+            <response code="200">Скин успешно куплен</response>
+            <response code="400">Недостаточно LW Coins или скин уже куплен</response>
+            <response code="401">Требуется авторизация</response>
+            <example>
+            {
+              "skinId": "skin_athlete"
+            }
+            </example>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.SkinController.ActivateSkin(FitnessTracker.API.DTOs.ActivateSkinRequest)">
+            <summary>
+            ⚡ Активировать скин для получения experience boost
+            </summary>
+            <param name="request">Данные для активации скина</param>
+            <returns>Результат активации</returns>
+            <response code="200">Скин успешно активирован</response>
+            <response code="400">Скин не найден или не принадлежит пользователю</response>
+            <response code="401">Требуется авторизация</response>
+            <remarks>
+            ✅ НОВОЕ: Активация скина дает буст к получаемому опыту:
+            - Tier 1 скины: 1.1x буст (10% больше опыта)
+            - Tier 2 скины: 1.5x буст (50% больше опыта)  
+            - Tier 3 скины: 2.0x буст (100% больше опыта)
+            Одновременно может быть активен только один скин.
+            </remarks>
+            <example>
+            {
+              "skinId": "skin_athlete"
+            }
+            </example>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.SkinController.GetActiveSkin">
+            <summary>
+            🌟 Получить активный скин пользователя
+            </summary>
+            <returns>Активный скин с информацией о буст опыта</returns>
+            <response code="200">Активный скин получен</response>
+            <response code="404">У пользователя нет активного скина</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.SkinController.GetExperienceBoost">
+            <summary>
+            📈 Получить текущий буст опыта
+            </summary>
+            <returns>Текущий множитель опыта от активного скина</returns>
+            <response code="200">Буст опыта получен</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="T:FitnessTracker.API.Controllers.VoiceFilesController">
+            <summary>
+            🎤 Управление голосовыми файлами пользователей
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.VoiceFilesController.GetUserVoiceFiles">
+            <summary>
+            📋 Получить список всех голосовых файлов пользователя
+            </summary>
+            <returns>Список голосовых файлов с URL для скачивания</returns>
+            <response code="200">Список файлов успешно получен</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <!-- Badly formed XML comment ignored for member "M:FitnessTracker.API.Controllers.VoiceFilesController.GetAllVoiceFiles(System.Int32,System.Int32,System.String,System.String)" -->
+        <member name="M:FitnessTracker.API.Controllers.VoiceFilesController.GetVoiceFilesStats">
+            <summary>
+            📊 Статистика голосовых файлов пользователя
+            </summary>
+            <returns>Детальная статистика по голосовым файлам</returns>
+            <response code="200">Статистика успешно получена</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.VoiceFilesController.GetGlobalVoiceFilesStats">
+            <summary>
+            📊 Глобальная статистика всех голосовых файлов на сервере
+            </summary>
+            <returns>Общая статистика по всем файлам</returns>
+            <response code="200">Глобальная статистика получена</response>
+            <response code="401">Требуется авторизация</response>
+            <remarks>
+            Показывает статистику по всем пользователям:
+            - Общее количество файлов
+            - Размер всех файлов
+            - Распределение по типам
+            - Статистика по дням/месяцам
+            </remarks>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.VoiceFilesController.CleanupOldFiles(System.Int32)">
+            <summary>
+            🧹 Очистить старые голосовые файлы (admin only)
+            </summary>
+            <param name="maxAgeDays">Максимальный возраст файлов в днях (по умолчанию 30 дней)</param>
+            <returns>Количество удаленных файлов</returns>
+            <response code="200">Очистка выполнена успешно</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.VoiceFilesController.SearchVoiceFiles(System.String,System.Nullable{System.DateTime},System.Nullable{System.DateTime},System.Int32,System.Int32)">
+            <summary>
+            🔍 Поиск голосовых файлов с фильтрами (только для текущего пользователя)
+            </summary>
+            <param name="voiceType">Тип голосовых файлов: "workout" или "food" (опционально)</param>
+            <param name="startDate">Дата начала периода (опционально)</param>
+            <param name="endDate">Дата окончания периода (опционально)</param>
+            <param name="page">Номер страницы (по умолчанию 1)</param>
+            <param name="pageSize">Количество файлов на странице (по умолчанию 20)</param>
+            <returns>Отфильтрованный список голосовых файлов с пагинацией</returns>
+            <response code="200">Поиск выполнен успешно</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.VoiceFilesController.GetFilesByType(System.String)">
+            <summary>
+            📂 Получить файлы по типу
+            </summary>
+            <param name="voiceType">Тип файлов: "workout" или "food"</param>
+            <returns>Список файлов указанного типа</returns>
+            <response code="200">Файлы найдены</response>
+            <response code="400">Неверный тип файлов</response>
+            <response code="401">Требуется авторизация</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.VoiceFilesController.DownloadVoiceFile(System.String)">
+            <summary>
+            📥 Скачать голосовой файл по ID
+            </summary>
+            <param name="fileId">Уникальный идентификатор файла</param>
+            <returns>Аудио файл для скачивания</returns>
+            <response code="200">Файл найден и возвращается для скачивания</response>
+            <response code="404">Файл не найден</response>
+            <response code="401">Требуется авторизация</response>
+            <response code="403">Файл принадлежит другому пользователю</response>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.VoiceFilesController.DownloadAnyVoiceFile(System.String)">
+            <summary>
+            📥 Скачать любой голосовой файл по ID (для администраторов)
+            </summary>
+            <param name="fileId">Уникальный идентификатор файла</param>
+            <returns>Аудио файл для скачивания</returns>
+            <response code="200">Файл найден и возвращается для скачивания</response>
+            <response code="404">Файл не найден</response>
+            <response code="401">Требуется авторизация</response>
+            <remarks>
+            ✅ НОВОЕ: Позволяет скачать любой файл на сервере, 
+            не ограничиваясь файлами текущего пользователя.
+            Полезно для администрирования и резервного копирования.
+            </remarks>
+        </member>
+        <member name="M:FitnessTracker.API.Controllers.VoiceFilesController.DeleteVoiceFile(System.String)">
+            <summary>
+            🗑️ Удалить голосовой файл
+            </summary>
+            <param name="fileId">Уникальный идентификатор файла</param>
+            <returns>Результат удаления</returns>
+            <response code="200">Файл успешно удален</response>
+            <response code="404">Файл не найден</response>
+            <response code="401">Требуется авторизация</response>
+            <response code="403">Файл принадлежит другому пользователю</response>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.ScanFoodResponse">
+            <summary>
+            📸 Ответ на сканирование еды (legacy)
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.FoodScanResponse">
+            <summary>
+            🍎 Ответ на анализ еды
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.ScanFoodResponseWithImage">
+            <summary>
+            🍎 Ответ с дополнительным URL изображения
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.FoodItemResponse">
+            <summary>
+            🍎 Элемент еды в ответе
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.BodyScanResponse">
+            <summary>
+            💪 Ответ на анализ тела
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.BodyAnalysisDto">
+            <summary>
+            💪 Анализ тела
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.VoiceWorkoutResponse">
+            <summary>
+            🎤 Ответ на голосовой ввод тренировки
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.VoiceFoodResponse">
+            <summary>
+            🗣️ Ответ на голосовой ввод еды
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.GeminiRequest">
+            <summary>
+            📤 Запрос к Gemini API
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.GeminiResponse">
+            <summary>
+            📥 Ответ от Gemini API
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.GeminiContent">
+            <summary>
+            📄 Контент для Gemini
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.GeminiPart">
+            <summary>
+            🧩 Часть контента (текст или изображение)
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.GeminiInlineData">
+            <summary>
+            📎 Встроенные данные (изображения, аудио)
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.GeminiCandidate">
+            <summary>
+            🎯 Кандидат ответа
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.GeminiGenerationConfig">
+            <summary>
+            ⚙️ Конфигурация генерации
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.GeminiSafetySetting">
+            <summary>
+            🛡️ Настройки безопасности
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.GeminiSafetyRating">
+            <summary>
+            🛡️ Рейтинг безопасности
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.GeminiUsageMetadata">
+            <summary>
+            📊 Метаданные использования
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.BodyScanRequest">
+            <summary>
+            📸 Запрос на анализ тела
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.GoalDto">
+            <summary>
+            🎯 DTO для отображения цели
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.CreateGoalRequest">
+            <summary>
+            ➕ Запрос на создание цели
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.UpdateGoalRequest">
+            <summary>
+            ✏️ Запрос на обновление цели
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.DailyGoalProgressDto">
+            <summary>
+            📊 DTO для ежедневного прогресса
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.UpdateDailyProgressRequest">
+            <summary>
+            📈 Обновление прогресса за день
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.DTOs.GoalTemplateDto">
+            <summary>
+            📋 Предустановленные шаблоны целей
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.Models.Goal">
+            <summary>
+            🎯 Цели пользователя (похудение, сохранение веса, набор массы)
+            </summary>
+        </member>
+        <member name="T:FitnessTracker.API.Models.DailyGoalProgress">
+            <summary>
+            📊 Ежедневный прогресс по целям
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.LwCoinService.SpendLwCoinsAsync(System.String,System.Int32,System.String,System.String,System.String)">
+            <summary>
+            Пользователь может тратить монеты пока они есть на балансе
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.LwCoinService.GetActionCost(System.String)">
+            <summary>
+            Получение стоимости действия
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.LwCoinService.GetUserFractionalBalanceAsync(System.String)">
+            <summary>
+            Получение дробного баланса пользователя
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.LwCoinService.DeductFractionalCoinsAsync(System.String,System.Decimal)">
+            <summary>
+            Списание дробных монет
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.LwCoinService.GetTodayUsageAsync(System.String)">
+            <summary>
+            ✅ ОБНОВЛЕНО: Получение использования монет за сегодня (только для статистики)
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.LwCoinService.CreateTransactionAsync(System.String,System.Int32,System.Decimal,System.String,System.String,System.String,System.Nullable{System.Decimal},System.String)">
+            <summary>
+            Создание транзакции
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.MissionService.CalculateMissionProgressAsync(System.String,System.String,System.Int32)">
+            <summary>
+            📊 Рассчитываем актуальный прогресс миссии на основе данных пользователя
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.MissionService.CalculateBreakfastCaloriesAsync(System.String,System.DateTime)">
+            <summary>
+            🔥 Подсчет калорий на завтрак (6:00-11:00) с учетом фактического веса
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.MissionService.CalculateDailyStepsAsync(System.String,System.DateTime)">
+            <summary>
+            🚶‍♂️ Подсчет шагов за сегодня
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.MissionService.CalculateWeeklyBodyScanAsync(System.String)">
+            <summary>
+            💪 Проверка сканирования тела на этой неделе
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.MissionService.CheckAndUpdateAllMissionsAsync(System.String)">
+            <summary>
+            🎯 Обновление прогресса для специфических миссий
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.VoiceFileService.GetAllVoiceFilesAsync">
+            <summary>
+            🌍 НОВОЕ: Получить ВСЕ голосовые файлы на сервере (от всех пользователей)
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.VoiceFileService.GetAllFilesFromFolder(System.String,System.String)">
+            <summary>
+            🌍 НОВОЕ: Получить все файлы из папки (от всех пользователей)
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.VoiceFileService.DownloadAnyVoiceFileAsync(System.String)">
+            <summary>
+            🌍 НОВОЕ: Скачать любой голосовой файл по ID (для администраторов)
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.VoiceFileService.GetGlobalVoiceFilesStatsAsync">
+            <summary>
+            🌍 НОВОЕ: Получить глобальную статистику всех голосовых файлов
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.VoiceFileService.FindAnyFile(System.String)">
+            <summary>
+            🌍 НОВОЕ: Найти любой файл по ID
+            </summary>
+        </member>
+        <member name="M:FitnessTracker.API.Services.VoiceFileService.ExtractUserIdFromFileName(System.String)">
+            <summary>
+            🌍 НОВОЕ: Извлечь UserId из имени файла
+            </summary>
+        </member>
+    </members>
+</doc>

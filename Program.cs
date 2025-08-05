@@ -54,7 +54,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "🏃‍♂️ Fitness Tracker API с Universal AI",
         Version = "v3.0.0",
-        Description = "Полнофункциональный API для фитнес-трекера с универсальной AI архитектурой (Vertex AI Gemini 1.5 Flash + OpenAI + другие)"
+        Description = "Полнофункциональный API для фитнес-трекера с универсальной AI архитектурой (Vertex AI Gemini 2.5 Flash + OpenAI + другие)"
     });
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -110,7 +110,7 @@ builder.Services.AddAutoMapper(typeof(Program));
 
 builder.Services.AddHttpClient<VertexAIProvider>(client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(45); 
+    client.Timeout = TimeSpan.FromSeconds(45);
     client.DefaultRequestHeaders.Add("User-Agent", "FitnessTracker-API/3.0.0");
 });
 
@@ -232,6 +232,23 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader()
             .AllowCredentials();
     });
+
+    // ✅ НОВАЯ ПОЛИТИКА для поддомена
+    options.AddPolicy("Production", policy =>
+    {
+        policy
+            .WithOrigins(
+                "https://lightweightfit.com",
+                "http://lightweightfit.com",
+                "https://api.lightweightfit.com",
+                "http://api.lightweightfit.com",
+                "https://www.lightweightfit.com",
+                "http://www.lightweightfit.com"
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .WithExposedHeaders("*");
+    });
 });
 
 builder.Services.Configure<IISServerOptions>(options =>
@@ -343,27 +360,27 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "🏃‍♂️ Fitness Tracker API v3.0.0 with Gemini 2.5 Flash");
+    c.RoutePrefix = "swagger";
+    c.DefaultModelsExpandDepth(-1);
+    c.DisplayRequestDuration();
+    c.EnableFilter();
+    c.DefaultModelRendering(Swashbuckle.AspNetCore.SwaggerUI.ModelRendering.Example);
+    c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
+    c.EnableDeepLinking();
+    c.ShowExtensions();
+});
+
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "🏃‍♂️ Fitness Tracker API v3.0.0 with Gemini 1.5 Flash");
-        c.RoutePrefix = "swagger";
-        c.DefaultModelsExpandDepth(-1);
-        c.DisplayRequestDuration();
-        c.EnableFilter();
-        c.DefaultModelRendering(Swashbuckle.AspNetCore.SwaggerUI.ModelRendering.Example);
-        c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
-        c.EnableDeepLinking();
-        c.ShowExtensions();
-    });
-
     app.UseCors("Development");
 }
 else
 {
-    app.UseCors("AllowAll");
+    app.UseCors("Production");
 }
 
 var uploadsPath = Path.Combine(app.Environment.WebRootPath ?? app.Environment.ContentRootPath, "uploads");
@@ -462,6 +479,14 @@ Console.WriteLine($"📚 Docs: {url}/api/docs");
 Console.WriteLine($"🤖 AI Status: {url}/api/ai/status");
 Console.WriteLine($"🔑 JWT Secret: {JWT_SECRET_KEY[..20]}...");
 Console.WriteLine("✅ Updated to Gemini 2.5 Flash - latest and greatest AI model!");
+
+Console.WriteLine("");
+Console.WriteLine("🌐 DOMAIN CONFIGURATION:");
+Console.WriteLine($"   Primary Domain: lightweightfit.com → Vercel (Landing)");
+Console.WriteLine($"   API Subdomain: api.lightweightfit.com:60170 → This Server");
+Console.WriteLine($"   Email Domain: noreply@lightweightfit.com → Google Workspace SMTP");
+Console.WriteLine($"   Swagger URL: http://api.lightweightfit.com:60170/swagger");
+Console.WriteLine("✅ Professional domain setup complete!");
 
 try
 {
