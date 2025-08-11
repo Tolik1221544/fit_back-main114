@@ -14,14 +14,18 @@ namespace FitnessTracker.API.Models
         public int? Calories { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        // JSON fields for database storage
-        public string? StrengthDataJson { get; set; }
-        public string? CardioDataJson { get; set; }
+        public string? ActivityDataJson { get; set; }
+        public string? StrengthDataJson { get; set; } 
+        public string? CardioDataJson { get; set; } 
 
-        // Navigation property
         public User User { get; set; } = null!;
 
-        // Computed properties for StrengthData and CardioData
+        public ActivityData? ActivityData
+        {
+            get => string.IsNullOrEmpty(ActivityDataJson) ? null : JsonSerializer.Deserialize<ActivityData>(ActivityDataJson);
+            set => ActivityDataJson = value == null ? null : JsonSerializer.Serialize(value);
+        }
+
         public StrengthData? StrengthData
         {
             get => string.IsNullOrEmpty(StrengthDataJson) ? null : JsonSerializer.Deserialize<StrengthData>(StrengthDataJson);
@@ -33,7 +37,33 @@ namespace FitnessTracker.API.Models
             get => string.IsNullOrEmpty(CardioDataJson) ? null : JsonSerializer.Deserialize<CardioData>(CardioDataJson);
             set => CardioDataJson = value == null ? null : JsonSerializer.Serialize(value);
         }
+    }
 
+    public class ActivityData
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Category { get; set; }
+        public string? MuscleGroup { get; set; }
+        public string? Equipment { get; set; }
+
+        public decimal? Weight { get; set; }
+        public int? RestTimeSeconds { get; set; }
+        public List<ActivitySet>? Sets { get; set; }
+
+        public decimal? Distance { get; set; }
+        public string? AvgPace { get; set; }
+        public int? AvgPulse { get; set; }
+        public int? MaxPulse { get; set; }
+
+        public int? Count { get; set; }
+    }
+
+    public class ActivitySet
+    {
+        public int SetNumber { get; set; }
+        public decimal? Weight { get; set; }
+        public int Reps { get; set; }
+        public bool IsCompleted { get; set; } = true;
     }
 
     public class StrengthData
@@ -43,11 +73,9 @@ namespace FitnessTracker.API.Models
         public string Equipment { get; set; } = string.Empty;
         public decimal WorkingWeight { get; set; }
         public int RestTimeSeconds { get; set; }
-
         public List<StrengthSet> Sets { get; set; } = new List<StrengthSet>();
         public int TotalSets => Sets.Count;
         public int TotalReps => Sets.Sum(s => s.Reps);
-
         public PlankData? PlankData { get; set; }
     }
 

@@ -23,9 +23,13 @@ namespace FitnessTracker.API.Mapping
 
             // Activity mappings
             CreateMap<Activity, ActivityDto>()
-                .ForMember(dest => dest.StrengthData, opt => opt.MapFrom(src => src.StrengthData))
-                .ForMember(dest => dest.CardioData, opt => opt.MapFrom(src => src.CardioData));
-            CreateMap<ActivityDto, Activity>();
+                .ForMember(dest => dest.ActivityData, opt => opt.MapFrom(src => src.ActivityData));
+            
+            CreateMap<ActivityData, ActivityDataDto>();
+            CreateMap<ActivityDataDto, ActivityData>();
+
+            CreateMap<ActivitySet, ActivitySetDto>();
+            CreateMap<ActivitySetDto, ActivitySet>();
 
             CreateMap<StrengthData, StrengthDataDto>();
             CreateMap<StrengthDataDto, StrengthData>();

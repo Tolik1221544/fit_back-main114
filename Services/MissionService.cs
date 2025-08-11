@@ -128,17 +128,34 @@ namespace FitnessTracker.API.Services
 
             return missionType switch
             {
-                // 🔥 Миссия "Съешь 500ккал на завтрак"
                 "breakfast_calories" => await CalculateBreakfastCaloriesAsync(userId, today),
 
-                // 🚶‍♂️ Миссия "Пройди 5000 шагов"
                 "daily_steps" => await CalculateDailyStepsAsync(userId, today),
 
-                // 💪 Миссия "Скан тела каждую неделю"
                 "weekly_body_scan" => await CalculateWeeklyBodyScanAsync(userId),
+
+                "body_scan_count" => await CalculateTotalBodyScansAsync(userId),
 
                 _ => 0
             };
+        }
+
+        private async Task<int> CalculateTotalBodyScansAsync(string userId)
+        {
+            try
+            {
+                var bodyScans = await _bodyScanRepository.GetByUserIdAsync(userId);
+                var totalCount = bodyScans.Count();
+
+                _logger.LogInformation($"💪 Total body scans for user {userId}: {totalCount}");
+
+                return totalCount;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error calculating total body scans for user {userId}: {ex.Message}");
+                return 0;
+            }
         }
 
         /// <summary>

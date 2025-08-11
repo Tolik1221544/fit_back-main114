@@ -10,6 +10,8 @@ namespace FitnessTracker.API.Services
         private readonly IBodyScanRepository _bodyScanRepository;
         private readonly IUserRepository _userRepository;
         private readonly IExperienceService _experienceService;
+        private readonly IMissionService _missionService; 
+        private readonly IGoalService _goalService;
         private readonly IMapper _mapper;
         private readonly ILogger<BodyScanService> _logger;
 
@@ -17,12 +19,16 @@ namespace FitnessTracker.API.Services
             IBodyScanRepository bodyScanRepository,
             IUserRepository userRepository,
             IExperienceService experienceService,
+            IMissionService missionService, 
+            IGoalService goalService, 
             IMapper mapper,
             ILogger<BodyScanService> logger)
         {
             _bodyScanRepository = bodyScanRepository;
             _userRepository = userRepository;
             _experienceService = experienceService;
+            _missionService = missionService; 
+            _goalService = goalService; 
             _mapper = mapper;
             _logger = logger;
         }
@@ -75,7 +81,7 @@ namespace FitnessTracker.API.Services
                 FrontImageUrl = request.FrontImageUrl,
                 SideImageUrl = request.SideImageUrl,
                 BackImageUrl = request.BackImageUrl,
-                Weight = currentWeight, 
+                Weight = currentWeight,
                 BodyFatPercentage = request.BodyFatPercentage,
                 MusclePercentage = request.MusclePercentage,
                 WaistCircumference = request.WaistCircumference,
@@ -93,10 +99,15 @@ namespace FitnessTracker.API.Services
             {
                 await _experienceService.AddExperienceAsync(userId, 75, "body_scan",
                     $"Body scan completed (Weight: {currentWeight}kg, BMR: {bodyScan.BasalMetabolicRate} kcal)");
+
+                await _goalService.RecalculateDailyProgressAsync(userId, DateTime.UtcNow.Date);
+
+                await _missionService.UpdateMissionProgressAsync(userId, "body_scan", 1);
+                await _missionService.UpdateMissionProgressAsync(userId, "weekly_body_scan", 1);
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error adding experience for body scan: {ex.Message}");
+                _logger.LogError($"Error updating progress after body scan: {ex.Message}");
             }
 
             _logger.LogInformation($"✅ Body scan created for user {userId} - Weight: {currentWeight}kg, BMR: {bodyScan.BasalMetabolicRate} kcal ({bmrCategory})");
@@ -213,18 +224,15 @@ namespace FitnessTracker.API.Services
 
         private int CalculateBasalMetabolicRate(decimal weight, decimal height, int age, string gender)
         {
-            // Формула Миффлина-Сан Жеора
             double weightKg = (double)weight;
             double heightCm = (double)height;
 
             if (gender?.ToLowerInvariant().Contains("male") == true && !gender.ToLowerInvariant().Contains("female"))
             {
-                // Мужчины: BMR = 10 × вес(кг) + 6.25 × рост(см) - 5 × возраст + 5
                 return (int)Math.Round(10 * weightKg + 6.25 * heightCm - 5 * age + 5);
             }
             else
             {
-                // Женщины: BMR = 10 × вес(кг) + 6.25 × рост(см) - 5 × возраст - 161
                 return (int)Math.Round(10 * weightKg + 6.25 * heightCm - 5 * age - 161);
             }
         }
@@ -256,5 +264,6 @@ namespace FitnessTracker.API.Services
 
             return currValue > prevValue ? "Улучшился" : "Ухудшился";
         }
+
     }
 }

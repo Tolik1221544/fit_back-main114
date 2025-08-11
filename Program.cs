@@ -396,8 +396,8 @@ app.UseStaticFiles(new StaticFileOptions
     RequestPath = "/uploads",
     OnPrepareResponse = ctx =>
     {
-        ctx.Context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
-        ctx.Context.Response.Headers.Add("Cache-Control", "public,max-age=3600");
+        ctx.Context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
+        ctx.Context.Response.Headers.Append("Cache-Control", "public,max-age=3600");
     }
 });
 

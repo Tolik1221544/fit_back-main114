@@ -312,14 +312,60 @@ CRITICAL: Return ONLY the JSON object, no other text.";
 
         private string CreateVoiceWorkoutPrompt(string? workoutType)
         {
-            return @"Transcribe Russian workout audio. Determine workout type by exercises mentioned:
+            return @"Transcribe Russian workout audio and analyze the workout. Return ONLY JSON format:
 
-STRENGTH exercises: жим, приседания, отжимания, планка, подтягивания, качание пресса, махи, выпады, становая тяга
-CARDIO exercises: бег, велосипед, кардио, ходьба, плавание, скакалка, прыжки
+For STRENGTH exercises (жим, приседания, отжимания, планка, подтягивания, качание пресса, махи, выпады, становая тяга):
+{
+  ""transcribedText"": ""what you heard"",
+  ""workoutData"": {
+    ""type"": ""strength"",
+    ""startDate"": """ + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") + @""",
+    ""endDate"": """ + DateTime.UtcNow.AddMinutes(30).ToString("yyyy-MM-ddTHH:mm:ssZ") + @""",
+    ""estimatedCalories"": 200,
+    ""activityData"": {
+      ""name"": ""Exercise name"",
+      ""category"": ""Strength"",
+      ""muscleGroup"": ""грудь"",
+      ""equipment"": null,
+      ""weight"": 50.0,
+      ""restTimeSeconds"": 90,
+      ""sets"": [
+        {""setNumber"": 1, ""weight"": 50.0, ""reps"": 10, ""isCompleted"": true}
+      ],
+      ""count"": 10
+    }
+  }
+}
 
-Return JSON only:
+For CARDIO exercises (бег, велосипед, кардио, ходьба, плавание, скакалка, прыжки):
+{
+  ""transcribedText"": ""what you heard"",
+  ""workoutData"": {
+    ""type"": ""cardio"",
+    ""startDate"": """ + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") + @""",
+    ""endDate"": """ + DateTime.UtcNow.AddMinutes(30).ToString("yyyy-MM-ddTHH:mm:ssZ") + @""",
+    ""estimatedCalories"": 300,
+    ""activityData"": {
+      ""name"": ""Exercise name"",
+      ""category"": ""Cardio"",
+      ""equipment"": null,
+      ""distance"": 5.0,
+      ""avgPace"": ""5:00/km"",
+      ""avgPulse"": 140,
+      ""maxPulse"": 160,
+      ""count"": null
+    }
+  }
+}
 
-{""transcribedText"":""what you heard"",""workoutData"":{""type"":""strength"",""startTime"":""" + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") + @""",""endTime"":""" + DateTime.UtcNow.AddMinutes(30).ToString("yyyy-MM-ddTHH:mm:ssZ") + @""",""estimatedCalories"":200,""strengthData"":{""name"":""Exercise"",""muscleGroup"":""Muscles"",""equipment"":""None"",""workingWeight"":50,""restTimeSeconds"":90,""sets"":[{""setNumber"":1,""weight"":50,""reps"":10,""isCompleted"":true,""notes"":""Done""}]},""notes"":[""Recorded""]}}";
+RULES:
+- muscleGroup: только ""грудь"", ""руки"", ""спина"", ""ноги""
+- Если поле не используется - null, НЕ ""None"" или ""Не указано""
+- count: для отжиманий = сумма всех reps, для кардио = null
+- weight: для отжиманий = null
+- distance: всегда в км
+
+Return ONLY JSON, no other text.";
         }
 
         private string CreateVoiceFoodPrompt(string? mealType)
@@ -365,33 +411,62 @@ CRITICAL: Return ONLY the JSON object above, nothing else.";
         {
             return $@"Analyze this workout description: ""{workoutText}""
 
-Workout type: {workoutType ?? "auto-detect"}
+Determine if STRENGTH or CARDIO and return NEW FORMAT:
 
-Return ONLY this JSON:
+For STRENGTH:
 {{
   ""processedText"": ""Processed description"",
   ""workoutData"": {{
     ""type"": ""strength"",
-    ""startTime"": ""2025-07-23T17:00:00Z"",
-    ""endTime"": ""2025-07-23T17:45:00Z"",
-    ""estimatedCalories"": 200,
-    ""strengthData"": {{
+    ""startDate"": ""2025-07-23T17:00:00Z"",
+    ""endDate"": ""2025-07-23T17:45:00Z"",
+    ""estimatedCalories"": 250,
+    ""activityData"": {{
       ""name"": ""Exercise name"",
-      ""muscleGroup"": ""Target muscles"",
-      ""equipment"": ""Equipment"",
-      ""workingWeight"": 40.0,
+      ""category"": ""Strength"",
+      ""muscleGroup"": ""грудь"",
+      ""equipment"": null,
+      ""weight"": 40.0,
       ""restTimeSeconds"": 90,
       ""sets"": [{{
         ""setNumber"": 1,
         ""weight"": 40.0,
         ""reps"": 12,
-        ""isCompleted"": true,
-        ""notes"": ""Set completed""
-      }}]
-    }},
-    ""notes"": [""Workout logged""]
+        ""isCompleted"": true
+      }}],
+      ""count"": 12
+    }}
   }}
-}}";
+}}
+
+For CARDIO:
+{{
+  ""processedText"": ""Processed description"",
+  ""workoutData"": {{
+    ""type"": ""cardio"",
+    ""startDate"": ""2025-07-23T17:00:00Z"",
+    ""endDate"": ""2025-07-23T18:00:00Z"",
+    ""estimatedCalories"": 400,
+    ""activityData"": {{
+      ""name"": ""Exercise name"",
+      ""category"": ""Cardio"",
+      ""equipment"": null,
+      ""distance"": 5.0,
+      ""avgPace"": ""5:30/km"",
+      ""avgPulse"": 145,
+      ""maxPulse"": 165,
+      ""count"": null
+    }}
+  }}
+}}
+
+RULES:
+- muscleGroup: только ""грудь"", ""руки"", ""спина"", ""ноги""
+- Пустые поля = null, НЕ ""None""
+- count = сумма reps для strength, null для cardio
+- distance всегда в км
+
+Return ONLY JSON.";
         }
 
         private string CreateTextFoodPrompt(string foodText, string? mealType)
@@ -825,116 +900,153 @@ CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction.
             }
         }
 
+        private ActivityDataDto ConvertFromOldStrengthData(StrengthDataDto oldData)
+        {
+            return new ActivityDataDto
+            {
+                Name = oldData.Name,
+                MuscleGroup = oldData.MuscleGroup,
+                Equipment = oldData.Equipment,
+                Weight = oldData.WorkingWeight,
+                RestTimeSeconds = oldData.RestTimeSeconds,
+                Sets = oldData.Sets?.Select(s => new ActivitySetDto
+                {
+                    SetNumber = s.SetNumber,
+                    Weight = s.Weight,
+                    Reps = s.Reps,
+                    IsCompleted = s.IsCompleted
+                }).ToList(),
+                Count = oldData.TotalReps
+            };
+        }
+
+        private ActivityDataDto ConvertFromOldCardioData(CardioDataDto oldData)
+        {
+            return new ActivityDataDto
+            {
+                Name = oldData.CardioType,
+                Distance = oldData.DistanceKm,
+                AvgPace = oldData.AvgPace,
+                AvgPulse = oldData.AvgPulse,
+                MaxPulse = oldData.MaxPulse,
+                Count = oldData.JumpRopeData?.JumpCount
+            };
+        }
+
         private VoiceWorkoutResponse ParseVoiceWorkoutResponse(string responseText, string? workoutType)
         {
             try
             {
-                _logger.LogInformation($"🎤 Raw Gemini response: {responseText}");
+                var jsonText = ExtractJsonFromResponse(responseText);
+                if (string.IsNullOrEmpty(jsonText))
+                    return CreateFallbackWorkoutResponse("No JSON found", workoutType);
 
-                using var document = JsonDocument.Parse(responseText);
+                using var document = JsonDocument.Parse(jsonText);
                 var root = document.RootElement;
 
-                string fullText = "";
-
-                if (root.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
+                var response = new VoiceWorkoutResponse
                 {
-                    var firstCandidate = candidates[0];
+                    Success = true,
+                    TranscribedText = GetString(root, "transcribedText")
+                };
 
-                    if (firstCandidate.TryGetProperty("finishReason", out var finishReason))
-                    {
-                        var reason = finishReason.GetString();
-                        _logger.LogInformation($"🎤 Finish reason: {reason}");
-
-                        if (reason == "MAX_TOKENS")
-                        {
-                            _logger.LogWarning($"🎤 Response was cut off due to MAX_TOKENS limit");
-                            return CreateFallbackWorkoutResponse("Response cut off - MAX_TOKENS limit reached", workoutType);
-                        }
-                    }
-
-                    if (firstCandidate.TryGetProperty("content", out var content))
-                    {
-                        if (content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
-                        {
-                            var firstPart = parts[0];
-                            if (firstPart.TryGetProperty("text", out var textProperty))
-                            {
-                                fullText = textProperty.GetString() ?? "";
-                            }
-                        }
-                        else
-                        {
-                            _logger.LogWarning($"🎤 No 'parts' field found in content");
-                            return CreateFallbackWorkoutResponse("No parts field in response", workoutType);
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogWarning($"🎤 No 'content' field found in candidate");
-                        return CreateFallbackWorkoutResponse("No content field in response", workoutType);
-                    }
-                }
-                else
+                if (root.TryGetProperty("workoutData", out var workoutData))
                 {
-                    _logger.LogWarning($"🎤 No 'candidates' field found or empty");
-                    return CreateFallbackWorkoutResponse("No candidates in response", workoutType);
-                }
-
-                _logger.LogInformation($"🎤 Extracted text: {fullText}");
-
-                if (string.IsNullOrEmpty(fullText))
-                {
-                    _logger.LogWarning($"🎤 Empty text extracted from response");
-                    return CreateFallbackWorkoutResponse("Empty response text", workoutType);
-                }
-
-                var jsonStart = fullText.IndexOf('{');
-                var jsonEnd = fullText.LastIndexOf('}');
-
-                if (jsonStart >= 0 && jsonEnd > jsonStart)
-                {
-                    var jsonText = fullText.Substring(jsonStart, jsonEnd - jsonStart + 1);
-                    _logger.LogInformation($"🎤 Extracted JSON: {jsonText}");
-
-                    using var workoutDoc = JsonDocument.Parse(jsonText);
-                    var jsonRoot = workoutDoc.RootElement;
-
-                    var response = new VoiceWorkoutResponse
+                    response.WorkoutData = new WorkoutDataResponse
                     {
-                        Success = true,
-                        TranscribedText = GetString(jsonRoot, "transcribedText")
+                        Type = GetString(workoutData, "type", "strength"),
+                        StartDate = GetDateTime(workoutData, "startDate"),  
+                        EndDate = GetNullableDateTime(workoutData, "endDate"), 
+                        EstimatedCalories = GetInt(workoutData, "estimatedCalories"),
+                        Notes = GetStringArray(workoutData, "notes")
                     };
 
-                    if (jsonRoot.TryGetProperty("workoutData", out var workoutData))
+                    if (workoutData.TryGetProperty("activityData", out var activityData))
                     {
-                        response.WorkoutData = new WorkoutDataResponse
-                        {
-                            Type = GetString(workoutData, "type", "strength"),
-                            StartTime = GetDateTime(workoutData, "startTime"),
-                            EndTime = GetDateTime(workoutData, "endTime"),
-                            EstimatedCalories = GetInt(workoutData, "estimatedCalories"),
-                            Notes = GetStringArray(workoutData, "notes")
-                        };
-
-                        if (workoutData.TryGetProperty("strengthData", out var strengthData))
-                        {
-                            response.WorkoutData.StrengthData = ParseStrengthData(strengthData);
-                        }
+                        response.WorkoutData.ActivityData = ParseActivityData(activityData);
                     }
+                }
 
-                    return response;
-                }
-                else
-                {
-                    _logger.LogWarning($"🎤 No JSON found in response text");
-                    return CreateFallbackWorkoutResponse("No JSON found in response", workoutType);
-                }
+                return response;
             }
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Voice workout parse error: {ex.Message}");
                 return CreateFallbackWorkoutResponse($"Parse error: {ex.Message}", workoutType);
             }
+        }
+
+        private ActivityDataDto ParseActivityData(JsonElement activityData)
+        {
+            var result = new ActivityDataDto
+            {
+                Name = GetString(activityData, "name"),
+                Category = GetNullableString(activityData, "category"),
+                Equipment = GetNullableString(activityData, "equipment"),
+                Count = GetNullableInt(activityData, "count")
+            };
+
+            // Strength fields
+            result.MuscleGroup = GetNullableString(activityData, "muscleGroup");
+            result.Weight = GetNullableDecimal(activityData, "weight");
+            result.RestTimeSeconds = GetNullableInt(activityData, "restTimeSeconds");
+
+            if (activityData.TryGetProperty("sets", out var setsArray))
+            {
+                result.Sets = ParseSets(setsArray);
+            }
+
+            // Cardio fields
+            result.Distance = GetNullableDecimal(activityData, "distance");
+            result.AvgPace = GetNullableString(activityData, "avgPace");
+            result.AvgPulse = GetNullableInt(activityData, "avgPulse");
+            result.MaxPulse = GetNullableInt(activityData, "maxPulse");
+
+            return result;
+        }
+
+        // Helper methods для nullable values
+        private string? GetNullableString(JsonElement element, string propertyName)
+        {
+            if (element.TryGetProperty(propertyName, out var prop))
+            {
+                if (prop.ValueKind == JsonValueKind.Null) return null;
+                var value = prop.GetString();
+                return string.IsNullOrEmpty(value) ? null : value;
+            }
+            return null;
+        }
+
+        private int? GetNullableInt(JsonElement element, string propertyName)
+        {
+            if (element.TryGetProperty(propertyName, out var prop))
+            {
+                if (prop.ValueKind == JsonValueKind.Null) return null;
+                if (prop.TryGetInt32(out var intValue)) return intValue;
+            }
+            return null;
+        }
+
+        private decimal? GetNullableDecimal(JsonElement element, string propertyName)
+        {
+            if (element.TryGetProperty(propertyName, out var prop))
+            {
+                if (prop.ValueKind == JsonValueKind.Null) return null;
+                if (prop.TryGetDecimal(out var decimalValue)) return decimalValue;
+            }
+            return null;
+        }
+
+        private DateTime? GetNullableDateTime(JsonElement element, string propertyName)
+        {
+            if (element.TryGetProperty(propertyName, out var prop))
+            {
+                if (prop.ValueKind == JsonValueKind.Null) return null;
+                var dateString = prop.GetString();
+                if (!string.IsNullOrEmpty(dateString) && DateTime.TryParse(dateString, out var parsedDate))
+                    return parsedDate;
+            }
+            return null;
         }
 
         private string FixInvalidJson(string jsonText)
@@ -1038,21 +1150,72 @@ CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction.
 
                 if (root.TryGetProperty("workoutData", out var workoutData))
                 {
+                    var type = GetString(workoutData, "type", "strength");
+
                     response.WorkoutData = new WorkoutDataResponse
                     {
-                        Type = GetString(workoutData, "type", "strength"),
+                        Type = type,
                         StartTime = GetDateTime(workoutData, "startTime"),
                         EndTime = GetDateTime(workoutData, "endTime"),
                         EstimatedCalories = GetInt(workoutData, "estimatedCalories"),
                         Notes = GetStringArray(workoutData, "notes")
                     };
 
-                    if (workoutData.TryGetProperty("strengthData", out var strengthData))
+                    if (workoutData.TryGetProperty("activityData", out var activityData))
+                    {
+                        response.WorkoutData.ActivityData = new ActivityDataDto
+                        {
+                            Name = GetString(activityData, "name"),
+                            Category = GetString(activityData, "category"),
+                            Equipment = GetString(activityData, "equipment", "Нет"),
+                            Distance = GetNullableDecimal(activityData, "distance"),
+                            AvgPace = GetString(activityData, "avgPace"),
+                            AvgPulse = GetNullableInt(activityData, "avgPulse"),
+                            MaxPulse = GetNullableInt(activityData, "maxPulse"),
+                            Count = GetNullableInt(activityData, "count")
+                        };
+
+                        if (type == "cardio")
+                        {
+                            response.WorkoutData.CardioData = new CardioDataDto
+                            {
+                                CardioType = GetString(activityData, "name", "Кардио"),
+                                DistanceKm = GetNullableDecimal(activityData, "distance"),
+                                AvgPace = GetString(activityData, "avgPace"),
+                                AvgPulse = GetNullableInt(activityData, "avgPulse"),
+                                MaxPulse = GetNullableInt(activityData, "maxPulse")
+                            };
+                        }
+                        else if (type == "strength")
+                        {
+                            response.WorkoutData.StrengthData = new StrengthDataDto
+                            {
+                                Name = GetString(activityData, "name", "Упражнение"),
+                                MuscleGroup = GetString(activityData, "muscleGroup", "Общая группа"),
+                                Equipment = GetString(activityData, "equipment", "Нет"),
+                                WorkingWeight = 0,
+                                RestTimeSeconds = 90,
+                                Sets = new List<StrengthSetDto>()
+                            };
+
+                            var count = GetNullableInt(activityData, "count");
+                            if (count > 0)
+                            {
+                                response.WorkoutData.StrengthData.Sets.Add(new StrengthSetDto
+                                {
+                                    SetNumber = 1,
+                                    Weight = 0,
+                                    Reps = count.Value,
+                                    IsCompleted = true
+                                });
+                            }
+                        }
+                    }
+                    else if (workoutData.TryGetProperty("strengthData", out var strengthData) && type == "strength")
                     {
                         response.WorkoutData.StrengthData = ParseStrengthData(strengthData);
                     }
-
-                    if (workoutData.TryGetProperty("cardioData", out var cardioData))
+                    else if (workoutData.TryGetProperty("cardioData", out var cardioData) && type == "cardio")
                     {
                         response.WorkoutData.CardioData = ParseCardioData(cardioData);
                     }
@@ -1485,45 +1648,53 @@ CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction.
         private VoiceWorkoutResponse CreateFallbackWorkoutResponse(string reason, string? workoutType)
         {
             var type = workoutType?.ToLowerInvariant() == "cardio" ? "cardio" : "strength";
-            var startTime = DateTime.UtcNow;
-            var endTime = startTime.AddMinutes(type == "cardio" ? 30 : 45);
+            var startDate = DateTime.UtcNow;
+            var endDate = startDate.AddMinutes(type == "cardio" ? 30 : 45);
 
             var workoutData = new WorkoutDataResponse
             {
                 Type = type,
-                StartTime = startTime,
-                EndTime = endTime,
+                StartDate = startDate,  
+                EndDate = endDate,      
                 EstimatedCalories = type == "cardio" ? 200 : 250,
                 Notes = new List<string> { $"Автоматически созданная тренировка ({reason})" }
             };
 
             if (type == "strength")
             {
-                workoutData.StrengthData = new StrengthDataDto
+                workoutData.ActivityData = new ActivityDataDto
                 {
                     Name = "Базовое упражнение",
-                    MuscleGroup = "Общая группа мышц",
-                    Equipment = "Собственный вес",
-                    WorkingWeight = 0,
+                    Category = "Strength",
+                    MuscleGroup = "грудь",
+                    Equipment = null,
+                    Weight = null,
                     RestTimeSeconds = 120,
                     Sets = new List<StrengthSetDto>
-                    {
-                        new StrengthSetDto
-                        {
-                            SetNumber = 1,
-                            Weight = 0,
-                            Reps = 10,
-                            IsCompleted = true,
-                            Notes = "Базовый подход"
-                        }
-                    }
+            {
+                new StrengthSetDto
+                {
+                    SetNumber = 1,
+                    Weight = 0,
+                    Reps = 10,
+                    IsCompleted = true
+                }
+            },
+                    Count = 10
                 };
             }
             else
             {
-                workoutData.CardioData = new CardioDataDto
+                workoutData.ActivityData = new ActivityDataDto
                 {
-                    CardioType = "Общее кардио"
+                    Name = "Общее кардио",
+                    Category = "Cardio",
+                    Equipment = null,
+                    Distance = null,
+                    AvgPace = null,
+                    AvgPulse = null,
+                    MaxPulse = null,
+                    Count = null
                 };
             }
 

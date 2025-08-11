@@ -263,32 +263,87 @@ namespace FitnessTracker.API.Services
 
         public async Task RecalculateDailyProgressAsync(string userId, DateTime date)
         {
-            var activeGoal = await _goalRepository.GetActiveUserGoalAsync(userId);
-            if (activeGoal == null) return;
-
-            var progress = await _goalRepository.GetDailyProgressByDateAsync(userId, activeGoal.Id, date);
-            if (progress == null)
+            try
             {
-                progress = new DailyGoalProgress
+                var goal = await _goalRepository.GetActiveUserGoalAsync(userId);
+                if (goal == null) return;
+
+                var progress = await _goalRepository.GetDailyProgressByDateAsync(userId, goal.Id, date.Date);
+                if (progress == null)
                 {
-                    GoalId = activeGoal.Id,
-                    UserId = userId,
-                    Date = date.Date
-                };
+                    progress = new DailyGoalProgress
+                    {
+                        GoalId = goal.Id,
+                        UserId = userId,
+                        Date = date.Date
+                    };
+                }
+
+                // Подсчет калорий из питания
+                var foodIntakes = await _foodIntakeRepository.GetByUserIdAndDateAsync(userId, date);
+                var totalCalories = foodIntakes.Sum(f => (f.NutritionPer100g.Calories * f.Weight) / 100);
+                var totalProtein = foodIntakes.Sum(f => (f.NutritionPer100g.Proteins * f.Weight) / 100);
+                var totalFats = foodIntakes.Sum(f => (f.NutritionPer100g.Fats * f.Weight) / 100);
+                var totalCarbs = foodIntakes.Sum(f => (f.NutritionPer100g.Carbs * f.Weight) / 100);
+
+                progress.ActualCalories = (int)Math.Round(totalCalories);
+                progress.ActualProtein = totalProtein;
+                progress.ActualFats = totalFats;
+                progress.ActualCarbs = totalCarbs;
+
+                // Подсчет активностей
+                var activities = await _activityRepository.GetByUserIdAsync(userId);
+                var dayActivities = activities.Where(a => a.StartDate.Date == date.Date);
+                progress.ActualWorkouts = dayActivities.Count();
+
+                // Подсчет шагов
+                var steps = await _stepsRepository.GetByUserIdAndDateAsync(userId, date);
+                progress.ActualSteps = steps?.StepsCount ?? 0;
+
+                // Рассчитываем прогресс
+                progress.CaloriesProgress = goal.TargetCalories > 0
+                    ? Math.Min(100, (decimal)progress.ActualCalories / goal.TargetCalories.Value * 100) : 0;
+                progress.ProteinProgress = goal.TargetProtein > 0
+                    ? Math.Min(100, progress.ActualProtein / goal.TargetProtein.Value * 100) : 0;
+                progress.FatsProgress = goal.TargetFats > 0
+                    ? Math.Min(100, progress.ActualFats / goal.TargetFats.Value * 100) : 0;
+                progress.CarbsProgress = goal.TargetCarbs > 0
+                    ? Math.Min(100, progress.ActualCarbs / goal.TargetCarbs.Value * 100) : 0;
+                progress.StepsProgress = goal.TargetStepsPerDay > 0
+                    ? Math.Min(100, (decimal)progress.ActualSteps / goal.TargetStepsPerDay.Value * 100) : 0;
+                progress.WorkoutProgress = goal.TargetWorkoutsPerWeek > 0
+                    ? Math.Min(100, (decimal)progress.ActualWorkouts / (goal.TargetWorkoutsPerWeek.Value / 7m) * 100) : 0;
+
+                // Общий прогресс
+                var progressValues = new List<decimal>();
+                if (goal.TargetCalories > 0) progressValues.Add(progress.CaloriesProgress);
+                if (goal.TargetProtein > 0) progressValues.Add(progress.ProteinProgress);
+                if (goal.TargetFats > 0) progressValues.Add(progress.FatsProgress);
+                if (goal.TargetCarbs > 0) progressValues.Add(progress.CarbsProgress);
+                if (goal.TargetStepsPerDay > 0) progressValues.Add(progress.StepsProgress);
+                if (goal.TargetWorkoutsPerWeek > 0) progressValues.Add(progress.WorkoutProgress);
+
+                progress.OverallProgress = progressValues.Any() ? progressValues.Average() : 0;
+                progress.IsCompleted = progress.OverallProgress >= 80;
+
+                if (progress.Id == null)
+                {
+                    await _goalRepository.CreateDailyProgressAsync(progress);
+                }
+                else
+                {
+                    await _goalRepository.UpdateDailyProgressAsync(progress);
+                }
+
+                _logger.LogInformation($"Recalculated progress for user {userId} on {date:yyyy-MM-dd}");
             }
-
-            // Автоматически рассчитываем все значения
-            await CalculateAutoValues(progress, userId, date);
-            CalculateProgressPercentages(progress, activeGoal);
-
-            // Сохраняем
-            if (string.IsNullOrEmpty(progress.Id))
-                await _goalRepository.CreateDailyProgressAsync(progress);
-            else
-                await _goalRepository.UpdateDailyProgressAsync(progress);
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error recalculating progress: {ex.Message}");
+                throw;
+            }
         }
 
-        // Templates
         public async Task<IEnumerable<GoalTemplateDto>> GetGoalTemplatesAsync()
         {
             return await Task.FromResult(new List<GoalTemplateDto>
