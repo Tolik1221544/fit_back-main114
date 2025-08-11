@@ -1541,45 +1541,6 @@ CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction.
             }
         }
 
-        private int? GetNullableInt(JsonElement element, string propertyName)
-        {
-            try
-            {
-                if (element.TryGetProperty(propertyName, out var prop))
-                {
-                    if (prop.ValueKind == JsonValueKind.Number && prop.TryGetInt32(out var intValue))
-                        return intValue;
-                    if (prop.ValueKind == JsonValueKind.String && int.TryParse(prop.GetString(), out var parsedInt))
-                        return parsedInt;
-                }
-                return null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private decimal? GetNullableDecimal(JsonElement element, string propertyName)
-        {
-            try
-            {
-                if (element.TryGetProperty(propertyName, out var prop))
-                {
-                    if (prop.ValueKind == JsonValueKind.Number && prop.TryGetDecimal(out var decimalValue))
-                        return decimalValue;
-                    if (prop.ValueKind == JsonValueKind.String && decimal.TryParse(prop.GetString(), out var parsedDecimal))
-                        return parsedDecimal;
-                }
-                return null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        // FALLBACK МЕТОДЫ
         private FoodScanResponse CreateErrorFoodResponse(string reason)
         {
             return new FoodScanResponse
@@ -1651,52 +1612,39 @@ CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction.
             var startDate = DateTime.UtcNow;
             var endDate = startDate.AddMinutes(type == "cardio" ? 30 : 45);
 
-            var workoutData = new WorkoutDataResponse
+            var workoutData = new ActivityDto
             {
+                Id = Guid.NewGuid().ToString(),
                 Type = type,
-                StartDate = startDate,  
-                EndDate = endDate,      
-                EstimatedCalories = type == "cardio" ? 200 : 250,
-                Notes = new List<string> { $"Автоматически созданная тренировка ({reason})" }
-            };
-
-            if (type == "strength")
-            {
-                workoutData.ActivityData = new ActivityDataDto
+                StartDate = startDate,
+                EndDate = endDate,
+                Calories = type == "cardio" ? 200 : 250,
+                CreatedAt = DateTime.UtcNow,
+                ActivityData = new ActivityDataDto
                 {
-                    Name = "Базовое упражнение",
-                    Category = "Strength",
-                    MuscleGroup = "грудь",
+                    Name = type == "strength" ? "Базовое упражнение" : "Общее кардио",
+                    Category = type == "strength" ? "Strength" : "Cardio",
                     Equipment = null,
+                    Count = type == "strength" ? 10 : null,
+                    MuscleGroup = type == "strength" ? "грудь" : null,
                     Weight = null,
-                    RestTimeSeconds = 120,
-                    Sets = new List<StrengthSetDto>
+                    RestTimeSeconds = type == "strength" ? 120 : null,
+                    Sets = type == "strength" ? new List<ActivitySetDto>
             {
-                new StrengthSetDto
+                new ActivitySetDto
                 {
                     SetNumber = 1,
-                    Weight = 0,
+                    Weight = null,
                     Reps = 10,
                     IsCompleted = true
                 }
-            },
-                    Count = 10
-                };
-            }
-            else
-            {
-                workoutData.ActivityData = new ActivityDataDto
-                {
-                    Name = "Общее кардио",
-                    Category = "Cardio",
-                    Equipment = null,
+            } : null,
                     Distance = null,
                     AvgPace = null,
                     AvgPulse = null,
-                    MaxPulse = null,
-                    Count = null
-                };
-            }
+                    MaxPulse = null
+                }
+            };
 
             return new VoiceWorkoutResponse
             {

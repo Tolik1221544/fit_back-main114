@@ -10,6 +10,7 @@ namespace FitnessTracker.API.Services
         Task<ActivityDto> UpdateActivityAsync(string userId, string activityId, UpdateActivityRequest request);
         Task DeleteActivityAsync(string userId, string activityId);
         Task<object> GetActivityStatsAsync(string userId, DateTime? startDate = null, DateTime? endDate = null);
+
         Task<StepsDto> AddStepsAsync(string userId, AddStepsRequest request);
         Task<IEnumerable<StepsDto>> GetUserStepsAsync(string userId, DateTime? date = null);
     }

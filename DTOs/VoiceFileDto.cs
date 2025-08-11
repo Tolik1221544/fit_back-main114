@@ -49,7 +49,7 @@
         public bool Success { get; set; }
         public string? ErrorMessage { get; set; }
         public string? TranscribedText { get; set; }
-        public WorkoutDataResponse? WorkoutData { get; set; }
+        public ActivityDto? WorkoutData { get; set; }
 
         public string? AudioUrl { get; set; }
         public string? AudioFileId { get; set; }

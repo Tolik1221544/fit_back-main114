@@ -1,10 +1,11 @@
 namespace FitnessTracker.API.DTOs
 {
-    public class TextWorkoutRequest
+    public class TextWorkoutResponse
     {
-        public string WorkoutDescription { get; set; } = string.Empty;
-        public string? WorkoutType { get; set; }
-        public bool SaveResults { get; set; } = false;
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+        public string ProcessedText { get; set; } = string.Empty;
+        public ActivityDto? WorkoutData { get; set; }
     }
 
     public class TextFoodRequest

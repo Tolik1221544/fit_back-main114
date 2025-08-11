@@ -87,7 +87,7 @@ namespace FitnessTracker.API.DTOs
         public bool Success { get; set; }
         public string? ErrorMessage { get; set; }
         public string? TranscribedText { get; set; }
-        public WorkoutDataResponse? WorkoutData { get; set; }
+        public ActivityDto? WorkoutData { get; set; } 
     }
 
     /// <summary>

@@ -105,25 +105,11 @@ namespace FitnessTracker.API.Controllers
         /// </summary>
         /// <param name="request">Данные о шагах</param>
         /// <returns>Информация о шагах за день</returns>
-        /// <response code="200">Шаги успешно добавлены/обновлены</response>
-        /// <response code="400">Неверные данные</response>
-        /// <response code="401">Требуется авторизация</response>
-        /// <remarks>
-        /// Если запись за указанную дату уже существует, она будет обновлена.
-        /// Это позволяет часто обновлять данные о шагах без создания множественных записей.
-        /// </remarks>
-        /// <example>
-        /// {
-        ///   "steps": 10000,
-        ///   "calories": 500,
-        ///   "date": "2025-06-26T00:00:00Z"
-        /// }
-        /// </example>
         [HttpPost("steps")]
-        [ProducesResponseType(typeof(StepsDto), 200)]
+        [ProducesResponseType(typeof(DTOs.StepsDto), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]
-        public async Task<IActionResult> AddSteps([FromBody] AddStepsRequest request)
+        public async Task<IActionResult> AddSteps([FromBody] DTOs.AddStepsRequest request)
         {
             try
             {
@@ -259,12 +245,8 @@ namespace FitnessTracker.API.Controllers
         /// </summary>
         /// <param name="date">Дата для получения шагов (опционально, по умолчанию - все записи)</param>
         /// <returns>Список записей о шагах (одна запись на день)</returns>
-        /// <remarks>
-        /// Если указана дата - возвращает шаги за этот день.
-        /// Если дата не указана - возвращает все дневные записи.
-        /// </remarks>
         [HttpGet("steps")]
-        [ProducesResponseType(typeof(IEnumerable<StepsDto>), 200)]
+        [ProducesResponseType(typeof(IEnumerable<DTOs.StepsDto>), 200)]
         [ProducesResponseType(401)]
         public async Task<IActionResult> GetSteps([FromQuery] DateTime? date = null)
         {
@@ -282,5 +264,6 @@ namespace FitnessTracker.API.Controllers
                 return BadRequest(new { error = ex.Message });
             }
         }
+
     }
 }

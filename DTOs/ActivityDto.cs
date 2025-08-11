@@ -57,4 +57,20 @@
         public bool IsCompleted { get; set; } = true;
     }
 
+    public class StepsDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string UserId { get; set; } = string.Empty;
+        public int StepsCount { get; set; }
+        public int? Calories { get; set; }
+        public DateTime Date { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+
+    public class AddStepsRequest
+    {
+        public int Steps { get; set; }
+        public int? Calories { get; set; }
+        public DateTime Date { get; set; } = DateTime.UtcNow.Date;
+    }
 }

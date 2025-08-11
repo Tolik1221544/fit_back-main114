@@ -254,53 +254,44 @@ namespace FitnessTracker.API.Services.AI
             };
         }
 
-        private WorkoutDataResponse CreateDefaultWorkoutData(string reason, string type)
+        private ActivityDto CreateDefaultWorkoutData(string reason, string type)
         {
             var startTime = DateTime.UtcNow;
             var endTime = startTime.AddMinutes(type == "cardio" ? 30 : 45);
 
-            var workout = new WorkoutDataResponse
+            var workout = new ActivityDto
             {
+                Id = Guid.NewGuid().ToString(),
                 Type = type,
-                StartTime = startTime,
-                EndTime = endTime,
-                EstimatedCalories = type == "cardio" ? 200 : 250,
-                Notes = new List<string> { $"Автоматически созданная тренировка ({reason})" }
+                StartDate = startTime,
+                EndDate = endTime,
+                Calories = type == "cardio" ? 200 : 250,
+                CreatedAt = DateTime.UtcNow,
+                ActivityData = new ActivityDataDto
+                {
+                    Name = type == "strength" ? "Базовое упражнение" : "Общее кардио",
+                    Category = type == "strength" ? "Strength" : "Cardio",
+                    Equipment = type == "strength" ? "Собственный вес" : null,
+                    Count = type == "strength" ? 10 : null,
+                    MuscleGroup = type == "strength" ? "грудь" : null,
+                    Weight = type == "strength" ? null : null,
+                    RestTimeSeconds = type == "strength" ? 120 : null,
+                    Sets = type == "strength" ? new List<ActivitySetDto>
+            {
+                new ActivitySetDto
+                {
+                    SetNumber = 1,
+                    Weight = null,
+                    Reps = 10,
+                    IsCompleted = true
+                }
+            } : null,
+                    Distance = type == "cardio" ? null : null,
+                    AvgPace = type == "cardio" ? null : null,
+                    AvgPulse = type == "cardio" ? null : null,
+                    MaxPulse = type == "cardio" ? null : null
+                }
             };
-
-            if (type == "strength")
-            {
-                workout.StrengthData = new StrengthDataDto
-                {
-                    Name = "Базовое упражнение",
-                    MuscleGroup = "Общая группа мышц",
-                    Equipment = "Собственный вес",
-                    WorkingWeight = 0,
-                    RestTimeSeconds = 120,
-                    Sets = new List<StrengthSetDto>
-                    {
-                        new StrengthSetDto
-                        {
-                            SetNumber = 1,
-                            Weight = 0,
-                            Reps = 10,
-                            IsCompleted = true,
-                            Notes = "Базовый подход"
-                        }
-                    }
-                };
-            }
-            else
-            {
-                workout.CardioData = new CardioDataDto
-                {
-                    CardioType = "Общее кардио",
-                    DistanceKm = null,
-                    AvgPulse = null,
-                    MaxPulse = null,
-                    AvgPace = ""
-                };
-            }
 
             return workout;
         }
