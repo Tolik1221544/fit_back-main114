@@ -8,6 +8,7 @@ namespace FitnessTracker.API.Mapping
     {
         public MappingProfile()
         {
+            // User mappings
             CreateMap<User, UserDto>()
                 .ForMember(dest => dest.MaxExperience, opt => opt.Ignore())
                 .ForMember(dest => dest.ExperienceToNextLevel, opt => opt.Ignore())
@@ -21,29 +22,14 @@ namespace FitnessTracker.API.Mapping
             CreateMap<NutritionPer100g, NutritionPer100gDto>();
             CreateMap<NutritionPer100gDto, NutritionPer100g>();
 
-            // Activity mappings
             CreateMap<Activity, ActivityDto>()
                 .ForMember(dest => dest.ActivityData, opt => opt.MapFrom(src => src.ActivityData));
-            
+
             CreateMap<ActivityData, ActivityDataDto>();
             CreateMap<ActivityDataDto, ActivityData>();
 
             CreateMap<ActivitySet, ActivitySetDto>();
             CreateMap<ActivitySetDto, ActivitySet>();
-
-            CreateMap<StrengthData, StrengthDataDto>();
-            CreateMap<StrengthDataDto, StrengthData>();
-            CreateMap<StrengthSet, StrengthSetDto>();
-            CreateMap<StrengthSetDto, StrengthSet>();
-
-            CreateMap<CardioData, CardioDataDto>();
-            CreateMap<CardioDataDto, CardioData>();
-           
-            CreateMap<PlankData, PlankDataDto>();
-            CreateMap<PlankDataDto, PlankData>();
-
-            CreateMap<JumpRopeData, JumpRopeDataDto>();
-            CreateMap<JumpRopeDataDto, JumpRopeData>();
 
             // Steps mappings
             CreateMap<Steps, StepsDto>();
@@ -59,6 +45,7 @@ namespace FitnessTracker.API.Mapping
             CreateMap<BodyScan, BodyScanDto>();
             CreateMap<BodyScanDto, BodyScan>();
 
+            // Skin mappings
             CreateMap<Skin, SkinDto>()
                 .ForMember(dest => dest.IsOwned, opt => opt.Ignore())
                 .ForMember(dest => dest.IsActive, opt => opt.Ignore());
@@ -77,7 +64,7 @@ namespace FitnessTracker.API.Mapping
                 .ForMember(dest => dest.IsPremium, opt => opt.Ignore()) // Will be set manually
                 .ForMember(dest => dest.Status, opt => opt.Ignore()); // Will be set manually
 
-            // ✅ НОВЫЕ МАППИНГИ: Goal mappings
+            // Goal mappings
             CreateMap<Goal, GoalDto>()
                 .ForMember(dest => dest.TodayProgress, opt => opt.Ignore()) // Will be set manually
                 .ForMember(dest => dest.TotalDays, opt => opt.Ignore()) // Will be calculated

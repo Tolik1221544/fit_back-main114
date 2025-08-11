@@ -75,107 +75,87 @@ namespace FitnessTracker.API.Services
                     UserId = userId,
                     Type = activityType,
                     StartDate = request.StartDate,
-                    StartTime = request.StartTime ?? request.StartDate,
-                    EndDate = request.EndDate ?? request.StartDate,
-                    EndTime = request.EndTime ?? request.EndDate ?? request.StartDate.AddMinutes(30),
+                    EndDate = request.EndDate ?? request.StartDate.AddMinutes(30),
                     Calories = request.Calories ?? CalculateCalories(request),
                     CreatedAt = DateTime.UtcNow
                 };
 
                 if (request.ActivityData != null)
                 {
+                    if (string.IsNullOrWhiteSpace(request.ActivityData.Name))
+                        throw new ArgumentException("Activity name is required");
+
                     var activityData = new ActivityData
                     {
-                        Name = request.ActivityData.Name ?? "Упражнение",
-                        Category = request.ActivityData.Category,
-                        Equipment = request.ActivityData.Equipment ?? "Нет",
-                        Count = request.ActivityData.Count
+                        Name = request.ActivityData.Name.Trim(),
+                        Category = request.ActivityData.Category?.Trim(),
+                        Equipment = string.IsNullOrWhiteSpace(request.ActivityData.Equipment) ? null : request.ActivityData.Equipment.Trim()
                     };
 
                     if (activityType == "strength")
                     {
-                        activityData.MuscleGroup = request.ActivityData.MuscleGroup ?? "Общая группа";
-                        activityData.Weight = request.ActivityData.Weight;
-                        activityData.RestTimeSeconds = request.ActivityData.RestTimeSeconds ?? 90;
+                        var validMuscleGroups = new[] { "грудь", "руки", "спина", "ноги" };
+                        if (!string.IsNullOrEmpty(request.ActivityData.MuscleGroup) &&
+                            !validMuscleGroups.Contains(request.ActivityData.MuscleGroup.ToLowerInvariant()))
+                        {
+                            throw new ArgumentException("MuscleGroup должен быть одним из: грудь, руки, спина, ноги");
+                        }
+
+                        activityData.MuscleGroup = string.IsNullOrWhiteSpace(request.ActivityData.MuscleGroup) ? null : request.ActivityData.MuscleGroup.Trim();
+                        activityData.Weight = request.ActivityData.Weight > 0 ? request.ActivityData.Weight : null;
+                        activityData.RestTimeSeconds = request.ActivityData.RestTimeSeconds > 0 ? request.ActivityData.RestTimeSeconds : null;
 
                         if (request.ActivityData.Sets?.Any() == true)
                         {
-                            activityData.Sets = request.ActivityData.Sets.Select((s, i) => new ActivitySet
+                            var validSets = new List<ActivitySet>();
+                            int totalReps = 0;
+
+                            foreach (var setDto in request.ActivityData.Sets)
                             {
-                                SetNumber = s.SetNumber > 0 ? s.SetNumber : i + 1,
-                                Weight = s.Weight,
-                                Reps = s.Reps,
-                                IsCompleted = s.IsCompleted
-                            }).ToList();
+                                if (setDto.Reps <= 0) continue; 
+
+                                validSets.Add(new ActivitySet
+                                {
+                                    SetNumber = setDto.SetNumber > 0 ? setDto.SetNumber : validSets.Count + 1,
+                                    Weight = setDto.Weight > 0 ? setDto.Weight : null, 
+                                    Reps = setDto.Reps,
+                                    IsCompleted = setDto.IsCompleted
+                                });
+
+                                totalReps += setDto.Reps;
+                            }
+
+                            activityData.Sets = validSets;
+                            activityData.Count = totalReps; 
+                        }
+                        else
+                        {
+                            if (request.ActivityData.Count > 0)
+                            {
+                                activityData.Sets = new List<ActivitySet>
+                        {
+                            new ActivitySet
+                            {
+                                SetNumber = 1,
+                                Weight = request.ActivityData.Weight > 0 ? request.ActivityData.Weight : null,
+                                Reps = request.ActivityData.Count.Value,
+                                IsCompleted = true
+                            }
+                        };
+                                activityData.Count = request.ActivityData.Count;
+                            }
                         }
                     }
                     else if (activityType == "cardio")
                     {
-                        activityData.Distance = request.ActivityData.Distance;
-                        activityData.AvgPace = request.ActivityData.AvgPace;
-                        activityData.AvgPulse = request.ActivityData.AvgPulse;
-                        activityData.MaxPulse = request.ActivityData.MaxPulse;
+                        activityData.Distance = request.ActivityData.Distance > 0 ? request.ActivityData.Distance : null;
+                        activityData.AvgPace = string.IsNullOrWhiteSpace(request.ActivityData.AvgPace) ? null : request.ActivityData.AvgPace.Trim();
+                        activityData.AvgPulse = request.ActivityData.AvgPulse > 0 ? request.ActivityData.AvgPulse : null;
+                        activityData.MaxPulse = request.ActivityData.MaxPulse > 0 ? request.ActivityData.MaxPulse : null;
+                        activityData.Count = request.ActivityData.Count > 0 ? request.ActivityData.Count : null;
                     }
 
                     activity.ActivityData = activityData;
-                }
-
-                else if (activityType == "strength" && request.StrengthData != null)
-                {
-                    activity.StrengthData = new StrengthData
-                    {
-                        Name = request.StrengthData.Name,
-                        MuscleGroup = request.StrengthData.MuscleGroup,
-                        Equipment = request.StrengthData.Equipment,
-                        WorkingWeight = request.StrengthData.WorkingWeight,
-                        RestTimeSeconds = request.StrengthData.RestTimeSeconds,
-                        Sets = request.StrengthData.Sets?.Select(s => new StrengthSet
-                        {
-                            SetNumber = s.SetNumber,
-                            Weight = s.Weight,
-                            Reps = s.Reps,
-                            IsCompleted = s.IsCompleted,
-                            Notes = s.Notes
-                        }).ToList() ?? new List<StrengthSet>()
-                    };
-
-                    activity.ActivityData = new ActivityData
-                    {
-                        Name = request.StrengthData.Name,
-                        MuscleGroup = request.StrengthData.MuscleGroup,
-                        Equipment = request.StrengthData.Equipment,
-                        Weight = request.StrengthData.WorkingWeight,
-                        RestTimeSeconds = request.StrengthData.RestTimeSeconds,
-                        Sets = request.StrengthData.Sets?.Select(s => new ActivitySet
-                        {
-                            SetNumber = s.SetNumber,
-                            Weight = s.Weight,
-                            Reps = s.Reps,
-                            IsCompleted = s.IsCompleted
-                        }).ToList(),
-                        Count = request.StrengthData.TotalReps
-                    };
-                }
-                else if (activityType == "cardio" && request.CardioData != null)
-                {
-                    activity.CardioData = new CardioData
-                    {
-                        CardioType = request.CardioData.CardioType,
-                        DistanceKm = request.CardioData.DistanceKm,
-                        AvgPulse = request.CardioData.AvgPulse,
-                        MaxPulse = request.CardioData.MaxPulse,
-                        AvgPace = request.CardioData.AvgPace
-                    };
-
-                    activity.ActivityData = new ActivityData
-                    {
-                        Name = request.CardioData.CardioType,
-                        Distance = request.CardioData.DistanceKm,
-                        AvgPace = request.CardioData.AvgPace,
-                        AvgPulse = request.CardioData.AvgPulse,
-                        MaxPulse = request.CardioData.MaxPulse,
-                        Count = request.CardioData.JumpRopeData?.JumpCount
-                    };
                 }
 
                 var createdActivity = await _activityRepository.CreateAsync(activity);
@@ -210,13 +190,11 @@ namespace FitnessTracker.API.Services
             if (request.StartDate != default(DateTime))
             {
                 activity.StartDate = request.StartDate;
-                activity.StartTime = request.StartTime ?? request.StartDate;
             }
 
             if (request.EndDate.HasValue)
             {
                 activity.EndDate = request.EndDate;
-                activity.EndTime = request.EndTime ?? request.EndDate;
             }
 
             if (request.Calories.HasValue)
@@ -228,39 +206,62 @@ namespace FitnessTracker.API.Services
             {
                 var activityData = new ActivityData
                 {
-                    Name = request.ActivityData.Name ?? activity.ActivityData?.Name ?? "Упражнение",
-                    Category = request.ActivityData.Category ?? activity.ActivityData?.Category,
-                    Equipment = request.ActivityData.Equipment ?? activity.ActivityData?.Equipment ?? "Нет",
-                    Count = request.ActivityData.Count ?? activity.ActivityData?.Count
+                    Name = !string.IsNullOrWhiteSpace(request.ActivityData.Name)
+                        ? request.ActivityData.Name.Trim()
+                        : activity.ActivityData?.Name ?? "Упражнение",
+                    Category = string.IsNullOrWhiteSpace(request.ActivityData.Category) ? null : request.ActivityData.Category.Trim(),
+                    Equipment = string.IsNullOrWhiteSpace(request.ActivityData.Equipment) ? null : request.ActivityData.Equipment.Trim()
                 };
 
                 if (activity.Type == "strength")
                 {
-                    activityData.MuscleGroup = request.ActivityData.MuscleGroup ?? activity.ActivityData?.MuscleGroup ?? "Общая группа";
-                    activityData.Weight = request.ActivityData.Weight ?? activity.ActivityData?.Weight;
-                    activityData.RestTimeSeconds = request.ActivityData.RestTimeSeconds ?? activity.ActivityData?.RestTimeSeconds ?? 90;
+                    var validMuscleGroups = new[] { "грудь", "руки", "спина", "ноги" };
+                    if (!string.IsNullOrEmpty(request.ActivityData.MuscleGroup) &&
+                        !validMuscleGroups.Contains(request.ActivityData.MuscleGroup.ToLowerInvariant()))
+                    {
+                        throw new ArgumentException("MuscleGroup должен быть одним из: грудь, руки, спина, ноги");
+                    }
+
+                    activityData.MuscleGroup = string.IsNullOrWhiteSpace(request.ActivityData.MuscleGroup) ? null : request.ActivityData.MuscleGroup.Trim();
+                    activityData.Weight = request.ActivityData.Weight > 0 ? request.ActivityData.Weight : null;
+                    activityData.RestTimeSeconds = request.ActivityData.RestTimeSeconds > 0 ? request.ActivityData.RestTimeSeconds : null;
 
                     if (request.ActivityData.Sets?.Any() == true)
                     {
-                        activityData.Sets = request.ActivityData.Sets.Select((s, i) => new ActivitySet
+                        var validSets = new List<ActivitySet>();
+                        int totalReps = 0;
+
+                        foreach (var setDto in request.ActivityData.Sets)
                         {
-                            SetNumber = s.SetNumber > 0 ? s.SetNumber : i + 1,
-                            Weight = s.Weight,
-                            Reps = s.Reps,
-                            IsCompleted = s.IsCompleted
-                        }).ToList();
+                            if (setDto.Reps <= 0) continue;
+
+                            validSets.Add(new ActivitySet
+                            {
+                                SetNumber = setDto.SetNumber > 0 ? setDto.SetNumber : validSets.Count + 1,
+                                Weight = setDto.Weight > 0 ? setDto.Weight : null,
+                                Reps = setDto.Reps,
+                                IsCompleted = setDto.IsCompleted
+                            });
+
+                            totalReps += setDto.Reps;
+                        }
+
+                        activityData.Sets = validSets;
+                        activityData.Count = totalReps;
                     }
                     else
                     {
                         activityData.Sets = activity.ActivityData?.Sets;
+                        activityData.Count = activity.ActivityData?.Count;
                     }
                 }
                 else if (activity.Type == "cardio")
                 {
-                    activityData.Distance = request.ActivityData.Distance ?? activity.ActivityData?.Distance;
-                    activityData.AvgPace = request.ActivityData.AvgPace ?? activity.ActivityData?.AvgPace;
-                    activityData.AvgPulse = request.ActivityData.AvgPulse ?? activity.ActivityData?.AvgPulse;
-                    activityData.MaxPulse = request.ActivityData.MaxPulse ?? activity.ActivityData?.MaxPulse;
+                    activityData.Distance = request.ActivityData.Distance > 0 ? request.ActivityData.Distance : null;
+                    activityData.AvgPace = string.IsNullOrWhiteSpace(request.ActivityData.AvgPace) ? null : request.ActivityData.AvgPace.Trim();
+                    activityData.AvgPulse = request.ActivityData.AvgPulse > 0 ? request.ActivityData.AvgPulse : null;
+                    activityData.MaxPulse = request.ActivityData.MaxPulse > 0 ? request.ActivityData.MaxPulse : null;
+                    activityData.Count = request.ActivityData.Count > 0 ? request.ActivityData.Count : null;
                 }
 
                 activity.ActivityData = activityData;
@@ -396,9 +397,7 @@ namespace FitnessTracker.API.Services
             if (request.Calories.HasValue)
                 return request.Calories.Value;
 
-            var duration = (request.EndTime ?? request.StartTime?.AddMinutes(30) ?? DateTime.UtcNow.AddMinutes(30))
-                          - (request.StartTime ?? DateTime.UtcNow);
-
+            var duration = (request.EndDate ?? request.StartDate.AddMinutes(30)) - request.StartDate;
             var minutes = (int)duration.TotalMinutes;
 
             return request.Type?.ToLowerInvariant() == "cardio" ? minutes * 8 : minutes * 5;
@@ -408,7 +407,7 @@ namespace FitnessTracker.API.Services
         {
             int baseExperience = activity.Type == "strength" ? 25 : 20;
 
-            var duration = (activity.EndTime ?? activity.StartTime.AddMinutes(30)) - activity.StartTime;
+            var duration = activity.EndDate - activity.StartDate;
             int durationBonus = Math.Min(20, (int)duration.TotalMinutes / 10);
 
             int setsBonus = 0;

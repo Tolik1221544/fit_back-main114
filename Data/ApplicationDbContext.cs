@@ -70,13 +70,11 @@ namespace FitnessTracker.API.Data
                     .OnDelete(DeleteBehavior.Cascade);
 
                 entity.Property(e => e.ActivityDataJson).HasColumnName("ActivityData");
-
                 entity.Ignore(e => e.ActivityData);
 
-                entity.Property(e => e.StartTime).IsRequired();
-                entity.Property(e => e.EndTime).IsRequired(false);
                 entity.Property(e => e.StartDate).IsRequired();
                 entity.Property(e => e.EndDate).IsRequired(false);
+
             });
 
             // Steps entity configuration
