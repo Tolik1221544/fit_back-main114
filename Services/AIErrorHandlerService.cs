@@ -244,14 +244,16 @@ namespace FitnessTracker.API.Services.AI
         private string DetermineWorkoutType(string? workoutType)
         {
             if (string.IsNullOrEmpty(workoutType))
-                return "strength";
+                return "cardio"; 
 
             var lowerType = workoutType.ToLowerInvariant();
 
             var cardioKeywords = new[] {
                 "cardio", "кардио", "бег", "running", "cycling", "велосипед",
-                "swimming", "плавание", "walking", "ходьба", "jogging", "bike"
-            };
+                "swimming", "плавание", "walking", "ходьба", "jogging", "bike",
+                "бега", "беге"
+        };
+
             if (cardioKeywords.Any(keyword => lowerType.Contains(keyword)))
                 return "cardio";
 
@@ -260,40 +262,31 @@ namespace FitnessTracker.API.Services.AI
 
         private ActivityDto CreateDefaultWorkoutData(string reason, string type)
         {
-            var startTime = DateTime.UtcNow;
-            var endTime = startTime.AddMinutes(type == "cardio" ? 30 : 45);
+            var startDate = DateTime.UtcNow;
+            var endDate = startDate.AddMinutes(type == "cardio" ? 30 : 45);
 
             var workout = new ActivityDto
             {
                 Id = Guid.NewGuid().ToString(),
                 Type = type,
-                StartDate = startTime,
-                EndDate = endTime,
+                StartDate = startDate,
+                EndDate = endDate,
                 Calories = type == "cardio" ? 200 : 250,
                 CreatedAt = DateTime.UtcNow,
                 ActivityData = new ActivityDataDto
                 {
-                    Name = type == "strength" ? "Базовое упражнение" : "Общее кардио",
+                    Name = type == "strength" ? "Силовое упражнение" : "Кардио упражнение",
                     Category = type == "strength" ? "Strength" : "Cardio",
-                    Equipment = type == "strength" ? "Собственный вес" : null,
-                    Count = type == "strength" ? 10 : null,
-                    MuscleGroup = type == "strength" ? "грудь" : null,
-                    Weight = type == "strength" ? null : null,
-                    RestTimeSeconds = type == "strength" ? 120 : null,
-                    Sets = type == "strength" ? new List<ActivitySetDto>
-            {
-                new ActivitySetDto
-                {
-                    SetNumber = 1,
+                    Equipment = type == "strength" ? null : null, 
+                    Count = type == "strength" ? null : null, 
+                    MuscleGroup = type == "strength" ? null : null, 
                     Weight = null,
-                    Reps = 10,
-                    IsCompleted = true
-                }
-            } : null,
-                    Distance = type == "cardio" ? null : null,
-                    AvgPace = type == "cardio" ? null : null,
-                    AvgPulse = type == "cardio" ? null : null,
-                    MaxPulse = type == "cardio" ? null : null
+                    RestTimeSeconds = type == "strength" ? null : null, 
+                    Sets = type == "strength" ? null : null, 
+                    Distance = null,
+                    AvgPace = null,
+                    AvgPulse = null,
+                    MaxPulse = null
                 }
             };
 

@@ -43,31 +43,4 @@
         public int PageSize { get; set; } = 20;
         public string SortBy { get; set; } = "created_desc"; // "created_desc", "size_desc", "name_asc"
     }
-
-    public class VoiceWorkoutResponseWithAudio
-    {
-        public bool Success { get; set; }
-        public string? ErrorMessage { get; set; }
-        public string? TranscribedText { get; set; }
-        public ActivityDto? WorkoutData { get; set; }
-
-        public string? AudioUrl { get; set; }
-        public string? AudioFileId { get; set; }
-        public bool AudioSaved { get; set; }
-        public double AudioSizeMB { get; set; }
-    }
-
-    public class VoiceFoodResponseWithAudio
-    {
-        public bool Success { get; set; }
-        public string? ErrorMessage { get; set; }
-        public string? TranscribedText { get; set; }
-        public List<FoodItemResponse>? FoodItems { get; set; }
-        public int EstimatedTotalCalories { get; set; }
-
-        public string? AudioUrl { get; set; }
-        public string? AudioFileId { get; set; }
-        public bool AudioSaved { get; set; }
-        public double AudioSizeMB { get; set; }
-    }
 }

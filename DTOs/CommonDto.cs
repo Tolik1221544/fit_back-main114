@@ -11,8 +11,7 @@ namespace FitnessTracker.API.DTOs
         public int Progress { get; set; }
         public bool IsCompleted { get; set; }
         public DateTime? CompletedAt { get; set; }
-
-        public string? Route { get; set; } = null;
+        public string? Route { get; set; }
     }
 
     public class AchievementDto
@@ -26,7 +25,6 @@ namespace FitnessTracker.API.DTOs
         public int CurrentProgress { get; set; }
         public bool IsUnlocked { get; set; }
         public DateTime? UnlockedAt { get; set; }
-        public int ProgressPercentage => RequiredValue > 0 ? (CurrentProgress * 100 / RequiredValue) : 0;
     }
 
     public class CoinBalanceDto
@@ -56,13 +54,10 @@ namespace FitnessTracker.API.DTOs
         public int Cost { get; set; }
         public string ImageUrl { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
-
         public decimal ExperienceBoost { get; set; } = 1.0m;
         public int Tier { get; set; } = 1;
-
-        // Статус владения и активации
-        public bool IsOwned { get; set; } = false;
-        public bool IsActive { get; set; } = false;
+        public bool IsOwned { get; set; }
+        public bool IsActive { get; set; }
     }
 
     public class PurchaseSkinRequest

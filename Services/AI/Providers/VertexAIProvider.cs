@@ -408,7 +408,27 @@ CRITICAL: Return ONLY the JSON object above, nothing else.";
         {
             return $@"Analyze workout: ""{workoutText}""
 
-Determine STRENGTH or CARDIO. Return JSON only:
+Determine if this is STRENGTH or CARDIO workout. Return JSON only:
+
+CARDIO (running, cycling, swimming, walking):
+{{
+  ""workoutData"": {{
+    ""type"": ""cardio"",
+    ""startDate"": ""{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}"",
+    ""endDate"": ""{DateTime.UtcNow.AddMinutes(60):yyyy-MM-ddTHH:mm:ssZ}"",
+    ""estimatedCalories"": 400,
+    ""activityData"": {{
+      ""name"": ""Exercise name in Russian"",
+      ""category"": ""Cardio"",
+      ""equipment"": null,
+      ""distance"": 5.0,
+      ""avgPace"": ""6:00/km"",
+      ""avgPulse"": 150,
+      ""maxPulse"": 170,
+      ""count"": null
+    }}
+  }}
+}}
 
 STRENGTH (push-ups, squats, planks, weightlifting):
 {{
@@ -422,41 +442,22 @@ STRENGTH (push-ups, squats, planks, weightlifting):
       ""category"": ""Strength"",
       ""muscleGroup"": ""грудь"",
       ""equipment"": null,
-      ""weight"": 50.0,
+      ""weight"": null,
       ""restTimeSeconds"": 90,
-      ""sets"": [{{""setNumber"": 1, ""weight"": 50.0, ""reps"": 12, ""isCompleted"": true}}],
-      ""count"": 12
-    }}
-  }}
-}}
-
-CARDIO (running, cycling, swimming):
-{{
-  ""workoutData"": {{
-    ""type"": ""cardio"",
-    ""startDate"": ""{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}"",
-    ""endDate"": ""{DateTime.UtcNow.AddMinutes(30):yyyy-MM-ddTHH:mm:ssZ}"",
-    ""estimatedCalories"": 300,
-    ""activityData"": {{
-      ""name"": ""Exercise name in Russian"",
-      ""category"": ""Cardio"",
-      ""equipment"": null,
-      ""distance"": 5.0,
-      ""avgPace"": ""5:30/km"",
-      ""avgPulse"": 145,
-      ""maxPulse"": 165,
+      ""sets"": [{{""setNumber"": 1, ""weight"": null, ""reps"": 12, ""isCompleted"": true}}],
       ""count"": null
     }}
   }}
 }}
 
 RULES:
-- muscleGroup: ""грудь"", ""руки"", ""спина"", ""ноги""
-- Unused fields = null
-- count = total reps for strength, null for cardio
+- muscleGroup: ""грудь"", ""руки"", ""спина"", ""ноги"" или null
+- Unused fields = null (not ""None"" or empty strings)
 - distance in km only
+- For ""бег"" use cardio type
+- Return ONLY JSON, no other text
 
-Return JSON only.";
+Analyze: ""{workoutText}""";
         }
 
         private string CreateTextFoodPrompt(string foodText, string? mealType)
@@ -1147,12 +1148,20 @@ CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction.
         {
             try
             {
+                _logger.LogInformation($"📝 Raw Gemini response: {responseText}");
+
                 var jsonText = ExtractJsonFromResponse(responseText);
                 if (string.IsNullOrEmpty(jsonText))
+                {
+                    _logger.LogError($"📝 No JSON found in response: {responseText}");
                     return CreateFallbackTextWorkoutResponse("No JSON found", workoutType);
+                }
+
+                _logger.LogInformation($"📝 Extracted JSON: {jsonText}");
 
                 using var document = JsonDocument.Parse(jsonText);
                 var root = document.RootElement;
+
 
                 var response = new TextWorkoutResponse
                 {
@@ -1216,6 +1225,7 @@ CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction.
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Text workout parse error: {ex.Message}");
+                _logger.LogError($"❌ Response text: {responseText}");
                 return CreateFallbackTextWorkoutResponse($"Parse error: {ex.Message}", workoutType);
             }
         }
@@ -1639,6 +1649,24 @@ CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction.
                 ProcessedText = $"Не удалось обработать текст ({reason}), создана базовая тренировка",
                 WorkoutData = workoutData
             };
+        }
+
+        private string DetermineWorkoutType(string? workoutType)
+        {
+            if (string.IsNullOrEmpty(workoutType))
+                return "strength";
+
+            var lowerType = workoutType.ToLowerInvariant();
+
+            var cardioKeywords = new[] {
+                "cardio", "кардио", "бег", "running", "cycling", "велосипед",
+                "swimming", "плавание", "walking", "ходьба", "jogging", "bike"
+            };
+
+            if (cardioKeywords.Any(keyword => lowerType.Contains(keyword)))
+                return "cardio";
+
+            return "strength";
         }
 
         private TextFoodResponse CreateFallbackTextFoodResponse(string reason, string? mealType)

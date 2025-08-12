@@ -331,7 +331,7 @@ namespace FitnessTracker.API.Services.AI
                 return false;
 
             return !string.IsNullOrEmpty(result.WorkoutData.Type) &&
-                   result.WorkoutData.StartTime != default;
+                   result.WorkoutData.StartDate != default; 
         }
 
         private bool ValidateTextFoodResult(TextFoodResponse result)
