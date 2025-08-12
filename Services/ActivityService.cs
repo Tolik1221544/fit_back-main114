@@ -408,7 +408,7 @@ namespace FitnessTracker.API.Services
             int baseExperience = activity.Type == "strength" ? 25 : 20;
 
             var duration = activity.EndDate - activity.StartDate;
-            int durationBonus = Math.Min(20, (int)duration.TotalMinutes / 10);
+            int durationBonus = Math.Min(20, (int)(duration?.TotalMinutes ?? 0) / 10);
 
             int setsBonus = 0;
             if (activity.Type == "strength" && activity.ActivityData?.Sets?.Any() == true)

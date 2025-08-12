@@ -246,12 +246,16 @@ namespace FitnessTracker.API.Services.AI
             if (string.IsNullOrEmpty(workoutType))
                 return "strength";
 
-            return workoutType.ToLowerInvariant() switch
-            {
-                "strength" or "силовая" or "качалка" => "strength",
-                "cardio" or "кардио" or "бег" => "cardio",
-                _ => "strength"
+            var lowerType = workoutType.ToLowerInvariant();
+
+            var cardioKeywords = new[] {
+                "cardio", "кардио", "бег", "running", "cycling", "велосипед",
+                "swimming", "плавание", "walking", "ходьба", "jogging", "bike"
             };
+            if (cardioKeywords.Any(keyword => lowerType.Contains(keyword)))
+                return "cardio";
+
+            return "strength";
         }
 
         private ActivityDto CreateDefaultWorkoutData(string reason, string type)

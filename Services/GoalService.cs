@@ -46,10 +46,8 @@ namespace FitnessTracker.API.Services
             {
                 var goalDto = _mapper.Map<GoalDto>(goal);
 
-                // Добавляем прогресс за сегодня
                 goalDto.TodayProgress = await GetTodayProgressForGoalAsync(userId, goal.Id);
 
-                // Вычисляем статистику
                 var progressStats = await CalculateGoalStatsAsync(goal);
                 goalDto.TotalDays = progressStats.TotalDays;
                 goalDto.CompletedDays = progressStats.CompletedDays;
@@ -95,7 +93,6 @@ namespace FitnessTracker.API.Services
 
         public async Task<GoalDto> CreateGoalAsync(string userId, CreateGoalRequest request)
         {
-            // Деактивируем старые активные цели
             var existingGoals = await _goalRepository.GetUserGoalsAsync(userId);
             foreach (var existingGoal in existingGoals.Where(g => g.IsActive))
             {
@@ -103,7 +100,6 @@ namespace FitnessTracker.API.Services
                 await _goalRepository.UpdateGoalAsync(existingGoal);
             }
 
-            // Получаем шаблон для автозаполнения
             var template = await GetGoalTemplateAsync(request.GoalType);
 
             var goal = new Goal
@@ -113,7 +109,6 @@ namespace FitnessTracker.API.Services
                 Title = !string.IsNullOrEmpty(request.Title) ? request.Title : template?.Title ?? GetDefaultTitle(request.GoalType),
                 Description = !string.IsNullOrEmpty(request.Description) ? request.Description : template?.Description ?? "",
 
-                // Целевые показатели
                 TargetWeight = request.TargetWeight,
                 CurrentWeight = request.CurrentWeight,
                 TargetCalories = request.TargetCalories ?? template?.RecommendedCalories,
@@ -121,7 +116,6 @@ namespace FitnessTracker.API.Services
                 TargetCarbs = request.TargetCarbs ?? template?.RecommendedCarbs,
                 TargetFats = request.TargetFats ?? template?.RecommendedFats,
 
-                // Активность
                 TargetWorkoutsPerWeek = request.TargetWorkoutsPerWeek ?? template?.RecommendedWorkoutsPerWeek,
                 TargetStepsPerDay = request.TargetStepsPerDay ?? template?.RecommendedStepsPerDay,
                 TargetActiveMinutes = request.TargetActiveMinutes ?? template?.RecommendedActiveMinutes,
@@ -132,10 +126,8 @@ namespace FitnessTracker.API.Services
 
             var createdGoal = await _goalRepository.CreateGoalAsync(goal);
 
-            // Создаем прогресс за сегодня
             await CreateTodayProgressAsync(userId, createdGoal.Id);
 
-            // Добавляем опыт за создание цели
             await _experienceService.AddExperienceAsync(userId, 50, "goal_created",
                 $"Создана новая цель: {createdGoal.Title}");
 
@@ -150,7 +142,6 @@ namespace FitnessTracker.API.Services
             if (goal == null || goal.UserId != userId)
                 throw new ArgumentException("Goal not found");
 
-            // Обновляем поля
             if (!string.IsNullOrEmpty(request.Title))
                 goal.Title = request.Title;
             if (!string.IsNullOrEmpty(request.Description))
@@ -228,7 +219,6 @@ namespace FitnessTracker.API.Services
                 };
             }
 
-            // Обновляем мануальные значения, если они предоставлены
             if (request.ActualWeight.HasValue)
                 progress.ActualWeight = request.ActualWeight;
             if (request.ManualCalories.HasValue)
@@ -279,7 +269,6 @@ namespace FitnessTracker.API.Services
                     };
                 }
 
-                // Подсчет калорий из питания
                 var foodIntakes = await _foodIntakeRepository.GetByUserIdAndDateAsync(userId, date);
                 var totalCalories = foodIntakes.Sum(f => (f.NutritionPer100g.Calories * f.Weight) / 100);
                 var totalProtein = foodIntakes.Sum(f => (f.NutritionPer100g.Proteins * f.Weight) / 100);
@@ -291,16 +280,13 @@ namespace FitnessTracker.API.Services
                 progress.ActualFats = totalFats;
                 progress.ActualCarbs = totalCarbs;
 
-                // Подсчет активностей
                 var activities = await _activityRepository.GetByUserIdAsync(userId);
                 var dayActivities = activities.Where(a => a.StartDate.Date == date.Date);
                 progress.ActualWorkouts = dayActivities.Count();
 
-                // Подсчет шагов
                 var steps = await _stepsRepository.GetByUserIdAndDateAsync(userId, date);
                 progress.ActualSteps = steps?.StepsCount ?? 0;
 
-                // Рассчитываем прогресс
                 progress.CaloriesProgress = goal.TargetCalories > 0
                     ? Math.Min(100, (decimal)progress.ActualCalories / goal.TargetCalories.Value * 100) : 0;
                 progress.ProteinProgress = goal.TargetProtein > 0
@@ -314,7 +300,6 @@ namespace FitnessTracker.API.Services
                 progress.WorkoutProgress = goal.TargetWorkoutsPerWeek > 0
                     ? Math.Min(100, (decimal)progress.ActualWorkouts / (goal.TargetWorkoutsPerWeek.Value / 7m) * 100) : 0;
 
-                // Общий прогресс
                 var progressValues = new List<decimal>();
                 if (goal.TargetCalories > 0) progressValues.Add(progress.CaloriesProgress);
                 if (goal.TargetProtein > 0) progressValues.Add(progress.ProteinProgress);
@@ -420,13 +405,11 @@ namespace FitnessTracker.API.Services
             return templates.FirstOrDefault(t => t.GoalType == goalType);
         }
 
-        // Auto-calculation
         public async Task UpdateAllUserProgressAsync(string userId, DateTime date)
         {
             await RecalculateDailyProgressAsync(userId, date);
         }
 
-        // Helper methods
         private async Task<DailyGoalProgressDto?> GetTodayProgressForGoalAsync(string userId, string goalId)
         {
             var today = DateTime.UtcNow.Date;
@@ -434,14 +417,12 @@ namespace FitnessTracker.API.Services
 
             if (progress == null)
             {
-                // Создаем прогресс за сегодня если его нет
                 await CreateTodayProgressAsync(userId, goalId);
                 progress = await _goalRepository.GetDailyProgressByDateAsync(userId, goalId, today);
             }
 
             var progressDto = _mapper.Map<DailyGoalProgressDto>(progress);
 
-            // Добавляем целевые значения для отображения
             var goal = await _goalRepository.GetGoalByIdAsync(goalId);
             if (goal != null)
             {
@@ -484,7 +465,6 @@ namespace FitnessTracker.API.Services
 
         private async Task CalculateAutoValues(DailyGoalProgress progress, string userId, DateTime date)
         {
-            // Рассчитываем калории и макросы из питания
             var foodIntakes = await _foodIntakeRepository.GetByUserIdAndDateAsync(userId, date);
 
             if (foodIntakes.Any())
@@ -495,54 +475,45 @@ namespace FitnessTracker.API.Services
                 progress.ActualFats = Math.Round(foodIntakes.Sum(f => (f.NutritionPer100g.Fats * f.Weight) / 100), 1);
             }
 
-            // Рассчитываем шаги
             var steps = await _stepsRepository.GetByUserIdAndDateAsync(userId, date);
             if (steps != null)
             {
                 progress.ActualSteps = steps.StepsCount;
             }
 
-            // Рассчитываем тренировки
             var activities = await _activityRepository.GetByUserIdAsync(userId);
             var dayActivities = activities.Where(a => a.StartDate.Date == date.Date);
             progress.ActualWorkouts = dayActivities.Count();
 
-            // Рассчитываем активные минуты (приблизительно)
             progress.ActualActiveMinutes = dayActivities.Sum(a =>
             {
-                var duration = (a.EndTime ?? a.StartTime.AddMinutes(30)) - a.StartTime;
+                var endTime = a.EndDate ?? a.StartDate.AddMinutes(30);
+                var duration = endTime - a.StartDate;
                 return (int)duration.TotalMinutes;
             });
         }
 
         private void CalculateProgressPercentages(DailyGoalProgress progress, Goal goal)
         {
-            // Калории
             if (goal.TargetCalories.HasValue && goal.TargetCalories > 0)
                 progress.CaloriesProgress = Math.Min(100, (decimal)progress.ActualCalories / goal.TargetCalories.Value * 100);
 
-            // Белки
             if (goal.TargetProtein.HasValue && goal.TargetProtein > 0)
                 progress.ProteinProgress = Math.Min(100, progress.ActualProtein / goal.TargetProtein.Value * 100);
 
-            // Углеводы
             if (goal.TargetCarbs.HasValue && goal.TargetCarbs > 0)
                 progress.CarbsProgress = Math.Min(100, progress.ActualCarbs / goal.TargetCarbs.Value * 100);
 
-            // Жиры
             if (goal.TargetFats.HasValue && goal.TargetFats > 0)
                 progress.FatsProgress = Math.Min(100, progress.ActualFats / goal.TargetFats.Value * 100);
 
-            // Шаги
             if (goal.TargetStepsPerDay.HasValue && goal.TargetStepsPerDay > 0)
                 progress.StepsProgress = Math.Min(100, (decimal)progress.ActualSteps / goal.TargetStepsPerDay.Value * 100);
 
-            // Тренировки (дневная норма = недельная норма / 7)
             var dailyWorkoutTarget = CalculateTargetWorkoutsForDay(goal.TargetWorkoutsPerWeek);
             if (dailyWorkoutTarget > 0)
                 progress.WorkoutProgress = Math.Min(100, (decimal)progress.ActualWorkouts / dailyWorkoutTarget * 100);
 
-            // Общий прогресс (среднее арифметическое)
             var progressValues = new List<decimal>();
             if (goal.TargetCalories.HasValue) progressValues.Add(progress.CaloriesProgress);
             if (goal.TargetProtein.HasValue) progressValues.Add(progress.ProteinProgress);
@@ -552,7 +523,7 @@ namespace FitnessTracker.API.Services
             if (goal.TargetWorkoutsPerWeek.HasValue) progressValues.Add(progress.WorkoutProgress);
 
             progress.OverallProgress = progressValues.Any() ? Math.Round(progressValues.Average(), 1) : 0;
-            progress.IsCompleted = progress.OverallProgress >= 80; // 80% считается выполненным
+            progress.IsCompleted = progress.OverallProgress >= 80; 
         }
 
         private async Task<(int TotalDays, int CompletedDays, decimal AverageProgress)> CalculateGoalStatsAsync(Goal goal)
@@ -570,7 +541,6 @@ namespace FitnessTracker.API.Services
         {
             if (!targetWorkoutsPerWeek.HasValue || targetWorkoutsPerWeek <= 0) return 0;
 
-            // Если тренировок меньше 7 в неделю, то не каждый день нужно тренироваться
             return targetWorkoutsPerWeek.Value >= 7 ? 1 : 0;
         }
 

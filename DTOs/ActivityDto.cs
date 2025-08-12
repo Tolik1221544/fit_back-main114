@@ -9,6 +9,12 @@
         public int? Calories { get; set; }
         public DateTime CreatedAt { get; set; }
         public ActivityDataDto? ActivityData { get; set; }
+
+        public DateTime StartTime { get; set; }
+        public DateTime? EndTime { get; set; }
+        public int? EstimatedCalories { get; set; }
+        public StrengthDataDto? StrengthData { get; set; }
+        public CardioDataDto? CardioData { get; set; }
     }
 
     public class AddActivityRequest
@@ -18,6 +24,11 @@
         public DateTime? EndDate { get; set; }
         public int? Calories { get; set; }
         public ActivityDataDto? ActivityData { get; set; }
+
+        public DateTime StartTime { get; set; }
+        public DateTime? EndTime { get; set; }
+        public StrengthDataDto? StrengthData { get; set; }
+        public CardioDataDto? CardioData { get; set; }
     }
 
     public class UpdateActivityRequest
@@ -55,6 +66,41 @@
         public decimal? Weight { get; set; }
         public int Reps { get; set; }
         public bool IsCompleted { get; set; } = true;
+    }
+
+    public class StrengthDataDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? MuscleGroup { get; set; }
+        public string? Equipment { get; set; }
+        public decimal WorkingWeight { get; set; }
+        public int RestTimeSeconds { get; set; } = 120;
+        public List<StrengthSetDto>? Sets { get; set; }
+        public int TotalReps { get; set; }
+    }
+
+    public class StrengthSetDto
+    {
+        public int SetNumber { get; set; }
+        public decimal Weight { get; set; }
+        public int Reps { get; set; }
+        public bool IsCompleted { get; set; } = true;
+        public string? Notes { get; set; }
+    }
+
+    public class CardioDataDto
+    {
+        public string CardioType { get; set; } = string.Empty;
+        public decimal? DistanceKm { get; set; }
+        public string? AvgPace { get; set; }
+        public int? AvgPulse { get; set; }
+        public int? MaxPulse { get; set; }
+        public JumpRopeDataDto? JumpRopeData { get; set; }
+    }
+
+    public class JumpRopeDataDto
+    {
+        public int JumpCount { get; set; }
     }
 
     public class StepsDto

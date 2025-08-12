@@ -161,7 +161,7 @@ namespace FitnessTracker.API.Controllers
                 {
                     Success = result.Success,
                     TranscribedText = result.TranscribedText,
-                    WorkoutData = result.WorkoutData,
+                    WorkoutData = result.WorkoutData, 
                     AudioUrl = audioUrl,
                     AudioFileId = audioFileId,
                     AudioSaved = !string.IsNullOrEmpty(audioFileId),
@@ -177,13 +177,10 @@ namespace FitnessTracker.API.Controllers
                         var addActivityRequest = new AddActivityRequest
                         {
                             Type = result.WorkoutData.Type,
-                            StartDate = result.WorkoutData.StartTime.Date,
-                            StartTime = result.WorkoutData.StartTime,
-                            EndDate = result.WorkoutData.EndTime?.Date,
-                            EndTime = result.WorkoutData.EndTime,
-                            Calories = result.WorkoutData.EstimatedCalories,
-                            StrengthData = result.WorkoutData.StrengthData,
-                            CardioData = result.WorkoutData.CardioData
+                            StartDate = result.WorkoutData.StartDate,
+                            EndDate = result.WorkoutData.EndDate,
+                            Calories = result.WorkoutData.Calories,
+                            ActivityData = result.WorkoutData.ActivityData 
                         };
 
                         await _activityService.AddActivityAsync(userId, addActivityRequest);
@@ -685,13 +682,10 @@ namespace FitnessTracker.API.Controllers
                         var addActivityRequest = new AddActivityRequest
                         {
                             Type = result.WorkoutData.Type,
-                            StartDate = result.WorkoutData.StartTime.Date,
-                            StartTime = result.WorkoutData.StartTime,
-                            EndDate = result.WorkoutData.EndTime?.Date,
-                            EndTime = result.WorkoutData.EndTime,
-                            Calories = result.WorkoutData.EstimatedCalories,
-                            StrengthData = result.WorkoutData.StrengthData,
-                            CardioData = result.WorkoutData.CardioData,
+                            StartDate = result.WorkoutData.StartDate,
+                            EndDate = result.WorkoutData.EndDate,
+                            Calories = result.WorkoutData.Calories,
+                            ActivityData = result.WorkoutData.ActivityData 
                         };
 
                         await _activityService.AddActivityAsync(userId, addActivityRequest);
