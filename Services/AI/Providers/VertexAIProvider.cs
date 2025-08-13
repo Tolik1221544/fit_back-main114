@@ -347,20 +347,29 @@ CARDIO (бег, велосипед, ходьба):
       ""name"": ""Название упражнения"",
       ""category"": ""Cardio"",
       ""equipment"": null,
-      ""distance"": 5.0,
-      ""avgPace"": ""5:30/km"",
-      ""avgPulse"": 145,
-      ""maxPulse"": 165,
+      ""distance"": null,
+      ""avgPace"": null,
+      ""avgPulse"": null,
+      ""maxPulse"": null,
       ""count"": null
     }
   }
 }
 
-RULES:
-- muscleGroup: ""грудь"", ""руки"", ""спина"", ""ноги""
-- Unused = null
-- count = sum reps for strength, null for cardio
-- distance in km
+CRITICAL RULES:
+- НИКОГДА не выдумывайте данные, которых нет в аудио
+- Если дистанция не названа - distance = null
+- Если пульс не назван - avgPulse = null, maxPulse = null  
+- Если темп не назван - avgPace = null
+- Если вес не назван - weight = null
+- muscleGroup: ""грудь"", ""руки"", ""спина"", ""ноги"" или null
+- Для strength: используй sets массив, count = сумма всех reps
+- Unused поля = null (не придумывайте значения!)
+
+EXAMPLES:
+""Бег 1 час"" → distance: null, avgPace: null, avgPulse: null, maxPulse: null
+""Отжимания 20 раз"" → weight: null, sets: [{setNumber: 1, weight: null, reps: 20}]
+""Бег 5 км за 30 минут"" → distance: 5.0, avgPace: ""6:00/км""
 
 Return JSON only.";
         }
@@ -421,10 +430,10 @@ CARDIO (running, cycling, swimming, walking):
       ""name"": ""Exercise name in Russian"",
       ""category"": ""Cardio"",
       ""equipment"": null,
-      ""distance"": 5.0,
-      ""avgPace"": ""6:00/km"",
-      ""avgPulse"": 150,
-      ""maxPulse"": 170,
+      ""distance"": null,
+      ""avgPace"": null,
+      ""avgPulse"": null,
+      ""maxPulse"": null,
       ""count"": null
     }}
   }}
@@ -445,17 +454,25 @@ STRENGTH (push-ups, squats, planks, weightlifting):
       ""weight"": null,
       ""restTimeSeconds"": 90,
       ""sets"": [{{""setNumber"": 1, ""weight"": null, ""reps"": 12, ""isCompleted"": true}}],
-      ""count"": null
+      ""count"": 12
     }}
   }}
 }}
 
-RULES:
+CRITICAL RULES - НЕ ВЫДУМЫВАЙТЕ ДАННЫЕ:
+- Если дистанция НЕ указана → distance: null
+- Если пульс НЕ указан → avgPulse: null, maxPulse: null
+- Если темп НЕ указан → avgPace: null
+- Если вес НЕ указан → weight: null
 - muscleGroup: ""грудь"", ""руки"", ""спина"", ""ноги"" или null
-- Unused fields = null (not ""None"" or empty strings)
-- distance in km only
-- For ""бег"" use cardio type
-- Return ONLY JSON, no other text
+- Для strength: count = сумма reps из всех sets
+- Для cardio: distance в км, avgPace = ""минуты:секунды/км"" (ТОЛЬКО если указано)
+
+EXAMPLES:
+""Бег 1 час"" → distance: null, avgPace: null, avgPulse: null, maxPulse: null
+""Бег 5 км"" → distance: 5.0, avgPace: null, avgPulse: null, maxPulse: null  
+""Бег 10 км за 50 минут"" → distance: 10.0, avgPace: ""5:00/км"", avgPulse: null, maxPulse: null
+""Отжимания 30 раз"" → weight: null, sets: [{{setNumber: 1, weight: null, reps: 30}}]
 
 Analyze: ""{workoutText}""";
         }
@@ -924,36 +941,48 @@ CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction.
 
                     if (workoutData.TryGetProperty("activityData", out var activityData))
                     {
-                        activityDto.ActivityData = new ActivityDataDto
+                        var activityDataDto = new ActivityDataDto
                         {
                             Name = GetString(activityData, "name", type == "strength" ? "Силовое упражнение" : "Кардио упражнение"),
-                            Category = GetString(activityData, "category", type == "strength" ? "Strength" : "Cardio"),
-                            Equipment = GetNullableString(activityData, "equipment"),
-                            Count = GetNullableInt(activityData, "count")
+                            Category = GetNullableString(activityData, "category"),
+                            Equipment = GetNullableString(activityData, "equipment")
                         };
 
                         if (type == "strength")
                         {
-                            activityDto.ActivityData.MuscleGroup = GetNullableString(activityData, "muscleGroup");
-                            activityDto.ActivityData.Weight = GetNullableDecimal(activityData, "weight");
-                            activityDto.ActivityData.RestTimeSeconds = GetNullableInt(activityData, "restTimeSeconds");
+                            activityDataDto.MuscleGroup = GetNullableString(activityData, "muscleGroup");
+                            activityDataDto.Weight = GetNullableDecimal(activityData, "weight");
+                            activityDataDto.RestTimeSeconds = GetNullableInt(activityData, "restTimeSeconds");
 
                             if (activityData.TryGetProperty("sets", out var setsArray))
                             {
-                                activityDto.ActivityData.Sets = ParseSets(setsArray);
-                                if (activityDto.ActivityData.Sets?.Any() == true)
+                                activityDataDto.Sets = ParseSets(setsArray);
+                                if (activityDataDto.Sets?.Any() == true)
                                 {
-                                    activityDto.ActivityData.Count = activityDto.ActivityData.Sets.Sum(s => s.Reps);
+                                    activityDataDto.Count = activityDataDto.Sets.Sum(s => s.Reps);
                                 }
                             }
+
+                            activityDataDto.Distance = null;
+                            activityDataDto.AvgPace = null;
+                            activityDataDto.AvgPulse = null;
+                            activityDataDto.MaxPulse = null;
                         }
                         else if (type == "cardio")
                         {
-                            activityDto.ActivityData.Distance = GetNullableDecimal(activityData, "distance");
-                            activityDto.ActivityData.AvgPace = GetNullableString(activityData, "avgPace");
-                            activityDto.ActivityData.AvgPulse = GetNullableInt(activityData, "avgPulse");
-                            activityDto.ActivityData.MaxPulse = GetNullableInt(activityData, "maxPulse");
+                            activityDataDto.Distance = GetNullableDecimal(activityData, "distance");
+                            activityDataDto.AvgPace = GetNullableString(activityData, "avgPace");
+                            activityDataDto.AvgPulse = GetNullableInt(activityData, "avgPulse");
+                            activityDataDto.MaxPulse = GetNullableInt(activityData, "maxPulse");
+                            activityDataDto.Count = GetNullableInt(activityData, "count");
+
+                            activityDataDto.MuscleGroup = null;
+                            activityDataDto.Weight = null;
+                            activityDataDto.RestTimeSeconds = null;
+                            activityDataDto.Sets = null;
                         }
+
+                        activityDto.ActivityData = activityDataDto;
                     }
 
                     response.WorkoutData = activityDto;
@@ -1162,7 +1191,6 @@ CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction.
                 using var document = JsonDocument.Parse(jsonText);
                 var root = document.RootElement;
 
-
                 var response = new TextWorkoutResponse
                 {
                     Success = true,
@@ -1185,36 +1213,38 @@ CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction.
 
                     if (workoutData.TryGetProperty("activityData", out var activityData))
                     {
-                        activityDto.ActivityData = new ActivityDataDto
+                        var activityDataDto = new ActivityDataDto
                         {
                             Name = GetString(activityData, "name", type == "strength" ? "Силовое упражнение" : "Кардио упражнение"),
-                            Category = GetString(activityData, "category", type == "strength" ? "Strength" : "Cardio"),
-                            Equipment = GetNullableString(activityData, "equipment"),
-                            Count = GetNullableInt(activityData, "count")
+                            Category = GetNullableString(activityData, "category"),
+                            Equipment = GetNullableString(activityData, "equipment")
                         };
 
                         if (type == "strength")
                         {
-                            activityDto.ActivityData.MuscleGroup = GetNullableString(activityData, "muscleGroup");
-                            activityDto.ActivityData.Weight = GetNullableDecimal(activityData, "weight");
-                            activityDto.ActivityData.RestTimeSeconds = GetNullableInt(activityData, "restTimeSeconds");
+                            activityDataDto.MuscleGroup = GetNullableString(activityData, "muscleGroup");
+                            activityDataDto.Weight = GetNullableDecimal(activityData, "weight");
+                            activityDataDto.RestTimeSeconds = GetNullableInt(activityData, "restTimeSeconds");
 
                             if (activityData.TryGetProperty("sets", out var setsArray))
                             {
-                                activityDto.ActivityData.Sets = ParseSets(setsArray);
-                                if (activityDto.ActivityData.Sets?.Any() == true)
+                                activityDataDto.Sets = ParseSets(setsArray);
+                                if (activityDataDto.Sets?.Any() == true)
                                 {
-                                    activityDto.ActivityData.Count = activityDto.ActivityData.Sets.Sum(s => s.Reps);
+                                    activityDataDto.Count = activityDataDto.Sets.Sum(s => s.Reps);
                                 }
                             }
                         }
                         else if (type == "cardio")
                         {
-                            activityDto.ActivityData.Distance = GetNullableDecimal(activityData, "distance");
-                            activityDto.ActivityData.AvgPace = GetNullableString(activityData, "avgPace");
-                            activityDto.ActivityData.AvgPulse = GetNullableInt(activityData, "avgPulse");
-                            activityDto.ActivityData.MaxPulse = GetNullableInt(activityData, "maxPulse");
+                            activityDataDto.Distance = GetNullableDecimal(activityData, "distance");
+                            activityDataDto.AvgPace = GetNullableString(activityData, "avgPace");
+                            activityDataDto.AvgPulse = GetNullableInt(activityData, "avgPulse");
+                            activityDataDto.MaxPulse = GetNullableInt(activityData, "maxPulse");
+                            activityDataDto.Count = GetNullableInt(activityData, "count");
                         }
+
+                        activityDto.ActivityData = activityDataDto;
                     }
 
                     response.WorkoutData = activityDto;

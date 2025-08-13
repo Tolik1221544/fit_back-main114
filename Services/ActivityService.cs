@@ -112,12 +112,12 @@ namespace FitnessTracker.API.Services
 
                             foreach (var setDto in request.ActivityData.Sets)
                             {
-                                if (setDto.Reps <= 0) continue; 
+                                if (setDto.Reps <= 0) continue;
 
                                 validSets.Add(new ActivitySet
                                 {
                                     SetNumber = setDto.SetNumber > 0 ? setDto.SetNumber : validSets.Count + 1,
-                                    Weight = setDto.Weight > 0 ? setDto.Weight : null, 
+                                    Weight = setDto.Weight > 0 ? setDto.Weight : null,
                                     Reps = setDto.Reps,
                                     IsCompleted = setDto.IsCompleted
                                 });
@@ -126,7 +126,7 @@ namespace FitnessTracker.API.Services
                             }
 
                             activityData.Sets = validSets;
-                            activityData.Count = totalReps; 
+                            activityData.Count = totalReps; // count = сумма всех reps
                         }
                         else
                         {

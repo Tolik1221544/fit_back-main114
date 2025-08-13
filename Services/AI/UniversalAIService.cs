@@ -3,7 +3,6 @@ using FitnessTracker.API.Services.AI;
 
 namespace FitnessTracker.API.Services.AI
 {
-    
     public class UniversalAIService : IGeminiService
     {
         private readonly IAIProvider _primaryProvider;
@@ -325,25 +324,6 @@ namespace FitnessTracker.API.Services.AI
             }
         }
 
-        private bool ValidateTextWorkoutResult(TextWorkoutResponse result)
-        {
-            if (result?.WorkoutData == null)
-                return false;
-
-            return !string.IsNullOrEmpty(result.WorkoutData.Type) &&
-                   result.WorkoutData.StartDate != default; 
-        }
-
-        private bool ValidateTextFoodResult(TextFoodResponse result)
-        {
-            if (result?.FoodItems == null || !result.FoodItems.Any())
-                return false;
-
-            return result.FoodItems.All(item =>
-                !string.IsNullOrEmpty(item.Name) &&
-                item.EstimatedWeight > 0);
-        }
-
         public async Task<bool> IsHealthyAsync()
         {
             try
@@ -411,7 +391,6 @@ namespace FitnessTracker.API.Services.AI
             }
         }
 
-        // Private validation methods
         private bool ValidateFoodScanResult(FoodScanResponse result)
         {
             if (result?.FoodItems == null || !result.FoodItems.Any())
@@ -440,10 +419,29 @@ namespace FitnessTracker.API.Services.AI
                 return false;
 
             return !string.IsNullOrEmpty(result.WorkoutData.Type) &&
-                   result.WorkoutData.StartTime != default;
+                   result.WorkoutData.StartDate != default;
+        }
+
+        private bool ValidateTextWorkoutResult(TextWorkoutResponse result)
+        {
+            if (result?.WorkoutData == null)
+                return false;
+
+            return !string.IsNullOrEmpty(result.WorkoutData.Type) &&
+                   result.WorkoutData.StartDate != default;
         }
 
         private bool ValidateVoiceFoodResult(VoiceFoodResponse result)
+        {
+            if (result?.FoodItems == null || !result.FoodItems.Any())
+                return false;
+
+            return result.FoodItems.All(item =>
+                !string.IsNullOrEmpty(item.Name) &&
+                item.EstimatedWeight > 0);
+        }
+
+        private bool ValidateTextFoodResult(TextFoodResponse result)
         {
             if (result?.FoodItems == null || !result.FoodItems.Any())
                 return false;
