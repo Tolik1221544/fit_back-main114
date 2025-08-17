@@ -1,4 +1,5 @@
 ﻿using System.Security.Claims;
+using FitnessTracker.API.Repositories; 
 
 namespace FitnessTracker.API.Services
 {
@@ -16,12 +17,10 @@ namespace FitnessTracker.API.Services
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ILogger<LocalizationService> _logger;
 
-        // Словарь переводов
         private readonly Dictionary<string, Dictionary<string, string>> _translations = new()
         {
             ["ru"] = new Dictionary<string, string>
             {
-                // Миссии
                 ["mission.breakfast_500"] = "Съешь 500ккал на завтрак",
                 ["mission.walk_5000"] = "Пройди 5000 шагов",
                 ["mission.body_scan_weekly"] = "Скан тела каждую неделю",
@@ -30,7 +29,6 @@ namespace FitnessTracker.API.Services
                 ["mission.smart_spending"] = "Умная трата: уложись в дневной лимит",
                 ["mission.photo_master"] = "Мастер фото: проанализируй 3 фото за день",
 
-                // Скины
                 ["skin.minimalist"] = "Минималист",
                 ["skin.minimalist.desc"] = "Для пользователей, которые тратят меньше 5 монет в день",
                 ["skin.economist"] = "Экономист",
@@ -68,7 +66,13 @@ namespace FitnessTracker.API.Services
                 ["error.insufficient_coins"] = "Недостаточно LW Coins",
                 ["error.not_found"] = "Не найдено",
                 ["error.invalid_data"] = "Неверные данные",
-                ["error.server_error"] = "Ошибка сервера"
+                ["error.server_error"] = "Ошибка сервера",
+                ["error.file_too_large"] = "Файл слишком большой",
+                ["error.analysis_failed"] = "Ошибка анализа",
+                ["error.user_not_found"] = "Пользователь не найден",
+                ["error.no_images"] = "Изображения не предоставлены",
+                ["error.image_save_failed"] = "Ошибка сохранения изображения",
+                ["error.body_analysis_failed"] = "Ошибка анализа тела"
             },
 
             ["en"] = new Dictionary<string, string>
@@ -120,7 +124,13 @@ namespace FitnessTracker.API.Services
                 ["error.insufficient_coins"] = "Insufficient LW Coins",
                 ["error.not_found"] = "Not found",
                 ["error.invalid_data"] = "Invalid data",
-                ["error.server_error"] = "Server error"
+                ["error.server_error"] = "Server error",
+                ["error.file_too_large"] = "File too large",
+                ["error.analysis_failed"] = "Analysis failed",
+                ["error.user_not_found"] = "User not found",
+                ["error.no_images"] = "No images provided",
+                ["error.image_save_failed"] = "Image save failed",
+                ["error.body_analysis_failed"] = "Body analysis failed"
             },
 
             ["es"] = new Dictionary<string, string>
@@ -133,7 +143,9 @@ namespace FitnessTracker.API.Services
                 ["breakfast"] = "Desayuno",
                 ["lunch"] = "Almuerzo",
                 ["dinner"] = "Cena",
-                ["snack"] = "Merienda"
+                ["snack"] = "Merienda",
+                ["error.insufficient_coins"] = "Monedas LW insuficientes",
+                ["error.invalid_data"] = "Datos inválidos"
             },
 
             ["de"] = new Dictionary<string, string>
@@ -146,7 +158,9 @@ namespace FitnessTracker.API.Services
                 ["breakfast"] = "Frühstück",
                 ["lunch"] = "Mittagessen",
                 ["dinner"] = "Abendessen",
-                ["snack"] = "Snack"
+                ["snack"] = "Snack",
+                ["error.insufficient_coins"] = "Unzureichende LW-Münzen",
+                ["error.invalid_data"] = "Ungültige Daten"
             },
 
             ["fr"] = new Dictionary<string, string>
@@ -159,7 +173,9 @@ namespace FitnessTracker.API.Services
                 ["breakfast"] = "Petit-déjeuner",
                 ["lunch"] = "Déjeuner",
                 ["dinner"] = "Dîner",
-                ["snack"] = "Collation"
+                ["snack"] = "Collation",
+                ["error.insufficient_coins"] = "Pièces LW insuffisantes",
+                ["error.invalid_data"] = "Données invalides"
             }
         };
 
@@ -175,22 +191,27 @@ namespace FitnessTracker.API.Services
 
         public async Task<string> GetUserLocaleAsync(string userId)
         {
-            // Пытаемся получить из профиля пользователя
-            var user = await _userRepository.GetByIdAsync(userId);
-            if (user != null && !string.IsNullOrEmpty(user.Locale))
+            try
             {
-                return user.Locale;
-            }
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user != null && !string.IsNullOrEmpty(user.Locale))
+                {
+                    return user.Locale;
+                }
 
-            // Если нет в профиле, смотрим заголовок
-            var acceptLanguage = _httpContextAccessor.HttpContext?.Request.Headers["Accept-Language"].FirstOrDefault();
-            if (!string.IsNullOrEmpty(acceptLanguage))
+                var acceptLanguage = _httpContextAccessor.HttpContext?.Request.Headers["Accept-Language"].FirstOrDefault();
+                if (!string.IsNullOrEmpty(acceptLanguage))
+                {
+                    return acceptLanguage;
+                }
+
+                return "ru_RU";
+            }
+            catch (Exception ex)
             {
-                return acceptLanguage;
+                _logger.LogError($"Error getting user locale: {ex.Message}");
+                return "ru_RU";
             }
-
-            // По умолчанию русский
-            return "ru_RU";
         }
 
         public string GetLanguageFromLocale(string locale)
@@ -228,7 +249,6 @@ namespace FitnessTracker.API.Services
                 }
             }
 
-            // Fallback на английский
             if (_translations.TryGetValue("en", out var enDict))
             {
                 if (enDict.TryGetValue(key, out var enTranslation))

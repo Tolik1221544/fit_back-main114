@@ -9,6 +9,7 @@ namespace FitnessTracker.API.Services
         private readonly IUserRepository _userRepository;
         private readonly IExperienceService _experienceService;
         private readonly IMapper _mapper;
+        private readonly ILogger<UserService> _logger; // ✅ Добавляем недостающий logger
 
         private static readonly int[] LevelExperienceRequirements = {
             0,     // Уровень 0 (не используется)
@@ -34,11 +35,16 @@ namespace FitnessTracker.API.Services
             11500  // Уровень 20 -> 21
         };
 
-        public UserService(IUserRepository userRepository, IExperienceService experienceService, IMapper mapper)
+        public UserService(
+            IUserRepository userRepository,
+            IExperienceService experienceService,
+            IMapper mapper,
+            ILogger<UserService> logger) 
         {
             _userRepository = userRepository;
             _experienceService = experienceService;
             _mapper = mapper;
+            _logger = logger;
         }
 
         public async Task<UserDto?> GetUserByIdAsync(string userId)
@@ -48,7 +54,6 @@ namespace FitnessTracker.API.Services
 
             var userDto = _mapper.Map<UserDto>(user);
 
-            // ✅ ДОБАВЛЕНО: Расчет данных об опыте
             var experienceData = CalculateExperienceData(user.Level, user.Experience);
             userDto.MaxExperience = experienceData.MaxExperience;
             userDto.ExperienceToNextLevel = experienceData.ExperienceToNextLevel;
@@ -121,7 +126,7 @@ namespace FitnessTracker.API.Services
 
             int nextLevelMaxExperience = level < LevelExperienceRequirements.Length
                 ? LevelExperienceRequirements[level]
-                : LevelExperienceRequirements[^1]; 
+                : LevelExperienceRequirements[^1];
 
             int experienceInCurrentLevel = currentExperience - currentLevelMinExperience;
 

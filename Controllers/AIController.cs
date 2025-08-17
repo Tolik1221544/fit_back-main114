@@ -25,7 +25,7 @@ namespace FitnessTracker.API.Controllers
         private readonly IImageService _imageService;
         private readonly IVoiceFileService _voiceFileService;
         private readonly IUserRepository _userRepository;
-        private readonly ILocalizationService _localizationService; 
+        private readonly ILocalizationService _localizationService;
         private readonly ILogger<AIController> _logger;
 
         public AIController(
@@ -64,7 +64,7 @@ namespace FitnessTracker.API.Controllers
             [FromForm] string? workoutType = null,
             [FromForm] bool saveResults = false,
             [FromForm] bool saveAudio = true,
-            [FromForm] string? locale = null) 
+            [FromForm] string? locale = null)
         {
             try
             {
@@ -189,7 +189,6 @@ namespace FitnessTracker.API.Controllers
             }
         }
 
-
         /// <summary>
         /// 🗣️ Голосовой ввод питания (автоматически использует locale из профиля)
         /// </summary>
@@ -202,7 +201,7 @@ namespace FitnessTracker.API.Controllers
             [FromForm] string? mealType = null,
             [FromForm] bool saveResults = false,
             [FromForm] bool saveAudio = true,
-            [FromForm] string? locale = null) 
+            [FromForm] string? locale = null)
         {
             try
             {
@@ -300,7 +299,7 @@ namespace FitnessTracker.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Error processing voice food: {ex.Message}");
-                return BadRequest(new { error: ex.Message });
+                return BadRequest(new { error = ex.Message });
             }
         }
 
@@ -315,7 +314,7 @@ namespace FitnessTracker.API.Controllers
             IFormFile image,
             [FromForm] string? userPrompt = null,
             [FromForm] bool saveResults = false,
-            [FromForm] string? locale = null) 
+            [FromForm] string? locale = null)
         {
             try
             {
@@ -486,7 +485,7 @@ namespace FitnessTracker.API.Controllers
                         age,
                         gender,
                         request.Goals,
-                        userLocale); 
+                        userLocale);
 
                     _logger.LogInformation($"💪 Body analysis completed. Success: {result.Success}");
                 }
@@ -709,7 +708,6 @@ namespace FitnessTracker.API.Controllers
             }
         }
 
-
         /// <summary>
         /// 🔧 Коррекция продукта с указанием ингредиентов/начинки
         /// </summary>
@@ -721,9 +719,9 @@ namespace FitnessTracker.API.Controllers
                 var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
-                
+
                 var userLocale = request.Locale ?? await _localizationService.GetUserLocaleAsync(userId);
-                _logger.LogInformation($"📝 Text food for user {userId} with locale: {userLocale}");
+                _logger.LogInformation($"🔧 Food correction for user {userId} with locale: {userLocale}");
 
                 if (string.IsNullOrWhiteSpace(request.CorrectionText))
                 {
@@ -744,26 +742,12 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new { error = errorMsg });
                 }
 
-                var result = await _geminiService.AnalyzeTextWorkoutAsync(request.WorkoutDescription, request.WorkoutType, userLocale);
+                var result = await _geminiService.CorrectFoodItemAsync(request.FoodItem.Name, request.CorrectionText, userLocale);
 
                 if (!result.Success)
                 {
                     var errorMsg = _localizationService.Translate("error.analysis_failed", userLocale);
                     return BadRequest(new { error = result.ErrorMessage ?? errorMsg });
-                }
-
-                if (!canSpend)
-                {
-                    return BadRequest(new { error = "Недостаточно LW Coins для коррекции продукта" });
-                }
-
-                _logger.LogInformation($"🔧 Correcting food: {request.FoodItem.Name} + {request.CorrectionText}");
-
-                var result = await _geminiService.CorrectFoodItemAsync(request.FoodItem.Name, request.CorrectionText);
-
-                if (!result.Success)
-                {
-                    return BadRequest(new { error = result.ErrorMessage ?? "Не удалось скорректировать продукт" });
                 }
 
                 if (request.SaveResults)
@@ -819,10 +803,10 @@ namespace FitnessTracker.API.Controllers
 
                 return Ok(new
                 {
-                    Service = "Gemini 2.5 Flash", 
+                    Service = "Gemini 2.5 Flash",
                     Status = isWorking ? "Online" : "Offline",
                     Timestamp = DateTime.UtcNow,
-                    ModelVersion = "gemini-2.5-flash", 
+                    ModelVersion = "gemini-2.5-flash",
                     Features = new[]
                     {
                         "Food Image Analysis",
@@ -830,7 +814,7 @@ namespace FitnessTracker.API.Controllers
                         "Voice Workout Recognition",
                         "Voice Food Recognition",
                         "Voice File Storage & Management",
-                        "Enhanced AI Capabilities with Gemini 2.5" 
+                        "Enhanced AI Capabilities with Gemini 2.5"
                     },
                     ModelInfo = new
                     {
@@ -843,7 +827,6 @@ namespace FitnessTracker.API.Controllers
                             "Improved Accuracy",
                             "Faster Response Times",
                             "Better Russian Language Support"
-               
                         }
                     }
                 });
