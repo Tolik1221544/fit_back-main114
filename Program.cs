@@ -114,6 +114,7 @@ builder.Services.AddHttpClient<VertexAIProvider>(client =>
     client.DefaultRequestHeaders.Add("User-Agent", "FitnessTracker-API/3.0.0");
 });
 
+builder.Services.AddScoped<ILocalizationService, LocalizationService>();
 builder.Services.AddScoped<IGoogleCloudTokenService, GoogleCloudTokenService>();
 builder.Services.AddScoped<IAIProvider, VertexAIProvider>();
 
@@ -465,6 +466,23 @@ app.Use(async (context, next) =>
 });
 
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    var acceptLanguage = context.Request.Headers["Accept-Language"].FirstOrDefault();
+    if (!string.IsNullOrEmpty(acceptLanguage))
+    {
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+
+        // Только для AI endpoints
+        if (context.Request.Path.StartsWithSegments("/api/ai"))
+        {
+            var lang = acceptLanguage.ToLower().Substring(0, Math.Min(2, acceptLanguage.Length));
+            logger.LogInformation($"🌍 AI Request with language: {lang} from header: {acceptLanguage}");
+        }
+    }
+
+    await next.Invoke();
+});
 app.UseAuthorization();
 app.MapControllers();
 

@@ -8,6 +8,7 @@ namespace FitnessTracker.API.Services
     public class MissionService : IMissionService
     {
         private readonly IMissionRepository _missionRepository;
+        private readonly ILocalizationService _localizationService;
         private readonly IAchievementService _achievementService;
         private readonly IExperienceService _experienceService;
         private readonly IFoodIntakeRepository _foodIntakeRepository;
@@ -18,6 +19,7 @@ namespace FitnessTracker.API.Services
 
         public MissionService(
             IMissionRepository missionRepository,
+            ILocalizationService localizationService,
             IAchievementService achievementService,
             IExperienceService experienceService,
             IFoodIntakeRepository foodIntakeRepository,
@@ -27,6 +29,7 @@ namespace FitnessTracker.API.Services
             ILogger<MissionService> logger)
         {
             _missionRepository = missionRepository;
+            _localizationService = localizationService;
             _achievementService = achievementService;
             _experienceService = experienceService;
             _foodIntakeRepository = foodIntakeRepository;
@@ -38,6 +41,8 @@ namespace FitnessTracker.API.Services
 
         public async Task<IEnumerable<MissionDto>> GetUserMissionsAsync(string userId)
         {
+            var userLocale = await _localizationService.GetUserLocaleAsync(userId);
+
             var missions = await _missionRepository.GetActiveMissionsAsync();
             var userMissions = await _missionRepository.GetUserMissionsAsync(userId);
             var userMissionDict = userMissions.ToDictionary(um => um.MissionId);
@@ -47,13 +52,15 @@ namespace FitnessTracker.API.Services
             foreach (var mission in missions)
             {
                 var userMission = userMissionDict.GetValueOrDefault(mission.Id);
-
                 var currentProgress = await CalculateMissionProgressAsync(userId, mission.Type, mission.TargetValue);
+
+                var translationKey = $"mission.{mission.Id.Replace("mission_", "")}";
+                var localizedTitle = _localizationService.Translate(translationKey, userLocale);
 
                 var missionDto = new MissionDto
                 {
                     Id = mission.Id,
-                    Title = mission.Title,
+                    Title = localizedTitle, 
                     Icon = mission.Icon,
                     RewardExperience = mission.RewardExperience,
                     Type = mission.Type,

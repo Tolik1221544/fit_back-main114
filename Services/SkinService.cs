@@ -8,35 +8,44 @@ namespace FitnessTracker.API.Services
     public class SkinService : ISkinService
     {
         private readonly ISkinRepository _skinRepository;
-        private readonly IUserRepository _userRepository;       
-        private readonly ILwCoinRepository _lwCoinRepository;    
+        private readonly IUserRepository _userRepository;
+        private readonly ILwCoinRepository _lwCoinRepository;
+        private readonly ILocalizationService _localizationService; 
         private readonly IMapper _mapper;
         private readonly ILogger<SkinService> _logger;
 
         public SkinService(
             ISkinRepository skinRepository,
-            IUserRepository userRepository,     
-            ILwCoinRepository lwCoinRepository, 
+            IUserRepository userRepository,
+            ILwCoinRepository lwCoinRepository,
+            ILocalizationService localizationService, 
             IMapper mapper,
             ILogger<SkinService> logger)
         {
             _skinRepository = skinRepository;
-            _userRepository = userRepository;        
-            _lwCoinRepository = lwCoinRepository;    
-            _mapper = mapper;
+            _userRepository = userRepository;
+            _lwCoinRepository = lwCoinRepository;
+            _localizationService = localizationService; 
             _logger = logger;
         }
 
         public async Task<IEnumerable<SkinDto>> GetAllSkinsAsync(string userId)
         {
+            var userLocale = await _localizationService.GetUserLocaleAsync(userId);
+
             var skins = await _skinRepository.GetAllSkinsAsync();
             var userSkins = await _skinRepository.GetUserSkinsAsync(userId);
             var ownedSkinIds = userSkins.Select(us => us.SkinId).ToHashSet();
             var activeSkinId = userSkins.FirstOrDefault(us => us.IsActive)?.SkinId;
 
             var skinDtos = _mapper.Map<IEnumerable<SkinDto>>(skins);
+
             foreach (var skinDto in skinDtos)
             {
+                var skinKey = skinDto.Id.Replace("skin_", "");
+                skinDto.Name = _localizationService.Translate($"skin.{skinKey}", userLocale);
+                skinDto.Description = _localizationService.Translate($"skin.{skinKey}.desc", userLocale);
+
                 skinDto.IsOwned = ownedSkinIds.Contains(skinDto.Id);
                 skinDto.IsActive = skinDto.Id == activeSkinId;
             }

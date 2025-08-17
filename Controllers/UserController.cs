@@ -1,4 +1,4 @@
-using FitnessTracker.API.DTOs;
+﻿using FitnessTracker.API.DTOs;
 using FitnessTracker.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -98,5 +98,89 @@ namespace FitnessTracker.API.Controllers
                 return BadRequest(new { error = ex.Message });
             }
         }
+        /// <summary>
+        /// 🌍 Установить язык пользователя
+        /// </summary>
+        /// <param name="request">Новый locale (ru_RU, en_US, es_ES и т.д.)</param>
+        /// <returns>Результат обновления</returns>
+        [HttpPost("locale")]
+        public async Task<IActionResult> SetLocale([FromBody] SetLocaleRequest request)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                if (string.IsNullOrEmpty(request.Locale))
+                    return BadRequest(new { error = "Locale is required" });
+
+                var supportedLocales = new[] { "ru_RU", "en_US", "es_ES", "de_DE", "fr_FR", "zh_CN", "ja_JP", "ko_KR", "pt_BR", "it_IT" };
+                if (!supportedLocales.Contains(request.Locale))
+                {
+                    return BadRequest(new
+                    {
+                        error = "Unsupported locale",
+                        supported = supportedLocales
+                    });
+                }
+
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user == null)
+                    return NotFound();
+
+                user.Locale = request.Locale;
+                await _userRepository.UpdateAsync(user);
+
+                _logger.LogInformation($"🌍 Locale updated for user {userId}: {request.Locale}");
+
+                return Ok(new
+                {
+                    success = true,
+                    locale = request.Locale,
+                    message = "Language updated successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error setting locale: {ex.Message}");
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 🌍 Получить доступные переводы для текущего языка пользователя
+        /// </summary>
+        /// <returns>Словарь переводов</returns>
+        [HttpGet("translations")]
+        public async Task<IActionResult> GetTranslations()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                var userLocale = await _localizationService.GetUserLocaleAsync(userId);
+                var translations = _localizationService.GetAllTranslations(userLocale);
+
+                return Ok(new
+                {
+                    locale = userLocale,
+                    translations = translations
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error getting translations: {ex.Message}");
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        public class SetLocaleRequest
+        {
+            public string Locale { get; set; } = string.Empty;
+        }
+
     }
 }

@@ -27,15 +27,64 @@ namespace FitnessTracker.API.Services.AI.Providers
             _logger = logger;
         }
 
-        public async Task<FoodScanResponse> AnalyzeFoodImageAsync(byte[] imageData, string? userPrompt = null)
+        private string GetLanguageFromLocale(string? locale)
+        {
+            if (string.IsNullOrEmpty(locale))
+                return "ru";
+
+            var lang = locale.ToLower().Substring(0, Math.Min(2, locale.Length));
+
+            return lang switch
+            {
+                "en" => "en",
+                "ru" => "ru",
+                "es" => "es",
+                "de" => "de",
+                "fr" => "fr",
+                "zh" => "zh",
+                "ja" => "ja",
+                "ko" => "ko",
+                "pt" => "pt",
+                "it" => "it",
+                _ => "en"
+            };
+        }
+
+        private string GetLanguageInstruction(string lang)
+        {
+            return lang switch
+            {
+                "en" => "Respond in English.",
+                "ru" => "Отвечайте на русском языке.",
+                "es" => "Responde en español.",
+                "de" => "Antworten Sie auf Deutsch.",
+                "fr" => "Répondez en français.",
+                "zh" => "请用中文回答。",
+                "ja" => "日本語で答えてください。",
+                "ko" => "한국어로 답변해 주세요.",
+                "pt" => "Responda em português.",
+                "it" => "Rispondi in italiano.",
+                "ar" => "أجب بالعربية.",
+                "hi" => "हिंदी में उत्तर दें।",
+                "tr" => "Türkçe cevap verin.",
+                "pl" => "Odpowiedz po polsku.",
+                "uk" => "Відповідайте українською.",
+                _ => "Respond in English."
+            };
+        }
+
+        public async Task<FoodScanResponse> AnalyzeFoodImageAsync(byte[] imageData, string? userPrompt = null, string? locale = null)
         {
             try
             {
+                var lang = GetLanguageFromLocale(locale);
+                _logger.LogInformation($"🍎 Food analysis with locale: {locale} -> language: {lang}");
+
                 var (url, accessToken) = await GetApiEndpointAsync();
                 var base64Image = Convert.ToBase64String(imageData);
                 var mimeType = DetectImageType(imageData);
 
-                var prompt = CreateFoodAnalysisPrompt(userPrompt);
+                var prompt = CreateFoodAnalysisPrompt(userPrompt, lang);
                 var request = CreateGeminiRequest(prompt, base64Image, mimeType);
 
                 var response = await SendRequestAsync(url, accessToken, request);
@@ -54,17 +103,21 @@ namespace FitnessTracker.API.Services.AI.Providers
         }
 
         public async Task<BodyScanResponse> AnalyzeBodyImagesAsync(
-            byte[]? frontImageData,
-            byte[]? sideImageData,
-            byte[]? backImageData,
-            decimal? weight = null,
-            decimal? height = null,
-            int? age = null,
-            string? gender = null,
-            string? goals = null)
+           byte[]? frontImageData,
+           byte[]? sideImageData,
+           byte[]? backImageData,
+           decimal? weight = null,
+           decimal? height = null,
+           int? age = null,
+           string? gender = null,
+           string? goals = null,
+           string? locale = null)
         {
             try
             {
+                var lang = GetLanguageFromLocale(locale);
+                _logger.LogInformation($"💪 Body analysis with locale: {locale} -> language: {lang}");
+
                 var (url, accessToken) = await GetApiEndpointAsync();
                 var images = PrepareBodyImages(frontImageData, sideImageData, backImageData);
 
@@ -73,7 +126,7 @@ namespace FitnessTracker.API.Services.AI.Providers
                     return CreateFallbackBodyResponse("No images provided", weight, height, age, gender);
                 }
 
-                var prompt = CreateBodyAnalysisPrompt(weight, height, age, gender, goals);
+                var prompt = CreateBodyAnalysisPrompt(weight, height, age, gender, goals, lang);
                 var request = CreateGeminiRequestWithMultipleImages(prompt, images);
 
                 var response = await SendRequestAsync(url, accessToken, request);
@@ -91,15 +144,18 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
         }
 
-        public async Task<VoiceWorkoutResponse> AnalyzeVoiceWorkoutAsync(byte[] audioData, string? workoutType = null)
+        public async Task<VoiceWorkoutResponse> AnalyzeVoiceWorkoutAsync(byte[] audioData, string? workoutType = null, string? locale = null)
         {
             try
             {
+                var lang = GetLanguageFromLocale(locale);
+                _logger.LogInformation($"🎤 Voice workout with locale: {locale} -> language: {lang}");
+
                 var (url, accessToken) = await GetApiEndpointAsync();
                 var base64Audio = Convert.ToBase64String(audioData);
                 var mimeType = DetectAudioType(audioData);
 
-                var prompt = CreateVoiceWorkoutPrompt(workoutType);
+                var prompt = CreateVoiceWorkoutPrompt(workoutType, lang);
                 var request = CreateGeminiRequestWithAudio(prompt, base64Audio, mimeType);
 
                 var response = await SendRequestAsync(url, accessToken, request);
@@ -117,15 +173,18 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
         }
 
-        public async Task<VoiceFoodResponse> AnalyzeVoiceFoodAsync(byte[] audioData, string? mealType = null)
+        public async Task<VoiceFoodResponse> AnalyzeVoiceFoodAsync(byte[] audioData, string? mealType = null, string? locale = null)
         {
             try
             {
+                var lang = GetLanguageFromLocale(locale);
+                _logger.LogInformation($"🗣️ Voice food with locale: {locale} -> language: {lang}");
+
                 var (url, accessToken) = await GetApiEndpointAsync();
                 var base64Audio = Convert.ToBase64String(audioData);
                 var mimeType = DetectAudioType(audioData);
 
-                var prompt = CreateVoiceFoodPrompt(mealType);
+                var prompt = CreateVoiceFoodPrompt(mealType, lang);
                 var request = CreateGeminiRequestWithAudio(prompt, base64Audio, mimeType);
 
                 var response = await SendRequestAsync(url, accessToken, request);
@@ -143,12 +202,15 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
         }
 
-        public async Task<TextWorkoutResponse> AnalyzeTextWorkoutAsync(string workoutText, string? workoutType = null)
+        public async Task<TextWorkoutResponse> AnalyzeTextWorkoutAsync(string workoutText, string? workoutType = null, string? locale = null)
         {
             try
             {
+                var lang = GetLanguageFromLocale(locale);
+                _logger.LogInformation($"📝 Text workout with locale: {locale} -> language: {lang}");
+
                 var (url, accessToken) = await GetApiEndpointAsync();
-                var prompt = CreateTextWorkoutPrompt(workoutText, workoutType);
+                var prompt = CreateTextWorkoutPrompt(workoutText, workoutType, lang);
                 var request = CreateGeminiTextRequest(prompt);
 
                 var response = await SendRequestAsync(url, accessToken, request);
@@ -166,12 +228,15 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
         }
 
-        public async Task<TextFoodResponse> AnalyzeTextFoodAsync(string foodText, string? mealType = null)
+        public async Task<TextFoodResponse> AnalyzeTextFoodAsync(string foodText, string? mealType = null, string? locale = null)
         {
             try
             {
+                var lang = GetLanguageFromLocale(locale);
+                _logger.LogInformation($"📝 Text food with locale: {locale} -> language: {lang}");
+
                 var (url, accessToken) = await GetApiEndpointAsync();
-                var prompt = CreateTextFoodPrompt(foodText, mealType);
+                var prompt = CreateTextFoodPrompt(foodText, mealType, lang);
                 var request = CreateGeminiTextRequest(prompt);
 
                 var response = await SendRequestAsync(url, accessToken, request);
@@ -189,12 +254,15 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
         }
 
-        public async Task<FoodCorrectionResponse> CorrectFoodItemAsync(string originalFoodName, string correctionText)
+        public async Task<FoodCorrectionResponse> CorrectFoodItemAsync(string originalFoodName, string correctionText, string? locale = null)
         {
             try
             {
+                var lang = GetLanguageFromLocale(locale);
+                _logger.LogInformation($"🔧 Food correction with locale: {locale} -> language: {lang}");
+
                 var (url, accessToken) = await GetApiEndpointAsync();
-                var prompt = CreateFoodCorrectionPrompt(originalFoodName, correctionText);
+                var prompt = CreateFoodCorrectionPrompt(originalFoodName, correctionText, lang);
                 var request = CreateGeminiTextRequest(prompt);
 
                 var response = await SendRequestAsync(url, accessToken, request);
@@ -236,22 +304,25 @@ namespace FitnessTracker.API.Services.AI.Providers
             }
         }
 
-        private string CreateFoodAnalysisPrompt(string? userPrompt)
+        private string CreateFoodAnalysisPrompt(string? userPrompt, string lang)
         {
+            var langInstruction = GetLanguageInstruction(lang);
+
             return $@"Analyze this food image and return ONLY valid JSON.
+{langInstruction}
 
 {userPrompt ?? ""}
 
 Requirements:
 1. For LIQUIDS (soups, drinks, sauces): use ""weightType"": ""ml""
 2. For SOLIDS (bread, meat, fruits): use ""weightType"": ""g""
-3. If you see packaging labels with exact weight/volume - use that number
+3. All text fields (name, description) must be in the requested language
 
 JSON format:
 {{
   ""foodItems"": [
     {{
-      ""name"": ""Food name in Russian"",
+      ""name"": ""Food name"",
       ""estimatedWeight"": 150.0,
       ""weightType"": ""g"",
       ""description"": ""Brief description"",
@@ -269,11 +340,13 @@ JSON format:
   ""fullDescription"": ""Description of all items""
 }}
 
-CRITICAL: Return ONLY the JSON object, no other text.";
+CRITICAL: Return ONLY the JSON object. {langInstruction}";
         }
 
-        private string CreateBodyAnalysisPrompt(decimal? weight, decimal? height, int? age, string? gender, string? goals)
+        private string CreateBodyAnalysisPrompt(decimal? weight, decimal? height, int? age, string? gender, string? goals, string lang)
         {
+            var langInstruction = GetLanguageInstruction(lang);
+
             var w = weight ?? 70;
             var h = height ?? 170;
             var a = age ?? 25;
@@ -290,61 +363,54 @@ CRITICAL: Return ONLY the JSON object, no other text.";
             }
 
             var bmi = Math.Round((double)w / Math.Pow((double)h / 100, 2), 1);
-            string bmiCategory = bmi switch
-            {
-                < 18.5 => "Недостаточный вес",
-                >= 18.5 and < 25 => "Нормальный вес",
-                >= 25 and < 30 => "Избыточный вес",
-                >= 30 => "Ожирение"
-            };
 
-            string bmrCategory = bmr switch
-            {
-                < 1200 => "Низкий",
-                >= 1200 and <= 2000 => "Нормальный",
-                > 2000 => "Высокий"
-            };
+            return $@"Analyze body images. User: {w}kg, {h}cm, {a}y, {g}. 
+{langInstruction}
+IMPORTANT: All text fields must be in the user's language.
 
-            return $@"Analyze body images. User: {w}kg, {h}cm, {a}y, {g}. IMPORTANT: All text fields must be in Russian. Return JSON only:
+Return JSON only with all text in the requested language:
 
-{{""bodyAnalysis"":{{""estimatedBodyFatPercentage"":15.0,""estimatedMusclePercentage"":40.0,""bodyType"":""Атлетическое телосложение"",""postureAnalysis"":""Хорошая осанка"",""overallCondition"":""Хорошее состояние"",""bmi"":{Math.Round((double)w / Math.Pow((double)h / 100, 2), 1)},""bmiCategory"":""{bmiCategory}"",""estimatedWaistCircumference"":80.0,""estimatedChestCircumference"":100.0,""estimatedHipCircumference"":95.0,""basalMetabolicRate"":{bmr},""metabolicRateCategory"":""{bmrCategory}"",""exerciseRecommendations"":[""Силовые тренировки"",""Кардио упражнения""],""nutritionRecommendations"":[""Сбалансированное питание"",""Достаточное количество белка""],""trainingFocus"":""Общая физическая подготовка""}},""recommendations"":[""Продолжайте тренировки"",""Следите за питанием""],""fullAnalysis"":""Подробный анализ состояния тела на русском языке""}}";
+{{""bodyAnalysis"":{{""estimatedBodyFatPercentage"":15.0,""estimatedMusclePercentage"":40.0,""bodyType"":""Body type description"",""postureAnalysis"":""Posture analysis"",""overallCondition"":""Overall condition"",""bmi"":{bmi},""bmiCategory"":""BMI category"",""estimatedWaistCircumference"":80.0,""estimatedChestCircumference"":100.0,""estimatedHipCircumference"":95.0,""basalMetabolicRate"":{bmr},""metabolicRateCategory"":""Metabolic rate category"",""exerciseRecommendations"":[""Exercise recommendation 1"",""Exercise recommendation 2""],""nutritionRecommendations"":[""Nutrition recommendation 1"",""Nutrition recommendation 2""],""trainingFocus"":""Training focus""}},""recommendations"":[""Recommendation 1"",""Recommendation 2""],""fullAnalysis"":""Detailed body analysis""}}";
         }
 
-        private string CreateVoiceWorkoutPrompt(string? workoutType)
+        private string CreateVoiceWorkoutPrompt(string? workoutType, string lang)
         {
-            return @"Transcribe Russian workout audio. Return JSON only:
+            var langInstruction = GetLanguageInstruction(lang);
 
-STRENGTH (отжимания, приседания, планка, жим):
-{
-  ""transcribedText"": ""что услышали"",
-  ""workoutData"": {
+            return $@"Transcribe workout audio. {langInstruction}
+Return JSON only with exercise names in the user's language:
+
+STRENGTH:
+{{
+  ""transcribedText"": ""what was heard"",
+  ""workoutData"": {{
     ""type"": ""strength"",
-    ""startDate"": """ + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") + @""",
-    ""endDate"": """ + DateTime.UtcNow.AddMinutes(45).ToString("yyyy-MM-ddTHH:mm:ssZ") + @""",
+    ""startDate"": ""{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}"",
+    ""endDate"": ""{DateTime.UtcNow.AddMinutes(45):yyyy-MM-ddTHH:mm:ssZ}"",
     ""estimatedCalories"": 250,
-    ""activityData"": {
-      ""name"": ""Название упражнения"",
+    ""activityData"": {{
+      ""name"": ""Exercise name"",
       ""category"": ""Strength"",
-      ""muscleGroup"": ""грудь"",
+      ""muscleGroup"": null,
       ""equipment"": null,
-      ""weight"": 50.0,
+      ""weight"": null,
       ""restTimeSeconds"": 90,
-      ""sets"": [{""setNumber"": 1, ""weight"": 50.0, ""reps"": 12, ""isCompleted"": true}],
+      ""sets"": [{{""setNumber"": 1, ""weight"": null, ""reps"": 12, ""isCompleted"": true}}],
       ""count"": 12
-    }
-  }
-}
+    }}
+  }}
+}}
 
-CARDIO (бег, велосипед, ходьба):
-{
-  ""transcribedText"": ""что услышали"",
-  ""workoutData"": {
+CARDIO:
+{{
+  ""transcribedText"": ""what was heard"",
+  ""workoutData"": {{
     ""type"": ""cardio"",
-    ""startDate"": """ + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") + @""",
-    ""endDate"": """ + DateTime.UtcNow.AddMinutes(30).ToString("yyyy-MM-ddTHH:mm:ssZ") + @""",
+    ""startDate"": ""{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}"",
+    ""endDate"": ""{DateTime.UtcNow.AddMinutes(30):yyyy-MM-ddTHH:mm:ssZ}"",
     ""estimatedCalories"": 300,
-    ""activityData"": {
-      ""name"": ""Название упражнения"",
+    ""activityData"": {{
+      ""name"": ""Exercise name"",
       ""category"": ""Cardio"",
       ""equipment"": null,
       ""distance"": null,
@@ -352,51 +418,36 @@ CARDIO (бег, велосипед, ходьба):
       ""avgPulse"": null,
       ""maxPulse"": null,
       ""count"": null
-    }
-  }
-}
+    }}
+  }}
+}}
 
-CRITICAL RULES:
-- НИКОГДА не выдумывайте данные, которых нет в аудио
-- Если дистанция не названа - distance = null
-- Если пульс не назван - avgPulse = null, maxPulse = null  
-- Если темп не назван - avgPace = null
-- Если вес не назван - weight = null
-- muscleGroup: ""грудь"", ""руки"", ""спина"", ""ноги"" или null
-- Для strength: используй sets массив, count = сумма всех reps
-- Unused поля = null (не придумывайте значения!)
-
-EXAMPLES:
-""Бег 1 час"" → distance: null, avgPace: null, avgPulse: null, maxPulse: null
-""Отжимания 20 раз"" → weight: null, sets: [{setNumber: 1, weight: null, reps: 20}]
-""Бег 5 км за 30 минут"" → distance: 5.0, avgPace: ""6:00/км""
-
+{langInstruction}
 Return JSON only.";
         }
 
-        private string CreateVoiceFoodPrompt(string? mealType)
+        private string CreateVoiceFoodPrompt(string? mealType, string lang)
         {
-            return $@"Transcribe this Russian audio about food and analyze what was eaten.
+            var langInstruction = GetLanguageInstruction(lang);
+
+            return $@"Transcribe this audio about food and analyze what was eaten.
+{langInstruction}
 
 Expected meal type: {mealType ?? "any meal"}
 
-IMPORTANT: You must return ONLY a valid JSON object, no other text before or after.
-
-Listen for food names in Russian like: борщ, хлеб, мясо, рис, молоко, чай, кофе, сок, вода, etc.
-
 UNITS RULES:
-- For LIQUIDS (жидкости): супы, борщ, чай, кофе, молоко, сок, вода, компот, бульон, соусы, напитки → use ""weightType"": ""ml""
-- For SOLIDS (твердая пища): хлеб, мясо, рыба, фрукты, овощи, каши, макароны, крупы → use ""weightType"": ""g""
+- For LIQUIDS: use ""weightType"": ""ml""
+- For SOLIDS: use ""weightType"": ""g""
 
-JSON format to return:
+JSON format to return with food names in the user's language:
 {{
-  ""transcribedText"": ""точный текст что услышали на русском"",
+  ""transcribedText"": ""exact text heard"",
   ""foodItems"": [
     {{
-      ""name"": ""Название блюда на русском"",
+      ""name"": ""Food name"",
       ""estimatedWeight"": 200.0,
-      ""weightType"": ""ml или g в зависимости от типа продукта"",
-      ""description"": ""Описание блюда"",
+      ""weightType"": ""ml or g"",
+      ""description"": ""Food description"",
       ""nutritionPer100g"": {{
         ""calories"": 200.0,
         ""proteins"": 15.0,
@@ -410,16 +461,20 @@ JSON format to return:
   ""estimatedTotalCalories"": 400
 }}
 
-CRITICAL: Return ONLY the JSON object above, nothing else.";
+{langInstruction}
+CRITICAL: Return ONLY the JSON object, nothing else.";
         }
 
-        private string CreateTextWorkoutPrompt(string workoutText, string? workoutType)
+        private string CreateTextWorkoutPrompt(string workoutText, string? workoutType, string lang)
         {
+            var langInstruction = GetLanguageInstruction(lang);
+
             return $@"Analyze workout: ""{workoutText}""
+{langInstruction}
 
 Determine if this is STRENGTH or CARDIO workout. Return JSON only:
 
-CARDIO (running, cycling, swimming, walking):
+CARDIO:
 {{
   ""workoutData"": {{
     ""type"": ""cardio"",
@@ -427,7 +482,7 @@ CARDIO (running, cycling, swimming, walking):
     ""endDate"": ""{DateTime.UtcNow.AddMinutes(60):yyyy-MM-ddTHH:mm:ssZ}"",
     ""estimatedCalories"": 400,
     ""activityData"": {{
-      ""name"": ""Exercise name in Russian"",
+      ""name"": ""Exercise name"",
       ""category"": ""Cardio"",
       ""equipment"": null,
       ""distance"": null,
@@ -439,7 +494,7 @@ CARDIO (running, cycling, swimming, walking):
   }}
 }}
 
-STRENGTH (push-ups, squats, planks, weightlifting):
+STRENGTH:
 {{
   ""workoutData"": {{
     ""type"": ""strength"",
@@ -447,9 +502,9 @@ STRENGTH (push-ups, squats, planks, weightlifting):
     ""endDate"": ""{DateTime.UtcNow.AddMinutes(45):yyyy-MM-ddTHH:mm:ssZ}"",
     ""estimatedCalories"": 250,
     ""activityData"": {{
-      ""name"": ""Exercise name in Russian"",
+      ""name"": ""Exercise name"",
       ""category"": ""Strength"",
-      ""muscleGroup"": ""грудь"",
+      ""muscleGroup"": null,
       ""equipment"": null,
       ""weight"": null,
       ""restTimeSeconds"": 90,
@@ -459,40 +514,29 @@ STRENGTH (push-ups, squats, planks, weightlifting):
   }}
 }}
 
-CRITICAL RULES - НЕ ВЫДУМЫВАЙТЕ ДАННЫЕ:
-- Если дистанция НЕ указана → distance: null
-- Если пульс НЕ указан → avgPulse: null, maxPulse: null
-- Если темп НЕ указан → avgPace: null
-- Если вес НЕ указан → weight: null
-- muscleGroup: ""грудь"", ""руки"", ""спина"", ""ноги"" или null
-- Для strength: count = сумма reps из всех sets
-- Для cardio: distance в км, avgPace = ""минуты:секунды/км"" (ТОЛЬКО если указано)
-
-EXAMPLES:
-""Бег 1 час"" → distance: null, avgPace: null, avgPulse: null, maxPulse: null
-""Бег 5 км"" → distance: 5.0, avgPace: null, avgPulse: null, maxPulse: null  
-""Бег 10 км за 50 минут"" → distance: 10.0, avgPace: ""5:00/км"", avgPulse: null, maxPulse: null
-""Отжимания 30 раз"" → weight: null, sets: [{{setNumber: 1, weight: null, reps: 30}}]
-
+{langInstruction}
 Analyze: ""{workoutText}""";
         }
 
-        private string CreateTextFoodPrompt(string foodText, string? mealType)
+        private string CreateTextFoodPrompt(string foodText, string? mealType, string lang)
         {
+            var langInstruction = GetLanguageInstruction(lang);
+
             return $@"Analyze this food description: ""{foodText}""
+{langInstruction}
 
 Meal type: {mealType ?? "any"}
 
 Requirements:
-1. For LIQUIDS (soups, drinks, sauces): use ""weightType"": ""ml""
-2. For SOLIDS (bread, meat, fruits): use ""weightType"": ""g""
+1. For LIQUIDS: use ""weightType"": ""ml""
+2. For SOLIDS: use ""weightType"": ""g""
 
-Return ONLY this JSON:
+Return ONLY this JSON with food names in the user's language:
 {{
   ""processedText"": ""Processed description"",
   ""foodItems"": [
     {{
-      ""name"": ""Food name in Russian"",
+      ""name"": ""Food name"",
       ""estimatedWeight"": 150.0,
       ""weightType"": ""g"",
       ""description"": ""Food description"",
@@ -507,22 +551,27 @@ Return ONLY this JSON:
     }}
   ],
   ""estimatedTotalCalories"": 375
-}}";
+}}
+
+{langInstruction}";
         }
 
-        private string CreateFoodCorrectionPrompt(string originalFoodName, string correctionText)
+        private string CreateFoodCorrectionPrompt(string originalFoodName, string correctionText, string lang)
         {
+            var langInstruction = GetLanguageInstruction(lang);
+
             return $@"CORRECT (not add to) this food item: ""{originalFoodName}"" with correction: ""{correctionText}""
+{langInstruction}
 
 IMPORTANT: Replace the nutritional values, don't add to them. This is a CORRECTION, not an addition.
 
 Original item: {originalFoodName}
 Correction: {correctionText}
 
-Return ONLY this JSON with CORRECTED values:
+Return ONLY this JSON with CORRECTED values and text in the user's language:
 {{
   ""correctedFoodItem"": {{
-    ""name"": ""Corrected food name in Russian"",
+    ""name"": ""Corrected food name"",
     ""estimatedWeight"": 180.0,
     ""weightType"": ""ml"",
     ""description"": ""Updated description reflecting the correction"",
@@ -535,10 +584,11 @@ Return ONLY this JSON with CORRECTED values:
     ""totalCalories"": 216,
     ""confidence"": 0.85
   }},
-  ""correctionExplanation"": ""Объяснение как была применена коррекция"",
-  ""ingredients"": [""безлактозное молоко"", ""кофе"", ""пена""]
+  ""correctionExplanation"": ""Explanation of how the correction was applied"",
+  ""ingredients"": [""ingredient 1"", ""ingredient 2"", ""ingredient 3""]
 }}
 
+{langInstruction}
 CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction. Return ONLY JSON.";
         }
 

@@ -44,6 +44,7 @@ namespace FitnessTracker.API.DTOs
         public decimal Weight { get; set; }
         public decimal Height { get; set; }
         public bool IsEmailConfirmed { get; set; } = true;
+        public string Locale { get; set; } = "ru_RU";
         public DateTime JoinedAt { get; set; }
     }
 
@@ -54,5 +55,6 @@ namespace FitnessTracker.API.DTOs
         public string Gender { get; set; } = string.Empty;
         public decimal Weight { get; set; }
         public decimal Height { get; set; }
+        public string? Locale { get; set; } 
     }
 }

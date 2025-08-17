@@ -22,7 +22,7 @@ namespace FitnessTracker.API.Services.AI
             _configuration = configuration;
         }
 
-        public async Task<FoodScanResponse> AnalyzeFoodImageAsync(byte[] imageData, string? userPrompt = null)
+        public async Task<FoodScanResponse> AnalyzeFoodImageAsync(byte[] imageData, string? userPrompt = null, string? locale = null)
         {
             const int maxAttempts = 3;
             var lastException = new Exception("Unknown error");
@@ -85,7 +85,8 @@ namespace FitnessTracker.API.Services.AI
             decimal? height = null,
             int? age = null,
             string? gender = null,
-            string? goals = null)
+            string? goals = null,
+            string? locale = null)
         {
             const int maxAttempts = 2;
             var lastException = new Exception("Unknown error");
@@ -128,7 +129,7 @@ namespace FitnessTracker.API.Services.AI
             return _errorHandler.CreateFallbackBodyResponse($"Analysis failed: {lastException.Message}");
         }
 
-        public async Task<VoiceWorkoutResponse> AnalyzeVoiceWorkoutAsync(byte[] audioData, string? workoutType = null)
+        public async Task<VoiceWorkoutResponse> AnalyzeVoiceWorkoutAsync(byte[] audioData, string? workoutType = null, string? locale = null)
         {
             const int maxAttempts = 2;
             var lastException = new Exception("Unknown error");
@@ -170,7 +171,7 @@ namespace FitnessTracker.API.Services.AI
             return _errorHandler.CreateFallbackWorkoutResponse($"Analysis failed: {lastException.Message}", workoutType);
         }
 
-        public async Task<VoiceFoodResponse> AnalyzeVoiceFoodAsync(byte[] audioData, string? mealType = null)
+        public async Task<VoiceFoodResponse> AnalyzeVoiceFoodAsync(byte[] audioData, string? mealType = null, string? locale = null)
         {
             const int maxAttempts = 2;
             var lastException = new Exception("Unknown error");
@@ -212,7 +213,7 @@ namespace FitnessTracker.API.Services.AI
             return _errorHandler.CreateFallbackVoiceFoodResponse($"Analysis failed: {lastException.Message}", mealType);
         }
 
-        public async Task<TextWorkoutResponse> AnalyzeTextWorkoutAsync(string workoutText, string? workoutType = null)
+        public async Task<TextWorkoutResponse> AnalyzeTextWorkoutAsync(string workoutText, string? workoutType = null, string? locale = null)
         {
             const int maxAttempts = 2;
             var lastException = new Exception("Unknown error");
@@ -254,7 +255,7 @@ namespace FitnessTracker.API.Services.AI
             return _errorHandler.CreateFallbackTextWorkoutResponse($"Analysis failed: {lastException.Message}", workoutType);
         }
 
-        public async Task<TextFoodResponse> AnalyzeTextFoodAsync(string foodText, string? mealType = null)
+        public async Task<TextFoodResponse> AnalyzeTextFoodAsync(string foodText, string? mealType = null, string? locale = null)
         {
             const int maxAttempts = 2;
             var lastException = new Exception("Unknown error");
@@ -296,7 +297,7 @@ namespace FitnessTracker.API.Services.AI
             return _errorHandler.CreateFallbackTextFoodResponse($"Analysis failed: {lastException.Message}", mealType);
         }
 
-        public async Task<FoodCorrectionResponse> CorrectFoodItemAsync(string originalFoodName, string correctionText)
+        public async Task<FoodCorrectionResponse> CorrectFoodItemAsync(string originalFoodName, string correctionText, string? locale = null)
         {
             try
             {

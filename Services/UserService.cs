@@ -69,6 +69,12 @@ namespace FitnessTracker.API.Services
             user.Weight = request.Weight;
             user.Height = request.Height;
 
+            if (!string.IsNullOrEmpty(request.Locale))
+            {
+                user.Locale = request.Locale;
+                _logger.LogInformation($"Updated locale for user {userId}: {request.Locale}");
+            }
+
             user = await _userRepository.UpdateAsync(user);
 
             var userDto = _mapper.Map<UserDto>(user);
@@ -81,6 +87,27 @@ namespace FitnessTracker.API.Services
             return userDto;
         }
 
+        public async Task<bool> UpdateUserLocaleAsync(string userId, string locale)
+        {
+            try
+            {
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user == null)
+                    return false;
+
+                user.Locale = locale;
+                await _userRepository.UpdateAsync(user);
+
+                _logger.LogInformation($"✅ Locale updated for user {userId}: {locale}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error updating locale: {ex.Message}");
+                return false;
+            }
+        }
+
         public async Task DeleteUserAsync(string userId)
         {
             await _userRepository.DeleteAsync(userId);
@@ -88,26 +115,20 @@ namespace FitnessTracker.API.Services
 
         private (int MaxExperience, int ExperienceToNextLevel, decimal ExperienceProgress) CalculateExperienceData(int level, int currentExperience)
         {
-            // Опыт, необходимый для достижения текущего уровня
             int currentLevelMinExperience = level > 1 && level - 1 < LevelExperienceRequirements.Length
                 ? LevelExperienceRequirements[level - 1]
                 : 0;
 
-            // Опыт, необходимый для достижения следующего уровня
             int nextLevelMaxExperience = level < LevelExperienceRequirements.Length
                 ? LevelExperienceRequirements[level]
-                : LevelExperienceRequirements[^1]; // Максимальный уровень
+                : LevelExperienceRequirements[^1]; 
 
-            // Опыт в рамках текущего уровня
             int experienceInCurrentLevel = currentExperience - currentLevelMinExperience;
 
-            // Сколько опыта нужно для перехода на следующий уровень
             int experienceNeededForLevel = nextLevelMaxExperience - currentLevelMinExperience;
 
-            // Сколько еще нужно опыта до следующего уровня
             int experienceToNextLevel = Math.Max(0, nextLevelMaxExperience - currentExperience);
 
-            // Прогресс в процентах
             decimal progress = experienceNeededForLevel > 0
                 ? Math.Min(100, (decimal)experienceInCurrentLevel / experienceNeededForLevel * 100)
                 : 100;

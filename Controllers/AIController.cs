@@ -25,6 +25,7 @@ namespace FitnessTracker.API.Controllers
         private readonly IImageService _imageService;
         private readonly IVoiceFileService _voiceFileService;
         private readonly IUserRepository _userRepository;
+        private readonly ILocalizationService _localizationService; 
         private readonly ILogger<AIController> _logger;
 
         public AIController(
@@ -36,6 +37,7 @@ namespace FitnessTracker.API.Controllers
             IImageService imageService,
             IVoiceFileService voiceFileService,
             IUserRepository userRepository,
+            ILocalizationService localizationService,
             ILogger<AIController> logger)
         {
             _geminiService = geminiService;
@@ -46,11 +48,12 @@ namespace FitnessTracker.API.Controllers
             _imageService = imageService;
             _voiceFileService = voiceFileService;
             _userRepository = userRepository;
+            _localizationService = localizationService;
             _logger = logger;
         }
 
         /// <summary>
-        /// 🎤 Голосовой ввод тренировки (требует LW Coins) + сохранение аудио
+        /// 🎤 Голосовой ввод тренировки (автоматически использует locale из профиля)
         /// </summary>
         [HttpPost("voice-workout")]
         [ProducesResponseType(typeof(VoiceWorkoutResponseWithAudio), 200)]
@@ -60,7 +63,8 @@ namespace FitnessTracker.API.Controllers
             IFormFile audioFile,
             [FromForm] string? workoutType = null,
             [FromForm] bool saveResults = false,
-            [FromForm] bool saveAudio = true)
+            [FromForm] bool saveAudio = true,
+            [FromForm] string? locale = null) 
         {
             try
             {
@@ -68,14 +72,19 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
+                var userLocale = locale ?? await _localizationService.GetUserLocaleAsync(userId);
+                _logger.LogInformation($"🎤 Voice workout for user {userId} with locale: {userLocale}");
+
                 if (audioFile == null || audioFile.Length == 0)
                 {
-                    return BadRequest(new { error = "Аудио файл не предоставлен" });
+                    var errorMsg = _localizationService.Translate("error.invalid_data", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
 
                 if (audioFile.Length > 50 * 1024 * 1024) // 50MB
                 {
-                    return BadRequest(new { error = "Размер аудио файла не должен превышать 50MB" });
+                    var errorMsg = _localizationService.Translate("error.file_too_large", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
 
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_voice_workout",
@@ -83,7 +92,8 @@ namespace FitnessTracker.API.Controllers
 
                 if (!canSpend)
                 {
-                    return BadRequest(new { error = "Недостаточно LW Coins для голосового ввода тренировки" });
+                    var errorMsg = _localizationService.Translate("error.insufficient_coins", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
 
                 string? audioFileId = null;
@@ -108,12 +118,10 @@ namespace FitnessTracker.API.Controllers
                 await audioFile.CopyToAsync(memoryStream);
                 var audioData = memoryStream.ToArray();
 
-                _logger.LogInformation($"🎤 Processing voice workout for user {userId}, audio size: {audioData.Length} bytes, workoutType: {workoutType}");
-
                 VoiceWorkoutResponse result;
                 try
                 {
-                    result = await _geminiService.AnalyzeVoiceWorkoutAsync(audioData, workoutType);
+                    result = await _geminiService.AnalyzeVoiceWorkoutAsync(audioData, workoutType, userLocale);
                 }
                 catch (Exception ex)
                 {
@@ -121,54 +129,34 @@ namespace FitnessTracker.API.Controllers
 
                     if (!string.IsNullOrEmpty(audioFileId))
                     {
-                        try
-                        {
-                            await _voiceFileService.DeleteVoiceFileAsync(userId, audioFileId);
-                        }
-                        catch (Exception deleteEx)
-                        {
-                            _logger.LogError($"❌ Failed to delete audio file after error: {deleteEx.Message}");
-                        }
+                        await _voiceFileService.DeleteVoiceFileAsync(userId, audioFileId);
                     }
 
-                    return BadRequest(new { error = "Не удалось обработать аудио. Попробуйте еще раз или проверьте качество записи." });
+                    var errorMsg = _localizationService.Translate("error.server_error", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
 
                 if (!result.Success)
                 {
-                    _logger.LogError($"❌ Voice workout analysis failed: {result.ErrorMessage}");
-
                     if (!string.IsNullOrEmpty(audioFileId))
                     {
-                        try
-                        {
-                            await _voiceFileService.DeleteVoiceFileAsync(userId, audioFileId);
-                        }
-                        catch (Exception deleteEx)
-                        {
-                            _logger.LogError($"❌ Failed to delete audio file after analysis failure: {deleteEx.Message}");
-                        }
+                        await _voiceFileService.DeleteVoiceFileAsync(userId, audioFileId);
                     }
 
-                    return BadRequest(new
-                    {
-                        error = result.ErrorMessage ?? "Не удалось распознать тренировку в аудио записи",
-                        suggestion = "Попробуйте говорить четче или запишите аудио заново"
-                    });
+                    var errorMsg = _localizationService.Translate("error.analysis_failed", userLocale);
+                    return BadRequest(new { error = result.ErrorMessage ?? errorMsg });
                 }
 
                 var response = new VoiceWorkoutResponseWithAudio
                 {
                     Success = result.Success,
                     TranscribedText = result.TranscribedText,
-                    WorkoutData = result.WorkoutData, 
+                    WorkoutData = result.WorkoutData,
                     AudioUrl = audioUrl,
                     AudioFileId = audioFileId,
                     AudioSaved = !string.IsNullOrEmpty(audioFileId),
                     AudioSizeMB = audioSizeMB
                 };
-
-                _logger.LogInformation($"✅ Voice workout analysis successful. Type: {result.WorkoutData?.Type}, AudioSaved: {!string.IsNullOrEmpty(audioFileId)}");
 
                 if (saveResults && result.WorkoutData != null)
                 {
@@ -180,7 +168,7 @@ namespace FitnessTracker.API.Controllers
                             StartDate = result.WorkoutData.StartDate,
                             EndDate = result.WorkoutData.EndDate,
                             Calories = result.WorkoutData.Calories,
-                            ActivityData = result.WorkoutData.ActivityData 
+                            ActivityData = result.WorkoutData.ActivityData
                         };
 
                         await _activityService.AddActivityAsync(userId, addActivityRequest);
@@ -188,7 +176,7 @@ namespace FitnessTracker.API.Controllers
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError($"❌ Error saving voice workout to database: {ex.Message}");
+                        _logger.LogError($"❌ Error saving voice workout: {ex.Message}");
                     }
                 }
 
@@ -196,28 +184,15 @@ namespace FitnessTracker.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError($"❌ Unexpected error processing voice workout: {ex.Message}");
-                _logger.LogError($"Stack trace: {ex.StackTrace}");
-
-                return BadRequest(new
-                {
-                    error = "Произошла системная ошибка при обработке голосовой тренировки",
-                    message = "Попробуйте еще раз через несколько минут"
-                });
+                _logger.LogError($"❌ Unexpected error: {ex.Message}");
+                return BadRequest(new { error = ex.Message });
             }
         }
 
+
         /// <summary>
-        /// 🗣️ Голосовой ввод питания (требует LW Coins) + сохранение аудио
+        /// 🗣️ Голосовой ввод питания (автоматически использует locale из профиля)
         /// </summary>
-        /// <param name="audioFile">Аудиофайл с описанием еды</param>
-        /// <param name="mealType">Тип приема пищи</param>
-        /// <param name="saveResults">Сохранить результаты в базу данных</param>
-        /// <param name="saveAudio">Сохранить аудио файл на сервере</param>
-        /// <returns>Распознанная и структурированная информация о питании + URL аудио</returns>
-        /// <response code="200">Питание успешно распознано</response>
-        /// <response code="400">Недостаточно LW Coins или ошибка обработки</response>
-        /// <response code="401">Требуется авторизация</response>
         [HttpPost("voice-food")]
         [ProducesResponseType(typeof(VoiceFoodResponseWithAudio), 200)]
         [ProducesResponseType(400)]
@@ -226,7 +201,8 @@ namespace FitnessTracker.API.Controllers
             IFormFile audioFile,
             [FromForm] string? mealType = null,
             [FromForm] bool saveResults = false,
-            [FromForm] bool saveAudio = true) 
+            [FromForm] bool saveAudio = true,
+            [FromForm] string? locale = null) 
         {
             try
             {
@@ -234,12 +210,16 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
+                var userLocale = locale ?? await _localizationService.GetUserLocaleAsync(userId);
+                _logger.LogInformation($"🗣️ Voice food for user {userId} with locale: {userLocale}");
+
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_voice_food",
                     "AI Voice Food", "voice");
 
                 if (!canSpend)
                 {
-                    return BadRequest(new { error = "Недостаточно LW Coins для голосового ввода питания" });
+                    var errorMsg = _localizationService.Translate("error.insufficient_coins", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
 
                 string? audioFileId = null;
@@ -265,9 +245,7 @@ namespace FitnessTracker.API.Controllers
                 await audioFile.CopyToAsync(memoryStream);
                 var audioData = memoryStream.ToArray();
 
-                _logger.LogInformation($"🗣️ Processing voice food for user {userId}, audio size: {audioData.Length} bytes");
-
-                var result = await _geminiService.AnalyzeVoiceFoodAsync(audioData, mealType);
+                var result = await _geminiService.AnalyzeVoiceFoodAsync(audioData, mealType, userLocale);
 
                 if (!result.Success)
                 {
@@ -276,7 +254,8 @@ namespace FitnessTracker.API.Controllers
                         await _voiceFileService.DeleteVoiceFileAsync(userId, audioFileId);
                     }
 
-                    return BadRequest(new { error = result.ErrorMessage });
+                    var errorMsg = _localizationService.Translate("error.analysis_failed", userLocale);
+                    return BadRequest(new { error = result.ErrorMessage ?? errorMsg });
                 }
 
                 var response = new VoiceFoodResponseWithAudio
@@ -285,7 +264,6 @@ namespace FitnessTracker.API.Controllers
                     TranscribedText = result.TranscribedText,
                     FoodItems = result.FoodItems,
                     EstimatedTotalCalories = result.EstimatedTotalCalories,
-
                     AudioUrl = audioUrl,
                     AudioFileId = audioFileId,
                     AudioSaved = !string.IsNullOrEmpty(audioFileId),
@@ -322,20 +300,13 @@ namespace FitnessTracker.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Error processing voice food: {ex.Message}");
-                return BadRequest(new { error = $"Ошибка обработки голосового ввода питания: {ex.Message}" });
+                return BadRequest(new { error: ex.Message });
             }
         }
 
         /// <summary>
-        /// 🍎 Сканирование еды по фото (требует LW Coins)
+        /// 🍎 Сканирование еды по фото (автоматически использует locale из профиля)
         /// </summary>
-        /// <param name="image">Изображение еды для анализа</param>
-        /// <param name="userPrompt">Дополнительные инструкции от пользователя</param>
-        /// <param name="saveResults">Сохранить результаты в базу данных</param>
-        /// <returns>Результат анализа еды</returns>
-        /// <response code="200">Еда успешно проанализирована</response>
-        /// <response code="400">Недостаточно LW Coins или ошибка обработки</response>
-        /// <response code="401">Требуется авторизация</response>
         [HttpPost("scan-food")]
         [ProducesResponseType(typeof(FoodScanResponse), 200)]
         [ProducesResponseType(400)]
@@ -343,7 +314,8 @@ namespace FitnessTracker.API.Controllers
         public async Task<IActionResult> ScanFood(
             IFormFile image,
             [FromForm] string? userPrompt = null,
-            [FromForm] bool saveResults = false)
+            [FromForm] bool saveResults = false,
+            [FromForm] string? locale = null) 
         {
             try
             {
@@ -351,12 +323,16 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
+                var userLocale = locale ?? await _localizationService.GetUserLocaleAsync(userId);
+                _logger.LogInformation($"🍎 Food scan for user {userId} with locale: {userLocale}");
+
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_food_scan",
                     "AI Food Scan", "photo");
 
                 if (!canSpend)
                 {
-                    return BadRequest(new { error = "Недостаточно LW Coins для сканирования еды" });
+                    var errorMsg = _localizationService.Translate("error.insufficient_coins", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
 
                 var imageUrl = await _imageService.SaveImageAsync(image, "food-scans");
@@ -365,14 +341,15 @@ namespace FitnessTracker.API.Controllers
                 await image.CopyToAsync(memoryStream);
                 var imageData = memoryStream.ToArray();
 
-                _logger.LogInformation($"🍎 Processing food scan for user {userId}, image size: {imageData.Length} bytes, saved at: {imageUrl}");
+                _logger.LogInformation($"🍎 Processing food scan, image saved at: {imageUrl}");
 
-                var result = await _geminiService.AnalyzeFoodImageAsync(imageData, userPrompt);
+                var result = await _geminiService.AnalyzeFoodImageAsync(imageData, userPrompt, userLocale);
 
                 if (!result.Success)
                 {
                     await _imageService.DeleteImageAsync(imageUrl);
-                    return BadRequest(new { error = result.ErrorMessage });
+                    var errorMsg = _localizationService.Translate("error.analysis_failed", userLocale);
+                    return BadRequest(new { error = result.ErrorMessage ?? errorMsg });
                 }
 
                 result.ImageUrl = imageUrl;
@@ -408,15 +385,13 @@ namespace FitnessTracker.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Error scanning food: {ex.Message}");
-                return BadRequest(new { error = $"Ошибка сканирования: {ex.Message}" });
+                return BadRequest(new { error = ex.Message });
             }
         }
 
         /// <summary>
-        /// 💪 Анализ тела по фотографиям
+        /// 💪 Анализ тела по фотографиям (автоматически использует locale из профиля)
         /// </summary>
-        /// <param name="request">Данные для анализа тела</param>
-        /// <returns>Результат анализа тела</returns>
         [HttpPost("analyze-body")]
         [ProducesResponseType(typeof(BodyScanResponse), 200)]
         [ProducesResponseType(400)]
@@ -429,13 +404,15 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
-                _logger.LogInformation($"💪 Starting FREE body analysis for user {userId}");
+                var locale = Request.Form["locale"].FirstOrDefault();
+                var userLocale = locale ?? await _localizationService.GetUserLocaleAsync(userId);
+                _logger.LogInformation($"💪 Body analysis for user {userId} with locale: {userLocale}");
 
                 var user = await _userRepository.GetByIdAsync(userId);
                 if (user == null)
                 {
-                    _logger.LogError($"❌ User {userId} not found");
-                    return BadRequest(new { error = "Пользователь не найден" });
+                    var errorMsg = _localizationService.Translate("error.user_not_found", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
 
                 var currentWeight = request.CurrentWeight ?? user.Weight;
@@ -450,29 +427,11 @@ namespace FitnessTracker.API.Controllers
                     _logger.LogInformation($"💪 Updated user weight: {user.Weight}kg");
                 }
 
-                _logger.LogInformation($"💪 Analysis params - Weight: {currentWeight}kg, Height: {height}cm, Age: {age}, Gender: {gender}, Goals: {request.Goals}");
-
                 if (request.FrontImage == null && request.SideImage == null && request.BackImage == null)
                 {
-                    _logger.LogWarning("❌ No images provided for body analysis");
-                    return BadRequest(new { error = "Необходимо предоставить хотя бы одно изображение для анализа тела" });
+                    var errorMsg = _localizationService.Translate("error.no_images", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
-
-                var maxSize = 10 * 1024 * 1024; // 10MB
-                if ((request.FrontImage?.Length ?? 0) > maxSize ||
-                    (request.SideImage?.Length ?? 0) > maxSize ||
-                    (request.BackImage?.Length ?? 0) > maxSize)
-                {
-                    _logger.LogWarning("❌ Image size exceeds limit");
-                    return BadRequest(new { error = "Размер изображения не должен превышать 10MB" });
-                }
-
-                if (request.FrontImage != null)
-                    _logger.LogInformation($"💪 Front image: {request.FrontImage.Length} bytes, type: {request.FrontImage.ContentType}");
-                if (request.SideImage != null)
-                    _logger.LogInformation($"💪 Side image: {request.SideImage.Length} bytes, type: {request.SideImage.ContentType}");
-                if (request.BackImage != null)
-                    _logger.LogInformation($"💪 Back image: {request.BackImage.Length} bytes, type: {request.BackImage.ContentType}");
 
                 string? frontImageUrl = null;
                 string? sideImageUrl = null;
@@ -490,7 +449,6 @@ namespace FitnessTracker.API.Controllers
                         using var ms = new MemoryStream();
                         await request.FrontImage.CopyToAsync(ms);
                         frontImageData = ms.ToArray();
-                        _logger.LogInformation($"💪 Front image saved: {frontImageUrl}");
                     }
 
                     if (request.SideImage != null)
@@ -499,7 +457,6 @@ namespace FitnessTracker.API.Controllers
                         using var ms = new MemoryStream();
                         await request.SideImage.CopyToAsync(ms);
                         sideImageData = ms.ToArray();
-                        _logger.LogInformation($"💪 Side image saved: {sideImageUrl}");
                     }
 
                     if (request.BackImage != null)
@@ -508,80 +465,57 @@ namespace FitnessTracker.API.Controllers
                         using var ms = new MemoryStream();
                         await request.BackImage.CopyToAsync(ms);
                         backImageData = ms.ToArray();
-                        _logger.LogInformation($"💪 Back image saved: {backImageUrl}");
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError($"❌ Error saving images: {ex.Message}");
-                    return BadRequest(new { error = "Ошибка сохранения изображений" });
+                    var errorMsg = _localizationService.Translate("error.image_save_failed", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
 
                 BodyScanResponse result;
                 try
                 {
-                    _logger.LogInformation($"💪 Calling Gemini service for body analysis with accurate user data");
-
                     result = await _geminiService.AnalyzeBodyImagesAsync(
                         frontImageData,
                         sideImageData,
                         backImageData,
-                        currentWeight,     
-                        height,           
-                        age,              
-                        gender,          
-                        request.Goals);   
+                        currentWeight,
+                        height,
+                        age,
+                        gender,
+                        request.Goals,
+                        userLocale); 
 
-                    _logger.LogInformation($"💪 Gemini service completed. Success: {result.Success}");
-
-                    if (!string.IsNullOrEmpty(result.ErrorMessage))
-                    {
-                        _logger.LogWarning($"⚠️ Gemini service warning: {result.ErrorMessage}");
-                    }
+                    _logger.LogInformation($"💪 Body analysis completed. Success: {result.Success}");
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError($"❌ Error during body analysis: {ex.Message}");
-                    _logger.LogError($"Stack trace: {ex.StackTrace}");
 
                     if (!string.IsNullOrEmpty(frontImageUrl))
-                    {
-                        try { await _imageService.DeleteImageAsync(frontImageUrl); } catch { }
-                    }
+                        await _imageService.DeleteImageAsync(frontImageUrl);
                     if (!string.IsNullOrEmpty(sideImageUrl))
-                    {
-                        try { await _imageService.DeleteImageAsync(sideImageUrl); } catch { }
-                    }
+                        await _imageService.DeleteImageAsync(sideImageUrl);
                     if (!string.IsNullOrEmpty(backImageUrl))
-                    {
-                        try { await _imageService.DeleteImageAsync(backImageUrl); } catch { }
-                    }
+                        await _imageService.DeleteImageAsync(backImageUrl);
 
-                    return BadRequest(new { error = "Ошибка анализа изображений. Попробуйте еще раз или обратитесь в поддержку." });
+                    var errorMsg = _localizationService.Translate("error.analysis_failed", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
 
                 if (!result.Success)
                 {
-                    _logger.LogError($"❌ Body analysis failed: {result.ErrorMessage}");
-
                     if (!string.IsNullOrEmpty(frontImageUrl))
-                    {
-                        try { await _imageService.DeleteImageAsync(frontImageUrl); } catch { }
-                    }
+                        await _imageService.DeleteImageAsync(frontImageUrl);
                     if (!string.IsNullOrEmpty(sideImageUrl))
-                    {
-                        try { await _imageService.DeleteImageAsync(sideImageUrl); } catch { }
-                    }
+                        await _imageService.DeleteImageAsync(sideImageUrl);
                     if (!string.IsNullOrEmpty(backImageUrl))
-                    {
-                        try { await _imageService.DeleteImageAsync(backImageUrl); } catch { }
-                    }
+                        await _imageService.DeleteImageAsync(backImageUrl);
 
-                    return BadRequest(new
-                    {
-                        error = result.ErrorMessage ?? "Не удалось проанализировать изображения",
-                        suggestion = "Убедитесь, что изображения четкие и показывают тело в полный рост"
-                    });
+                    var errorMsg = _localizationService.Translate("error.body_analysis_failed", userLocale);
+                    return BadRequest(new { error = result.ErrorMessage ?? errorMsg });
                 }
 
                 result.FrontImageUrl = frontImageUrl;
@@ -595,7 +529,7 @@ namespace FitnessTracker.API.Controllers
                         FrontImageUrl = frontImageUrl ?? "no_image",
                         SideImageUrl = sideImageUrl ?? "no_image",
                         BackImageUrl = backImageUrl,
-                        Weight = currentWeight, 
+                        Weight = currentWeight,
                         BodyFatPercentage = result.BodyAnalysis.EstimatedBodyFatPercentage,
                         MusclePercentage = result.BodyAnalysis.EstimatedMusclePercentage,
                         WaistCircumference = result.BodyAnalysis.EstimatedWaistCircumference,
@@ -603,43 +537,29 @@ namespace FitnessTracker.API.Controllers
                         HipCircumference = result.BodyAnalysis.EstimatedHipCircumference,
                         BasalMetabolicRate = result.BodyAnalysis.BasalMetabolicRate,
                         MetabolicRateCategory = result.BodyAnalysis.MetabolicRateCategory,
-                        Notes = $"AI Analysis: {result.BodyAnalysis.OverallCondition}. BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал ({result.BodyAnalysis.MetabolicRateCategory}). BMI: {result.BodyAnalysis.BMI} ({result.BodyAnalysis.BMICategory}). Weight: {currentWeight}kg", // ✅ Включаем вес в заметки
+                        Notes = $"AI Analysis: {result.BodyAnalysis.OverallCondition}",
                         ScanDate = DateTime.UtcNow
                     };
 
                     await _bodyScanService.AddBodyScanAsync(userId, addBodyScanRequest);
-                    _logger.LogInformation($"✅ Body scan saved for user {userId} - Weight: {currentWeight}kg, BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал, BMI: {result.BodyAnalysis.BMI}, Body Fat: {result.BodyAnalysis.EstimatedBodyFatPercentage}%");
+                    _logger.LogInformation($"✅ Body scan saved for user {userId}");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError($"❌ Error saving body scan to database: {ex.Message}");
+                    _logger.LogError($"❌ Error saving body scan: {ex.Message}");
                 }
-
-                _logger.LogInformation($"✅ Body analysis completed successfully:");
-                _logger.LogInformation($"   Weight: {currentWeight}kg (✅ теперь отображается в архиве)");
-                _logger.LogInformation($"   BMI: {result.BodyAnalysis.BMI} ({result.BodyAnalysis.BMICategory})");
-                _logger.LogInformation($"   Body Fat: {result.BodyAnalysis.EstimatedBodyFatPercentage}%");
-                _logger.LogInformation($"   Muscle: {result.BodyAnalysis.EstimatedMusclePercentage}%");
-                _logger.LogInformation($"   BMR: {result.BodyAnalysis.BasalMetabolicRate} ккал ({result.BodyAnalysis.MetabolicRateCategory})");
-                _logger.LogInformation($"   Body Type: {result.BodyAnalysis.BodyType}");
 
                 return Ok(result);
             }
             catch (Exception ex)
             {
-                _logger.LogError($"❌ Unexpected error in body analysis controller: {ex.Message}");
-                _logger.LogError($"Stack trace: {ex.StackTrace}");
-
-                return BadRequest(new
-                {
-                    error = "Произошла системная ошибка при анализе тела",
-                    message = "Попробуйте еще раз через несколько минут или обратитесь в поддержку"
-                });
+                _logger.LogError($"❌ Unexpected error in body analysis: {ex.Message}");
+                return BadRequest(new { error = ex.Message });
             }
         }
 
         /// <summary>
-        /// 📝 Текстовый ввод тренировки (требует LW Coins)
+        /// 📝 Текстовый ввод тренировки (автоматически использует locale из профиля)
         /// </summary>
         [HttpPost("text-workout")]
         [ProducesResponseType(typeof(TextWorkoutResponse), 200)]
@@ -653,9 +573,14 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
+                // Получаем locale из профиля
+                var userLocale = request.Locale ?? await _localizationService.GetUserLocaleAsync(userId);
+                _logger.LogInformation($"📝 Text workout for user {userId} with locale: {userLocale}");
+
                 if (string.IsNullOrWhiteSpace(request.WorkoutDescription))
                 {
-                    return BadRequest(new { error = "Описание тренировки не предоставлено" });
+                    var errorMsg = _localizationService.Translate("error.invalid_data", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
 
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_text_workout",
@@ -663,16 +588,17 @@ namespace FitnessTracker.API.Controllers
 
                 if (!canSpend)
                 {
-                    return BadRequest(new { error = "Недостаточно LW Coins для текстового ввода тренировки" });
+                    var errorMsg = _localizationService.Translate("error.insufficient_coins", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
 
-                _logger.LogInformation($"📝 Processing text workout for user {userId}: {request.WorkoutDescription}");
-
-                var result = await _geminiService.AnalyzeTextWorkoutAsync(request.WorkoutDescription, request.WorkoutType);
+                // Передаем locale в сервис
+                var result = await _geminiService.AnalyzeTextWorkoutAsync(request.WorkoutDescription, request.WorkoutType, userLocale);
 
                 if (!result.Success)
                 {
-                    return BadRequest(new { error = result.ErrorMessage ?? "Не удалось обработать описание тренировки" });
+                    var errorMsg = _localizationService.Translate("error.analysis_failed", userLocale);
+                    return BadRequest(new { error = result.ErrorMessage ?? errorMsg });
                 }
 
                 if (request.SaveResults && result.WorkoutData != null)
@@ -685,7 +611,7 @@ namespace FitnessTracker.API.Controllers
                             StartDate = result.WorkoutData.StartDate,
                             EndDate = result.WorkoutData.EndDate,
                             Calories = result.WorkoutData.Calories,
-                            ActivityData = result.WorkoutData.ActivityData 
+                            ActivityData = result.WorkoutData.ActivityData
                         };
 
                         await _activityService.AddActivityAsync(userId, addActivityRequest);
@@ -693,7 +619,7 @@ namespace FitnessTracker.API.Controllers
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError($"❌ Error saving text workout to database: {ex.Message}");
+                        _logger.LogError($"❌ Error saving text workout: {ex.Message}");
                     }
                 }
 
@@ -702,12 +628,12 @@ namespace FitnessTracker.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Unexpected error processing text workout: {ex.Message}");
-                return BadRequest(new { error = "Произошла системная ошибка при обработке текстового ввода тренировки" });
+                return BadRequest(new { error = ex.Message });
             }
         }
 
         /// <summary>
-        /// 📝 Текстовый ввод питания (требует LW Coins)
+        /// 📝 Текстовый ввод питания (автоматически использует locale из профиля)
         /// </summary>
         [HttpPost("text-food")]
         [ProducesResponseType(typeof(TextFoodResponse), 200)]
@@ -721,9 +647,14 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
+                // Получаем locale из профиля
+                var userLocale = request.Locale ?? await _localizationService.GetUserLocaleAsync(userId);
+                _logger.LogInformation($"📝 Text food for user {userId} with locale: {userLocale}");
+
                 if (string.IsNullOrWhiteSpace(request.FoodDescription))
                 {
-                    return BadRequest(new { error = "Описание еды не предоставлено" });
+                    var errorMsg = _localizationService.Translate("error.invalid_data", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
 
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_text_food",
@@ -731,16 +662,17 @@ namespace FitnessTracker.API.Controllers
 
                 if (!canSpend)
                 {
-                    return BadRequest(new { error = "Недостаточно LW Coins для текстового ввода питания" });
+                    var errorMsg = _localizationService.Translate("error.insufficient_coins", userLocale);
+                    return BadRequest(new { error = errorMsg });
                 }
 
-                _logger.LogInformation($"📝 Processing text food for user {userId}: {request.FoodDescription}");
-
-                var result = await _geminiService.AnalyzeTextFoodAsync(request.FoodDescription, request.MealType);
+                // Передаем locale в сервис
+                var result = await _geminiService.AnalyzeTextFoodAsync(request.FoodDescription, request.MealType, userLocale);
 
                 if (!result.Success)
                 {
-                    return BadRequest(new { error = result.ErrorMessage ?? "Не удалось обработать описание еды" });
+                    var errorMsg = _localizationService.Translate("error.analysis_failed", userLocale);
+                    return BadRequest(new { error = result.ErrorMessage ?? errorMsg });
                 }
 
                 if (request.SaveResults && result.FoodItems?.Any() == true)
@@ -773,9 +705,10 @@ namespace FitnessTracker.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Error processing text food: {ex.Message}");
-                return BadRequest(new { error = "Произошла системная ошибка при обработке текстового ввода питания" });
+                return BadRequest(new { error = ex.Message });
             }
         }
+
 
         /// <summary>
         /// 🔧 Коррекция продукта с указанием ингредиентов/начинки
@@ -788,6 +721,9 @@ namespace FitnessTracker.API.Controllers
                 var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
+                
+                var userLocale = request.Locale ?? await _localizationService.GetUserLocaleAsync(userId);
+                _logger.LogInformation($"📝 Text food for user {userId} with locale: {userLocale}");
 
                 if (string.IsNullOrWhiteSpace(request.CorrectionText))
                 {
@@ -801,6 +737,20 @@ namespace FitnessTracker.API.Controllers
 
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_food_correction",
                     "AI Food Correction", "text");
+
+                if (!canSpend)
+                {
+                    var errorMsg = _localizationService.Translate("error.insufficient_coins", userLocale);
+                    return BadRequest(new { error = errorMsg });
+                }
+
+                var result = await _geminiService.AnalyzeTextWorkoutAsync(request.WorkoutDescription, request.WorkoutType, userLocale);
+
+                if (!result.Success)
+                {
+                    var errorMsg = _localizationService.Translate("error.analysis_failed", userLocale);
+                    return BadRequest(new { error = result.ErrorMessage ?? errorMsg });
+                }
 
                 if (!canSpend)
                 {
