@@ -7,6 +7,7 @@ namespace FitnessTracker.API.DTOs
         public string WorkoutDescription { get; set; } = string.Empty;
         public string? WorkoutType { get; set; }
         public bool SaveResults { get; set; } = false;
+        public string? Locale { get; set; } 
     }
 
     public class TextWorkoutResponse
@@ -58,6 +59,7 @@ namespace FitnessTracker.API.DTOs
         public string FoodDescription { get; set; } = string.Empty;
         public string? MealType { get; set; }
         public bool SaveResults { get; set; } = false;
+        public string? Locale { get; set; } 
     }
 
     public class FoodCorrectionRequest
@@ -65,6 +67,7 @@ namespace FitnessTracker.API.DTOs
         public string CorrectionText { get; set; } = string.Empty;
         public FoodItemRequest? FoodItem { get; set; }
         public bool SaveResults { get; set; } = false;
+        public string? Locale { get; set; } 
     }
 
     public class VoiceFoodResponse

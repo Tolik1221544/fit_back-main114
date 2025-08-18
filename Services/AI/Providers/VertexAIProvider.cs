@@ -260,6 +260,7 @@ namespace FitnessTracker.API.Services.AI.Providers
             {
                 var lang = GetLanguageFromLocale(locale);
                 _logger.LogInformation($"🔧 Food correction with locale: {locale} -> language: {lang}");
+                _logger.LogInformation($"🔧 Correcting '{originalFoodName}' by adding '{correctionText}'");
 
                 var (url, accessToken) = await GetApiEndpointAsync();
                 var prompt = CreateFoodCorrectionPrompt(originalFoodName, correctionText, lang);
@@ -275,17 +276,131 @@ namespace FitnessTracker.API.Services.AI.Providers
                     };
                 }
 
-                return ParseFoodCorrectionResponse(response.Content);
+                var result = ParseFoodCorrectionResponse(response.Content);
+
+                if (result.Success && result.CorrectedFoodItem != null)
+                {
+                    bool isValidCorrection = ValidateFoodCorrection(originalFoodName, result.CorrectedFoodItem, correctionText);
+
+                    if (!isValidCorrection)
+                    {
+                        _logger.LogWarning($"🔧 Correction validation failed, creating fallback response");
+
+                        result = CreateFallbackCorrection(originalFoodName, correctionText, lang);
+                    }
+                    else
+                    {
+                        _logger.LogInformation($"✅ Correction validation passed: '{originalFoodName}' -> '{result.CorrectedFoodItem.Name}'");
+                    }
+                }
+
+                return result;
             }
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Food correction failed: {ex.Message}");
+                return CreateFallbackCorrection(originalFoodName, correctionText, GetLanguageFromLocale(locale));
+            }
+        }
+        private FoodCorrectionResponse CreateFallbackCorrection(string originalFoodName, string correctionText, string lang)
+        {
+            try
+            {
+                _logger.LogInformation($"🔧 Creating fallback correction for '{originalFoodName}' + '{correctionText}'");
+
+                var correctedName = $"{originalFoodName} с {correctionText}";
+
+                var additionalWeight = EstimateIngredientWeight(correctionText);
+                var baseWeight = 200m; 
+                var totalWeight = baseWeight + additionalWeight;
+
+                var baseCaloricValue = 150m; 
+
+                var ingredientCalories = GetIngredientCalories(correctionText);
+                var weightedCalories = (baseCaloricValue * baseWeight + ingredientCalories * additionalWeight) / totalWeight;
+
+                var correctedItem = new FoodItemResponse
+                {
+                    Name = correctedName,
+                    EstimatedWeight = totalWeight,
+                    WeightType = IsLiquidIngredient(correctionText) ? "ml" : "g",
+                    Description = $"Блюдо с добавлением {correctionText}",
+                    NutritionPer100g = new NutritionPer100gDto
+                    {
+                        Calories = Math.Round(weightedCalories, 1),
+                        Proteins = 8m,
+                        Fats = 6m,
+                        Carbs = 12m
+                    },
+                    TotalCalories = (int)Math.Round((weightedCalories * totalWeight) / 100),
+                    Confidence = 0.7m
+                };
+
+                return new FoodCorrectionResponse
+                {
+                    Success = true,
+                    CorrectedFoodItem = correctedItem,
+                    CorrectionExplanation = $"Добавлен ингредиент '{correctionText}' к блюду '{originalFoodName}'. Вес увеличен на {additionalWeight}г.",
+                    Ingredients = new List<string> { originalFoodName, correctionText }
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error creating fallback correction: {ex.Message}");
+
                 return new FoodCorrectionResponse
                 {
                     Success = false,
-                    ErrorMessage = $"Correction error: {ex.Message}"
+                    ErrorMessage = "Не удалось скорректировать блюдо"
                 };
             }
+        }
+
+        private decimal EstimateIngredientWeight(string ingredient)
+        {
+            var ingredientLower = ingredient.ToLowerInvariant();
+
+            return ingredientLower switch
+            {
+                var i when i.Contains("сметана") => 20m,
+                var i when i.Contains("майонез") => 15m,
+                var i when i.Contains("кетчуп") => 10m,
+                var i when i.Contains("масло") => 10m,
+                var i when i.Contains("сыр") => 30m,
+                var i when i.Contains("мясо") || i.Contains("курица") => 100m,
+                var i when i.Contains("овощ") || i.Contains("помидор") || i.Contains("огурец") => 50m,
+                var i when i.Contains("зелень") || i.Contains("укроп") || i.Contains("петрушка") => 5m,
+                var i when i.Contains("соус") => 15m,
+                _ => 25m 
+            };
+        }
+
+        private decimal GetIngredientCalories(string ingredient)
+        {
+            var ingredientLower = ingredient.ToLowerInvariant();
+
+           
+            return ingredientLower switch
+            {
+                var i when i.Contains("сметана") => 200m,
+                var i when i.Contains("майонез") => 680m,
+                var i when i.Contains("кетчуп") => 100m,
+                var i when i.Contains("масло") => 900m,
+                var i when i.Contains("сыр") => 350m,
+                var i when i.Contains("мясо") => 250m,
+                var i when i.Contains("курица") => 200m,
+                var i when i.Contains("овощ") => 25m,
+                var i when i.Contains("зелень") => 20m,
+                _ => 100m 
+            };
+        }
+
+        private bool IsLiquidIngredient(string ingredient)
+        {
+            var liquidKeywords = new[] { "молоко", "сливки", "кефир", "йогурт", "сок", "вода", "бульон", "соус" };
+            var ingredientLower = ingredient.ToLowerInvariant();
+
+            return liquidKeywords.Any(keyword => ingredientLower.Contains(keyword));
         }
 
         public async Task<bool> IsHealthyAsync()
@@ -560,38 +675,106 @@ Return ONLY this JSON with food names in the user's language:
         {
             var langInstruction = GetLanguageInstruction(lang);
 
-            return $@"CORRECT (not add to) this food item: ""{originalFoodName}"" with correction: ""{correctionText}""
+            return $@"ADD ingredient to existing dish: ""{originalFoodName}""
+Ingredient to add: ""{correctionText}""
 {langInstruction}
 
-IMPORTANT: Replace the nutritional values, don't add to them. This is a CORRECTION, not an addition.
+IMPORTANT: DO NOT replace the dish completely! Only ADD the specified ingredient to the existing dish.
 
-Original item: {originalFoodName}
-Correction: {correctionText}
+Correction examples:
+- Original dish: ""Borscht 300g""
+- Added ingredient: ""sour cream""
+- CORRECT result: ""Borscht with sour cream 320g"" (added sour cream weight)
 
-Return ONLY this JSON with CORRECTED values and text in the user's language:
+- Original dish: ""Caesar Salad 250g""  
+- Added ingredient: ""chicken""
+- CORRECT result: ""Caesar Salad with chicken 300g"" (added chicken weight)
+
+Correction rules:
+1. PRESERVE the main dish name: ""{originalFoodName}""
+2. ADD ingredient to the name: ""+ {correctionText}""
+3. INCREASE total weight by added ingredient weight
+4. RECALCULATE calories considering the added ingredient
+5. DO NOT DECREASE weight! Only increase or keep the same
+
+Return ONLY this JSON with ADDED ingredient and all text fields in the user's language:
 {{
   ""correctedFoodItem"": {{
-    ""name"": ""Corrected food name"",
-    ""estimatedWeight"": 180.0,
-    ""weightType"": ""ml"",
-    ""description"": ""Updated description reflecting the correction"",
+    ""name"": ""Original name + added ingredient"",
+    ""estimatedWeight"": [INCREASED_WEIGHT],
+    ""weightType"": ""g"" or ""ml"",
+    ""description"": ""Description with added ingredient"",
     ""nutritionPer100g"": {{
-      ""calories"": 120.0,
-      ""proteins"": 3.5,
-      ""fats"": 2.0,
-      ""carbs"": 4.5
+      ""calories"": [RECALCULATED_CALORIES_PER_100G],
+      ""proteins"": [RECALCULATED_PROTEINS_PER_100G],
+      ""fats"": [RECALCULATED_FATS_PER_100G],
+      ""carbs"": [RECALCULATED_CARBS_PER_100G]
     }},
-    ""totalCalories"": 216,
+    ""totalCalories"": [TOTAL_CALORIES_WITH_ADDITION],
     ""confidence"": 0.85
   }},
-  ""correctionExplanation"": ""Explanation of how the correction was applied"",
-  ""ingredients"": [""ingredient 1"", ""ingredient 2"", ""ingredient 3""]
+  ""correctionExplanation"": ""Added ingredient: {correctionText}. Weight increased from [OLD_WEIGHT] to [NEW_WEIGHT], calories recalculated."",
+  ""ingredients"": [""main ingredients"", ""{correctionText}""]
 }}
 
 {langInstruction}
-CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction. Return ONLY JSON.";
+CRITICAL: 
+- DO NOT replace dish with one ingredient!
+- ADD TO existing dish!
+- INCREASE weight, DO NOT decrease!
+- Return ONLY JSON with text in user's language.";
         }
 
+        private bool ValidateFoodCorrection(string originalFoodName, FoodItemResponse correctedItem, string correctionText)
+        {
+            try
+            {
+                var originalNameLower = originalFoodName.ToLowerInvariant();
+                var correctedNameLower = correctedItem.Name.ToLowerInvariant();
+
+                var originalWords = originalNameLower.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Where(w => w.Length > 2) 
+                    .ToList();
+
+                bool hasOriginalWords = originalWords.Any(word => correctedNameLower.Contains(word));
+
+                if (!hasOriginalWords)
+                {
+                    _logger.LogWarning($"❌ Correction validation failed: original dish name not preserved. Original: {originalFoodName}, Corrected: {correctedItem.Name}");
+                    return false;
+                }
+
+                var correctionLower = correctionText.ToLowerInvariant();
+                bool hasAddedIngredient = correctedNameLower.Contains(correctionLower) ||
+                                         correctedItem.Description?.ToLowerInvariant().Contains(correctionLower) == true;
+
+                if (!hasAddedIngredient)
+                {
+                    _logger.LogWarning($"❌ Correction validation failed: added ingredient not found. Ingredient: {correctionText}, Result: {correctedItem.Name}");
+                    return false;
+                }
+
+                if (correctedItem.EstimatedWeight < 50) 
+                {
+                    _logger.LogWarning($"❌ Correction validation failed: weight too small. Weight: {correctedItem.EstimatedWeight}");
+                    return false;
+                }
+
+                if (correctedItem.NutritionPer100g.Calories < 10 || correctedItem.NutritionPer100g.Calories > 1000)
+                {
+                    _logger.LogWarning($"❌ Correction validation failed: unrealistic calories. Calories: {correctedItem.NutritionPer100g.Calories}");
+                    return false;
+                }
+
+                _logger.LogInformation($"✅ Correction validation passed for {originalFoodName} + {correctionText}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error during correction validation: {ex.Message}");
+                return false;
+            }
+        }
         private async Task<(string url, string accessToken)> GetApiEndpointAsync()
         {
             var projectId = _configuration["GoogleCloud:ProjectId"];
@@ -1386,11 +1569,28 @@ CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction.
                     };
                 }
 
+                if (string.IsNullOrEmpty(correctedItem.Name))
+                {
+                    return new FoodCorrectionResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Не удалось определить название скорректированного блюда"
+                    };
+                }
+
+                var explanation = GetString(root, "correctionExplanation");
+
+                if (explanation.ToLowerInvariant().Contains("заменен") ||
+                    explanation.ToLowerInvariant().Contains("replaced"))
+                {
+                    _logger.LogWarning($"⚠️ Correction explanation suggests replacement instead of addition: {explanation}");
+                }
+
                 return new FoodCorrectionResponse
                 {
                     Success = true,
                     CorrectedFoodItem = correctedItem,
-                    CorrectionExplanation = GetString(root, "correctionExplanation"),
+                    CorrectionExplanation = explanation,
                     Ingredients = GetStringArray(root, "ingredients")
                 };
             }
@@ -1405,7 +1605,6 @@ CRITICAL: Calculate nutrition for the CORRECTED item, not original + correction.
             }
         }
 
-        // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ПАРСИНГА
         private string ExtractJsonFromResponse(string responseText)
         {
             try

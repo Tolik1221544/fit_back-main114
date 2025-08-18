@@ -9,7 +9,7 @@ namespace FitnessTracker.API.Services
         private readonly IUserRepository _userRepository;
         private readonly IExperienceService _experienceService;
         private readonly IMapper _mapper;
-        private readonly ILogger<UserService> _logger; // ✅ Добавляем недостающий logger
+        private readonly ILogger<UserService> _logger; 
 
         private static readonly int[] LevelExperienceRequirements = {
             0,     // Уровень 0 (не используется)

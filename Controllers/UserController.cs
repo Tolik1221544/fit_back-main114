@@ -1,5 +1,6 @@
 ﻿using FitnessTracker.API.DTOs;
 using FitnessTracker.API.Services;
+using FitnessTracker.API.Repositories; 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -12,11 +13,19 @@ namespace FitnessTracker.API.Controllers
     public class UserController : ControllerBase
     {
         private readonly IUserService _userService;
+        private readonly IUserRepository _userRepository; 
+        private readonly ILocalizationService _localizationService; 
         private readonly ILogger<UserController> _logger;
 
-        public UserController(IUserService userService, ILogger<UserController> logger)
+        public UserController(
+            IUserService userService,
+            IUserRepository userRepository, 
+            ILocalizationService localizationService, 
+            ILogger<UserController> logger)
         {
             _userService = userService;
+            _userRepository = userRepository; 
+            _localizationService = localizationService; 
             _logger = logger;
         }
 
@@ -98,6 +107,7 @@ namespace FitnessTracker.API.Controllers
                 return BadRequest(new { error = ex.Message });
             }
         }
+
         /// <summary>
         /// 🌍 Установить язык пользователя
         /// </summary>
@@ -181,6 +191,5 @@ namespace FitnessTracker.API.Controllers
         {
             public string Locale { get; set; } = string.Empty;
         }
-
     }
 }
