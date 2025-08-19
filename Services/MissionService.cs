@@ -8,65 +8,66 @@ namespace FitnessTracker.API.Services
     public class MissionService : IMissionService
     {
         private readonly IMissionRepository _missionRepository;
-        private readonly ILocalizationService _localizationService;
-        private readonly IAchievementService _achievementService;
+        private readonly IUserRepository _userRepository;
         private readonly IExperienceService _experienceService;
+        private readonly IAchievementService _achievementService;
+        private readonly ILocalizationService _localizationService;
+        private readonly IBodyScanRepository _bodyScanRepository;
         private readonly IFoodIntakeRepository _foodIntakeRepository;
         private readonly IStepsRepository _stepsRepository;
-        private readonly IBodyScanRepository _bodyScanRepository;
         private readonly IMapper _mapper;
         private readonly ILogger<MissionService> _logger;
 
         public MissionService(
             IMissionRepository missionRepository,
-            ILocalizationService localizationService,
-            IAchievementService achievementService,
+            IUserRepository userRepository,
             IExperienceService experienceService,
+            IAchievementService achievementService,
+            ILocalizationService localizationService,
+            IBodyScanRepository bodyScanRepository,
             IFoodIntakeRepository foodIntakeRepository,
             IStepsRepository stepsRepository,
-            IBodyScanRepository bodyScanRepository,
             IMapper mapper,
             ILogger<MissionService> logger)
         {
             _missionRepository = missionRepository;
-            _localizationService = localizationService;
-            _achievementService = achievementService;
+            _userRepository = userRepository;
             _experienceService = experienceService;
+            _achievementService = achievementService;
+            _localizationService = localizationService;
+            _bodyScanRepository = bodyScanRepository;
             _foodIntakeRepository = foodIntakeRepository;
             _stepsRepository = stepsRepository;
-            _bodyScanRepository = bodyScanRepository;
             _mapper = mapper;
             _logger = logger;
         }
 
         public async Task<IEnumerable<MissionDto>> GetUserMissionsAsync(string userId)
         {
-            var userLocale = await _localizationService.GetUserLocaleAsync(userId);
-
             var missions = await _missionRepository.GetActiveMissionsAsync();
             var userMissions = await _missionRepository.GetUserMissionsAsync(userId);
             var userMissionDict = userMissions.ToDictionary(um => um.MissionId);
+
+            var userLocale = await _localizationService.GetUserLocaleAsync(userId);
 
             var missionDtos = new List<MissionDto>();
 
             foreach (var mission in missions)
             {
                 var userMission = userMissionDict.GetValueOrDefault(mission.Id);
-                var currentProgress = await CalculateMissionProgressAsync(userId, mission.Type, mission.TargetValue);
 
-                var translationKey = $"mission.{mission.Id.Replace("mission_", "")}";
-                var localizedTitle = _localizationService.Translate(translationKey, userLocale);
+                var missionKey = mission.Id.Replace("mission_", "mission.");
 
                 var missionDto = new MissionDto
                 {
                     Id = mission.Id,
-                    Title = localizedTitle, 
+                    Title = _localizationService.Translate(missionKey, userLocale),
                     Icon = mission.Icon,
                     RewardExperience = mission.RewardExperience,
                     Type = mission.Type,
                     TargetValue = mission.TargetValue,
-                    Progress = currentProgress,
-                    IsCompleted = currentProgress >= mission.TargetValue,
+                    Progress = userMission?.Progress ?? 0,
+                    IsCompleted = userMission?.IsCompleted ?? false,
                     CompletedAt = userMission?.CompletedAt,
                     Route = mission.Route
                 };
@@ -74,7 +75,7 @@ namespace FitnessTracker.API.Services
                 missionDtos.Add(missionDto);
             }
 
-            return missionDtos.OrderBy(m => m.IsCompleted).ThenBy(m => m.Id);
+            return missionDtos.OrderBy(m => m.IsCompleted).ThenBy(m => m.TargetValue);
         }
 
         public async Task<IEnumerable<AchievementDto>> GetUserAchievementsAsync(string userId)
@@ -172,15 +173,14 @@ namespace FitnessTracker.API.Services
         {
             try
             {
-                var breakfastStart = date.AddHours(6); // 06:00
-                var breakfastEnd = date.AddHours(11);  // 11:00
+                var breakfastStart = date.AddHours(6); 
+                var breakfastEnd = date.AddHours(11);  
 
                 var foodIntakes = await _foodIntakeRepository.GetByUserIdAndDateAsync(userId, date);
 
                 var breakfastIntakes = foodIntakes.Where(f =>
                     f.DateTime >= breakfastStart && f.DateTime <= breakfastEnd);
 
-                // Формула: (калории_на_100г * фактический_вес) / 100
                 var totalCalories = breakfastIntakes.Sum(f =>
                     (f.NutritionPer100g.Calories * f.Weight) / 100);
 
@@ -218,14 +218,14 @@ namespace FitnessTracker.API.Services
             try
             {
                 var today = DateTime.UtcNow.Date;
-                var startOfWeek = today.AddDays(-(int)today.DayOfWeek); // Начало недели (воскресенье)
-                var endOfWeek = startOfWeek.AddDays(7); // Конец недели
+                var startOfWeek = today.AddDays(-(int)today.DayOfWeek); 
+                var endOfWeek = startOfWeek.AddDays(7); 
 
                 var bodyScans = await _bodyScanRepository.GetByUserIdAsync(userId);
                 var weeklyScans = bodyScans.Where(bs =>
                     bs.ScanDate.Date >= startOfWeek && bs.ScanDate.Date < endOfWeek);
 
-                return weeklyScans.Any() ? 1 : 0; // 1 если есть скан на этой неделе, иначе 0
+                return weeklyScans.Any() ? 1 : 0; 
             }
             catch (Exception ex)
             {

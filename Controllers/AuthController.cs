@@ -58,9 +58,9 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
-        /// Google OAuth authentication with ID token and server auth code support
+        /// Google OAuth authentication with ID token ONLY
         /// </summary>
-        /// <param name="request">Google authentication data</param>
+        /// <param name="request">Google authentication data with idToken</param>
         /// <returns>Authentication result with JWT token</returns>
         /// <response code="200">Authentication successful</response>
         /// <response code="400">Invalid data or Google token validation error</response>
@@ -73,25 +73,18 @@ namespace FitnessTracker.API.Controllers
         {
             try
             {
-                if (string.IsNullOrEmpty(request.IdToken) && string.IsNullOrEmpty(request.ServerAuthCode))
+                if (string.IsNullOrEmpty(request.IdToken))
                 {
-                    return BadRequest(new { error = "Either idToken or serverAuthCode is required" });
+                    _logger.LogWarning("No idToken provided in Google auth request");
+                    return BadRequest(new { error = "idToken is required" });
                 }
 
-                AuthResponseDto result;
+                _logger.LogInformation($"Processing Google ID token authentication");
+                _logger.LogInformation($"ID Token length: {request.IdToken.Length}");
 
-                if (!string.IsNullOrEmpty(request.IdToken))
-                {
-                    // Authentication via ID token
-                    _logger.LogInformation("Processing Google ID token authentication");
-                    result = await _googleAuthService.AuthenticateWithIdTokenAsync(request.IdToken);
-                }
-                else
-                {
-                    // Authentication via server auth code
-                    _logger.LogInformation("Processing Google server auth code authentication");
-                    result = await _googleAuthService.AuthenticateWithServerCodeAsync(request.ServerAuthCode!);
-                }
+                var result = await _googleAuthService.AuthenticateWithIdTokenAsync(request.IdToken);
+
+                _logger.LogInformation($"Google authentication successful for user: {result.User.Email}");
 
                 return Ok(result);
             }
@@ -103,6 +96,7 @@ namespace FitnessTracker.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError($"Google authentication error: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
                 return BadRequest(new { error = ex.Message });
             }
         }

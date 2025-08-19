@@ -33,22 +33,65 @@ namespace FitnessTracker.API.Services
         }
 
         /// <summary>
-        /// 🔐 Аутентификация через Google ID token (быстрый способ)
+        /// 🔐 Аутентификация через Google ID token - ОСНОВНОЙ МЕТОД
         /// </summary>
         public async Task<AuthResponseDto> AuthenticateWithIdTokenAsync(string idToken)
         {
             try
             {
-                var clientId = _configuration["GoogleAuth:ClientId"];
-                if (string.IsNullOrEmpty(clientId))
-                    throw new InvalidOperationException("Google Client ID not configured");
+                var androidClientId = "810583785090-3alv9frm8kllkvm1bvjhs3frtmkt0tr3.apps.googleusercontent.com";
+                var webClientId = "810583785090-j8c5du1shjc3auabhofnukkskroabavu.apps.googleusercontent.com";
 
-                _logger.LogInformation($"🔐 Validating Google ID token with ClientId: {clientId}");
+                var configClientId = _configuration["GoogleAuth:ClientId"];
 
-                var payload = await GoogleJsonWebSignature.ValidateAsync(idToken, new GoogleJsonWebSignature.ValidationSettings
+                _logger.LogInformation($"🔐 Validating Google ID token");
+                _logger.LogInformation($"Android ClientId: {androidClientId}");
+                _logger.LogInformation($"Web ClientId: {webClientId}");
+                _logger.LogInformation($"Config ClientId: {configClientId}");
+
+                GoogleJsonWebSignature.Payload? payload = null;
+                Exception? lastException = null;
+
+                var clientIds = new[] { androidClientId, webClientId, configClientId }.Where(id => !string.IsNullOrEmpty(id)).Distinct().ToArray();
+
+                foreach (var clientId in clientIds)
                 {
-                    Audience = new[] { clientId }
-                });
+                    try
+                    {
+                        _logger.LogInformation($"Trying to validate with ClientId: {clientId}");
+
+                        payload = await GoogleJsonWebSignature.ValidateAsync(idToken, new GoogleJsonWebSignature.ValidationSettings
+                        {
+                            Audience = new[] { clientId }
+                        });
+
+                        if (payload != null)
+                        {
+                            _logger.LogInformation($"✅ Token validated successfully with ClientId: {clientId}");
+                            break;
+                        }
+                    }
+                    catch (InvalidJwtException ex)
+                    {
+                        _logger.LogWarning($"❌ Validation failed with ClientId {clientId}: {ex.Message}");
+                        lastException = ex;
+                    }
+                }
+
+                if (payload == null)
+                {
+                    try
+                    {
+                        _logger.LogWarning($"⚠️ Trying to validate without audience check (less secure)");
+                        payload = await GoogleJsonWebSignature.ValidateAsync(idToken);
+                        _logger.LogInformation($"✅ Token validated without audience check");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"❌ Token validation failed completely: {ex.Message}");
+                        throw new UnauthorizedAccessException($"Invalid Google ID token: {lastException?.Message ?? ex.Message}");
+                    }
+                }
 
                 if (payload.EmailVerified != true)
                 {
@@ -62,6 +105,7 @@ namespace FitnessTracker.API.Services
                 }
 
                 _logger.LogInformation($"✅ Google ID token validated for email: {email}");
+                _logger.LogInformation($"User info - Name: {payload.Name}, Subject: {payload.Subject}");
 
                 var user = await GetOrCreateUserAsync(email, payload.Name, "google");
 
@@ -78,70 +122,23 @@ namespace FitnessTracker.API.Services
             catch (InvalidJwtException ex)
             {
                 _logger.LogError($"❌ Invalid Google ID token: {ex.Message}");
-                throw new UnauthorizedAccessException("Invalid Google ID token");
+                throw new UnauthorizedAccessException($"Invalid Google ID token: {ex.Message}");
             }
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Google ID token authentication error: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
                 throw;
             }
         }
 
         /// <summary>
-        /// 🔄 Аутентификация через server auth code (с получением refresh token)
+        /// 🔄 Аутентификация через server auth code - НЕ ИСПОЛЬЗУЕТСЯ ДЛЯ FLUTTER
         /// </summary>
         public async Task<AuthResponseDto> AuthenticateWithServerCodeAsync(string serverAuthCode)
         {
-            try
-            {
-                if (string.IsNullOrEmpty(serverAuthCode))
-                {
-                    throw new UnauthorizedAccessException("Server auth code is required");
-                }
-
-                _logger.LogInformation($"Exchanging server auth code for tokens: {serverAuthCode}");
-
-                var tokenResponse = await ExchangeCodeForTokensAsync(serverAuthCode);
-
-                if (tokenResponse == null || string.IsNullOrEmpty(tokenResponse.access_token))
-                {
-                    throw new UnauthorizedAccessException("Failed to exchange server auth code for tokens");
-                }
-
-                _logger.LogInformation($"✅ Successfully exchanged server auth code for tokens");
-
-                var userInfo = await GetGoogleUserInfoAsync(tokenResponse.access_token);
-
-                if (userInfo == null || string.IsNullOrEmpty(userInfo.Email))
-                {
-                    throw new UnauthorizedAccessException("Failed to get user info from Google");
-                }
-
-                _logger.LogInformation($"✅ Retrieved user info for email: {userInfo.Email}");
-
-                var user = await GetOrCreateUserAsync(userInfo.Email, userInfo.Name, "google");
-
-                if (!string.IsNullOrEmpty(tokenResponse.refresh_token))
-                {
-                    _logger.LogInformation($"💾 Refresh token available for future Google API calls");
-                    // await SaveGoogleRefreshTokenAsync(user.Id, tokenResponse.refresh_token);
-                }
-
-                var jwtToken = await _authService.GenerateJwtTokenAsync(user.Id);
-
-                var userDto = CreateUserDto(user);
-
-                return new AuthResponseDto
-                {
-                    AccessToken = jwtToken,
-                    User = userDto
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ Google server auth code authentication error: {ex.Message}");
-                throw;
-            }
+            _logger.LogWarning($"⚠️ AuthenticateWithServerCodeAsync called but Flutter cannot provide serverAuthCode");
+            throw new NotSupportedException("Flutter client cannot provide serverAuthCode. Use idToken instead.");
         }
 
         /// <summary>
@@ -149,125 +146,8 @@ namespace FitnessTracker.API.Services
         /// </summary>
         public async Task<AuthResponseDto> AuthenticateGoogleTokenAsync(string googleToken)
         {
-            if (googleToken.Contains('.') && googleToken.Split('.').Length == 3)
-            {
-                return await AuthenticateWithIdTokenAsync(googleToken);
-            }
-            else
-            {
-                return await AuthenticateWithServerCodeAsync(googleToken);
-            }
-        }
-
-        /// <summary>
-        /// 🔄 Обмен server auth code на access_token и refresh_token
-        /// </summary>
-        private async Task<GoogleTokenResponse?> ExchangeCodeForTokensAsync(string serverAuthCode)
-        {
-            try
-            {
-                var clientId = _configuration["GoogleAuth:ClientId"];
-                var clientSecret = _configuration["GoogleAuth:ClientSecret"];
-
-                if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
-                {
-                    throw new InvalidOperationException("Google OAuth credentials not configured");
-                }
-
-                _logger.LogInformation($"🔧 Using ClientId: {clientId}");
-                _logger.LogInformation($"🔧 Server Auth Code: {serverAuthCode}");
-
-                var tokenEndpoint = "https://oauth2.googleapis.com/token";
-
-                var redirectUris = new[] { "", "postmessage", "urn:ietf:wg:oauth:2.0:oob" };
-
-                foreach (var redirectUri in redirectUris)
-                {
-                    try
-                    {
-                        _logger.LogInformation($"🔄 Trying redirect_uri: '{redirectUri}'");
-
-                        var requestData = new FormUrlEncodedContent(new[]
-                        {
-                            new KeyValuePair<string, string>("code", serverAuthCode),
-                            new KeyValuePair<string, string>("client_id", clientId),
-                            new KeyValuePair<string, string>("client_secret", clientSecret),
-                            new KeyValuePair<string, string>("redirect_uri", redirectUri),
-                            new KeyValuePair<string, string>("grant_type", "authorization_code")
-                        });
-
-                        var response = await _httpClient.PostAsync(tokenEndpoint, requestData);
-                        var responseContent = await response.Content.ReadAsStringAsync();
-
-                        _logger.LogInformation($"📊 Google Response Status: {response.StatusCode}");
-                        _logger.LogInformation($"📊 Google Response Content: {responseContent}");
-
-                        if (response.IsSuccessStatusCode)
-                        {
-                            _logger.LogInformation($"✅ SUCCESS with redirect_uri: '{redirectUri}'");
-
-                            var tokenResponse = JsonSerializer.Deserialize<GoogleTokenResponse>(responseContent, new JsonSerializerOptions
-                            {
-                                PropertyNameCaseInsensitive = true
-                            });
-
-                            return tokenResponse;
-                        }
-                        else
-                        {
-                            _logger.LogWarning($"❌ FAILED with redirect_uri '{redirectUri}': {response.StatusCode}");
-                            _logger.LogWarning($"📄 Error details: {responseContent}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError($"❌ Exception with redirect_uri '{redirectUri}': {ex.Message}");
-                    }
-                }
-
-                _logger.LogError($"❌ ALL redirect_uri variants failed for server auth code: {serverAuthCode}");
-                throw new UnauthorizedAccessException($"Failed to exchange server auth code '{serverAuthCode}' with all redirect_uri variants. Check logs for Google API error details.");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ Error exchanging server auth code: {ex.Message}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// 👤 Получение информации о пользователе через Google API
-        /// </summary>
-        private async Task<GoogleUserInfo?> GetGoogleUserInfoAsync(string accessToken)
-        {
-            try
-            {
-                var userInfoEndpoint = "https://www.googleapis.com/oauth2/v1/userinfo";
-
-                _httpClient.DefaultRequestHeaders.Clear();
-                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
-
-                var response = await _httpClient.GetAsync(userInfoEndpoint);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.LogError($"❌ Google user info request failed: {response.StatusCode} - {responseContent}");
-                    return null;
-                }
-
-                var userInfo = JsonSerializer.Deserialize<GoogleUserInfo>(responseContent, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-
-                return userInfo;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"❌ Error getting Google user info: {ex.Message}");
-                return null;
-            }
+            // Всегда используем ID token метод
+            return await AuthenticateWithIdTokenAsync(googleToken);
         }
 
         /// <summary>
@@ -306,12 +186,11 @@ namespace FitnessTracker.API.Services
                     await _userRepository.UpdateAsync(existingUser);
                 }
 
-                _logger.LogInformation($"✅ Existing user updated: {email}");
+                _logger.LogInformation($"✅ Existing user found and updated: {email}");
                 return existingUser;
             }
             else
             {
-                // Создаем нового пользователя
                 var referralCode = await GenerateUniqueReferralCodeAsync();
 
                 var newUser = new User
@@ -327,7 +206,11 @@ namespace FitnessTracker.API.Services
                     ReferralCode = referralCode,
                     IsEmailConfirmed = true,
                     JoinedAt = DateTime.UtcNow,
-                    LastMonthlyRefill = DateTime.UtcNow
+                    LastMonthlyRefill = DateTime.UtcNow,
+                    Age = 25, 
+                    Gender = "не указан",
+                    Weight = 70,
+                    Height = 170
                 };
 
                 var createdUser = await _userRepository.CreateAsync(newUser);

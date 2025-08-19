@@ -13,6 +13,7 @@ namespace FitnessTracker.API.Services
         private readonly IFoodIntakeRepository _foodIntakeRepository;
         private readonly IReferralRepository _referralRepository;
         private readonly IExperienceService _experienceService;
+        private readonly ILocalizationService _localizationService; 
         private readonly IMapper _mapper;
         private readonly ILogger<AchievementService> _logger;
 
@@ -23,6 +24,7 @@ namespace FitnessTracker.API.Services
             IFoodIntakeRepository foodIntakeRepository,
             IReferralRepository referralRepository,
             IExperienceService experienceService,
+            ILocalizationService localizationService, 
             IMapper mapper,
             ILogger<AchievementService> logger)
         {
@@ -32,6 +34,7 @@ namespace FitnessTracker.API.Services
             _foodIntakeRepository = foodIntakeRepository;
             _referralRepository = referralRepository;
             _experienceService = experienceService;
+            _localizationService = localizationService; 
             _mapper = mapper;
             _logger = logger;
         }
@@ -42,6 +45,8 @@ namespace FitnessTracker.API.Services
             var userAchievements = await _achievementRepository.GetUserAchievementsAsync(userId);
             var userAchievementDict = userAchievements.ToDictionary(ua => ua.AchievementId);
 
+            var userLocale = await _localizationService.GetUserLocaleAsync(userId);
+
             var achievementDtos = new List<AchievementDto>();
 
             foreach (var achievement in achievements.Where(a => a.IsActive))
@@ -49,10 +54,12 @@ namespace FitnessTracker.API.Services
                 var currentProgress = await CalculateProgressAsync(userId, achievement.Type);
                 var isUnlocked = userAchievementDict.ContainsKey(achievement.Id);
 
+                var achievementKey = achievement.Id.Replace("achievement_", "achievement.");
+
                 var achievementDto = new AchievementDto
                 {
                     Id = achievement.Id,
-                    Title = achievement.Title,
+                    Title = _localizationService.Translate(achievementKey, userLocale),
                     Icon = achievement.Icon,
                     ImageUrl = achievement.ImageUrl,
                     Type = achievement.Type,

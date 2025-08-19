@@ -1,5 +1,5 @@
 ﻿using System.Security.Claims;
-using FitnessTracker.API.Repositories; 
+using FitnessTracker.API.Repositories;
 
 namespace FitnessTracker.API.Services
 {
@@ -17,10 +17,16 @@ namespace FitnessTracker.API.Services
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ILogger<LocalizationService> _logger;
 
+        private readonly HashSet<string> _availableLanguages = new()
+        {
+            "ru", "en", "es", "de", "fr", "zh", "ja", "ko", "pt", "it", "ar", "hi", "tr", "pl", "uk"
+        };
+
         private readonly Dictionary<string, Dictionary<string, string>> _translations = new()
         {
             ["ru"] = new Dictionary<string, string>
             {
+                // Миссии
                 ["mission.breakfast_500"] = "Съешь 500ккал на завтрак",
                 ["mission.walk_5000"] = "Пройди 5000 шагов",
                 ["mission.body_scan_weekly"] = "Скан тела каждую неделю",
@@ -29,6 +35,7 @@ namespace FitnessTracker.API.Services
                 ["mission.smart_spending"] = "Умная трата: уложись в дневной лимит",
                 ["mission.photo_master"] = "Мастер фото: проанализируй 3 фото за день",
 
+                // Скины
                 ["skin.minimalist"] = "Минималист",
                 ["skin.minimalist.desc"] = "Для пользователей, которые тратят меньше 5 монет в день",
                 ["skin.economist"] = "Экономист",
@@ -44,6 +51,11 @@ namespace FitnessTracker.API.Services
                 ["achievement.nutrition_master"] = "Мастер питания",
                 ["achievement.body_analyzer"] = "Аналитик тела",
                 ["achievement.referral_master"] = "Мастер рефералов",
+                ["achievement.goal_setter"] = "Постановщик целей",
+                ["achievement.goal_achiever"] = "Достигатор целей",
+                ["achievement.consistency_master"] = "Мастер постоянства",
+                ["achievement.budget_master"] = "Мастер бюджета",
+                ["achievement.photo_expert"] = "Эксперт фотоанализа",
 
                 // Общие
                 ["strength"] = "Силовая",
@@ -77,7 +89,7 @@ namespace FitnessTracker.API.Services
 
             ["en"] = new Dictionary<string, string>
             {
-                // Missions
+                // Миссии
                 ["mission.breakfast_500"] = "Eat 500kcal for breakfast",
                 ["mission.walk_5000"] = "Walk 5000 steps",
                 ["mission.body_scan_weekly"] = "Weekly body scan",
@@ -86,7 +98,7 @@ namespace FitnessTracker.API.Services
                 ["mission.smart_spending"] = "Smart spending: stay within daily limit",
                 ["mission.photo_master"] = "Photo master: analyze 3 photos per day",
 
-                // Skins
+                // Скины
                 ["skin.minimalist"] = "Minimalist",
                 ["skin.minimalist.desc"] = "For users who spend less than 5 coins per day",
                 ["skin.economist"] = "Economist",
@@ -96,14 +108,19 @@ namespace FitnessTracker.API.Services
                 ["skin.strategist"] = "Strategist",
                 ["skin.strategist.desc"] = "Master of planning and long-term goals",
 
-                // Achievements
-                ["achievement.first_workout"] = "First workout",
-                ["achievement.workout_week"] = "Week of workouts",
-                ["achievement.nutrition_master"] = "Nutrition master",
-                ["achievement.body_analyzer"] = "Body analyzer",
-                ["achievement.referral_master"] = "Referral master",
+                // Достижения
+                ["achievement.first_workout"] = "First Workout",
+                ["achievement.workout_week"] = "Week of Workouts",
+                ["achievement.nutrition_master"] = "Nutrition Master",
+                ["achievement.body_analyzer"] = "Body Analyzer",
+                ["achievement.referral_master"] = "Referral Master",
+                ["achievement.goal_setter"] = "Goal Setter",
+                ["achievement.goal_achiever"] = "Goal Achiever",
+                ["achievement.consistency_master"] = "Consistency Master",
+                ["achievement.budget_master"] = "Budget Master",
+                ["achievement.photo_expert"] = "Photo Expert",
 
-                // Common
+                // Общие
                 ["strength"] = "Strength",
                 ["cardio"] = "Cardio",
                 ["breakfast"] = "Breakfast",
@@ -120,7 +137,7 @@ namespace FitnessTracker.API.Services
                 ["male"] = "Male",
                 ["female"] = "Female",
 
-                // Errors
+                // Ошибки
                 ["error.insufficient_coins"] = "Insufficient LW Coins",
                 ["error.not_found"] = "Not found",
                 ["error.invalid_data"] = "Invalid data",
@@ -138,6 +155,9 @@ namespace FitnessTracker.API.Services
                 ["mission.breakfast_500"] = "Come 500kcal en el desayuno",
                 ["mission.walk_5000"] = "Camina 5000 pasos",
                 ["skin.minimalist"] = "Minimalista",
+                ["achievement.first_workout"] = "Primer Entrenamiento",
+                ["achievement.workout_week"] = "Semana de Entrenamientos",
+                ["achievement.nutrition_master"] = "Maestro de Nutrición",
                 ["strength"] = "Fuerza",
                 ["cardio"] = "Cardio",
                 ["breakfast"] = "Desayuno",
@@ -153,6 +173,9 @@ namespace FitnessTracker.API.Services
                 ["mission.breakfast_500"] = "Iss 500kcal zum Frühstück",
                 ["mission.walk_5000"] = "Gehe 5000 Schritte",
                 ["skin.minimalist"] = "Minimalist",
+                ["achievement.first_workout"] = "Erstes Training",
+                ["achievement.workout_week"] = "Trainingswoche",
+                ["achievement.nutrition_master"] = "Ernährungsmeister",
                 ["strength"] = "Kraft",
                 ["cardio"] = "Cardio",
                 ["breakfast"] = "Frühstück",
@@ -168,6 +191,9 @@ namespace FitnessTracker.API.Services
                 ["mission.breakfast_500"] = "Mange 500kcal au petit-déjeuner",
                 ["mission.walk_5000"] = "Marche 5000 pas",
                 ["skin.minimalist"] = "Minimaliste",
+                ["achievement.first_workout"] = "Premier Entraînement",
+                ["achievement.workout_week"] = "Semaine d'Entraînements",
+                ["achievement.nutrition_master"] = "Maître de la Nutrition",
                 ["strength"] = "Force",
                 ["cardio"] = "Cardio",
                 ["breakfast"] = "Petit-déjeuner",
@@ -214,27 +240,34 @@ namespace FitnessTracker.API.Services
             }
         }
 
+        /// <summary>
+        /// ✅ УМНЫЙ поиск языка из любой локали
+        /// Поддерживает: en_US, en_EN, en_GB, en_ID, en_AU и т.д. → "en"
+        /// Поддерживает: ru_RU, ru_BY, ru_KZ → "ru"
+        /// </summary>
         public string GetLanguageFromLocale(string locale)
         {
             if (string.IsNullOrEmpty(locale))
                 return "ru";
 
-            var lang = locale.ToLower().Substring(0, Math.Min(2, locale.Length));
-
-            return lang switch
+            try
             {
-                "en" => "en",
-                "ru" => "ru",
-                "es" => "es",
-                "de" => "de",
-                "fr" => "fr",
-                "zh" => "zh",
-                "ja" => "ja",
-                "ko" => "ko",
-                "pt" => "pt",
-                "it" => "it",
-                _ => "en"
-            };
+                var lang = locale.ToLower().Substring(0, Math.Min(2, locale.Length));
+
+                if (_availableLanguages.Contains(lang))
+                {
+                    _logger.LogInformation($"🌍 Locale '{locale}' → language '{lang}' (поддерживается)");
+                    return lang;
+                }
+
+                _logger.LogWarning($"🌍 Locale '{locale}' → language '{lang}' не поддерживается, используем fallback 'en'");
+                return "en";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error parsing locale '{locale}': {ex.Message}");
+                return "en"; 
+            }
         }
 
         public string Translate(string key, string locale)
@@ -249,14 +282,25 @@ namespace FitnessTracker.API.Services
                 }
             }
 
-            if (_translations.TryGetValue("en", out var enDict))
+            if (lang != "en" && _translations.TryGetValue("en", out var enDict))
             {
                 if (enDict.TryGetValue(key, out var enTranslation))
                 {
+                    _logger.LogDebug($"🌍 Translation fallback: key '{key}' для '{locale}' → английский перевод");
                     return enTranslation;
                 }
             }
 
+            if (lang != "ru" && _translations.TryGetValue("ru", out var ruDict))
+            {
+                if (ruDict.TryGetValue(key, out var ruTranslation))
+                {
+                    _logger.LogDebug($"🌍 Translation fallback: key '{key}' для '{locale}' → русский перевод");
+                    return ruTranslation;
+                }
+            }
+
+            _logger.LogWarning($"🌍 Translation not found: key '{key}' для locale '{locale}'");
             return key;
         }
 
@@ -275,6 +319,22 @@ namespace FitnessTracker.API.Services
             }
 
             return new Dictionary<string, string>();
+        }
+
+        /// <summary>
+        /// ✅ Получить список всех поддерживаемых языков
+        /// </summary>
+        public HashSet<string> GetSupportedLanguages()
+        {
+            return new HashSet<string>(_availableLanguages);
+        }
+
+        /// <summary>
+        /// ✅ Проверить поддерживается ли язык
+        /// </summary>
+        public bool IsLanguageSupported(string language)
+        {
+            return _availableLanguages.Contains(language?.ToLower());
         }
     }
 }

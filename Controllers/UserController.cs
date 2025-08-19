@@ -108,11 +108,6 @@ namespace FitnessTracker.API.Controllers
             }
         }
 
-        /// <summary>
-        /// 🌍 Установить язык пользователя
-        /// </summary>
-        /// <param name="request">Новый locale (ru_RU, en_US, es_ES и т.д.)</param>
-        /// <returns>Результат обновления</returns>
         [HttpPost("locale")]
         public async Task<IActionResult> SetLocale([FromBody] SetLocaleRequest request)
         {
@@ -125,13 +120,23 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(request.Locale))
                     return BadRequest(new { error = "Locale is required" });
 
-                var supportedLocales = new[] { "ru_RU", "en_US", "es_ES", "de_DE", "fr_FR", "zh_CN", "ja_JP", "ko_KR", "pt_BR", "it_IT" };
-                if (!supportedLocales.Contains(request.Locale))
+                var language = _localizationService.GetLanguageFromLocale(request.Locale);
+                var supportedLanguages = new[] { "ru", "en", "es", "de", "fr", "zh", "ja", "ko", "pt", "it" };
+
+                if (!supportedLanguages.Contains(language))
                 {
                     return BadRequest(new
                     {
-                        error = "Unsupported locale",
-                        supported = supportedLocales
+                        error = "Unsupported language",
+                        provided_locale = request.Locale,
+                        extracted_language = language,
+                        supported_languages = supportedLanguages,
+                        examples = new
+                        {
+                            en = new[] { "en", "en_US", "en_GB", "en_ID", "en_AU", "en_CA" },
+                            ru = new[] { "ru", "ru_RU", "ru_BY", "ru_KZ" },
+                            es = new[] { "es", "es_ES", "es_MX", "es_AR" }
+                        }
                     });
                 }
 
@@ -142,13 +147,19 @@ namespace FitnessTracker.API.Controllers
                 user.Locale = request.Locale;
                 await _userRepository.UpdateAsync(user);
 
-                _logger.LogInformation($"🌍 Locale updated for user {userId}: {request.Locale}");
+                _logger.LogInformation($"🌍 Locale updated for user {userId}: '{request.Locale}' → language '{language}'");
 
                 return Ok(new
                 {
                     success = true,
-                    locale = request.Locale,
-                    message = "Language updated successfully"
+                    original_locale = request.Locale,
+                    extracted_language = language,
+                    message = $"Language updated successfully to {language}",
+                    examples_accepted = new
+                    {
+                        english = new[] { "en", "en_US", "en_GB", "en_ID", "en_AU" },
+                        russian = new[] { "ru", "ru_RU", "ru_BY" }
+                    }
                 });
             }
             catch (Exception ex)
