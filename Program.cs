@@ -114,6 +114,13 @@ builder.Services.AddHttpClient<VertexAIProvider>(client =>
     client.DefaultRequestHeaders.Add("User-Agent", "FitnessTracker-API/3.0.0");
 });
 
+builder.Services.AddHttpClient<GoogleAuthService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.Add("User-Agent", "FitnessTracker-API/3.0.0");
+});
+
+builder.Services.AddHttpClient();
 builder.Services.AddScoped<ILocalizationService, LocalizationService>();
 builder.Services.AddScoped<IGoogleCloudTokenService, GoogleCloudTokenService>();
 builder.Services.AddScoped<IAIProvider, VertexAIProvider>();
