@@ -30,9 +30,11 @@ namespace FitnessTracker.API.Services.AI.Providers
         private string GetLanguageFromLocale(string? locale)
         {
             if (string.IsNullOrEmpty(locale))
-                return "ru";
+                return "en"; 
 
-            var lang = locale.ToLower().Substring(0, Math.Min(2, locale.Length));
+            var normalizedLocale = locale.Replace("-", "_").ToLower();
+
+            var lang = normalizedLocale.Length >= 2 ? normalizedLocale.Substring(0, 2) : normalizedLocale;
 
             return lang switch
             {
@@ -46,7 +48,12 @@ namespace FitnessTracker.API.Services.AI.Providers
                 "ko" => "ko",
                 "pt" => "pt",
                 "it" => "it",
-                _ => "en"
+                "uk" => "uk",
+                "pl" => "pl",
+                "tr" => "tr",
+                "ar" => "ar",
+                "hi" => "hi",
+                _ => "en" 
             };
         }
 
@@ -584,24 +591,69 @@ CRITICAL: Return ONLY the JSON object, nothing else.";
         {
             var langInstruction = GetLanguageInstruction(lang);
 
+            var currentDate = DateTime.UtcNow;
+            var startDate = currentDate.ToString("yyyy-MM-ddTHH:mm:ssZ");
+            var endDate = currentDate.AddMinutes(60).ToString("yyyy-MM-ddTHH:mm:ssZ");
+
+            var exerciseNameStrength = lang switch
+            {
+                "ru" => "Силовое упражнение",
+                "es" => "Ejercicio de fuerza",
+                "de" => "Kraftübung",
+                "fr" => "Exercice de force",
+                _ => "Strength exercise"
+            };
+
+            var exerciseNameCardio = lang switch
+            {
+                "ru" => "Кардио упражнение",
+                "es" => "Ejercicio cardiovascular",
+                "de" => "Cardio-Übung",
+                "fr" => "Exercice cardio",
+                _ => "Cardio exercise"
+            };
+
+            var runningName = lang switch
+            {
+                "ru" => "Бег",
+                "es" => "Correr",
+                "de" => "Laufen",
+                "fr" => "Course",
+                _ => "Running"
+            };
+
+            var paceUnit = lang switch
+            {
+                "ru" => "мин/км",
+                "es" => "min/km",
+                "de" => "min/km",
+                "fr" => "min/km",
+                _ => "min/km"
+            };
+
             return $@"Analyze workout: ""{workoutText}""
 {langInstruction}
 
+CRITICAL: All response fields MUST be in {lang switch { "ru" => "Russian", "es" => "Spanish", "de" => "German", "fr" => "French", _ => "English" }} language!
+
+For running/jogging activities, use name: ""{runningName}""
+For pace, use format like: ""6:00 {paceUnit}""
+
 Determine if this is STRENGTH or CARDIO workout. Return JSON only:
 
-CARDIO:
+CARDIO (for running, cycling, swimming):
 {{
   ""workoutData"": {{
     ""type"": ""cardio"",
-    ""startDate"": ""{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}"",
-    ""endDate"": ""{DateTime.UtcNow.AddMinutes(60):yyyy-MM-ddTHH:mm:ssZ}"",
+    ""startDate"": ""{startDate}"",
+    ""endDate"": ""{endDate}"",
     ""estimatedCalories"": 400,
     ""activityData"": {{
-      ""name"": ""Exercise name"",
+      ""name"": ""{runningName}"",
       ""category"": ""Cardio"",
       ""equipment"": null,
-      ""distance"": null,
-      ""avgPace"": null,
+      ""distance"": 10.0,
+      ""avgPace"": ""6:00 {paceUnit}"",
       ""avgPulse"": null,
       ""maxPulse"": null,
       ""count"": null
@@ -613,11 +665,11 @@ STRENGTH:
 {{
   ""workoutData"": {{
     ""type"": ""strength"",
-    ""startDate"": ""{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}"",
-    ""endDate"": ""{DateTime.UtcNow.AddMinutes(45):yyyy-MM-ddTHH:mm:ssZ}"",
+    ""startDate"": ""{startDate}"",
+    ""endDate"": ""{currentDate.AddMinutes(45).ToString("yyyy-MM-ddTHH:mm:ssZ")}"",
     ""estimatedCalories"": 250,
     ""activityData"": {{
-      ""name"": ""Exercise name"",
+      ""name"": ""{exerciseNameStrength}"",
       ""category"": ""Strength"",
       ""muscleGroup"": null,
       ""equipment"": null,
@@ -630,6 +682,7 @@ STRENGTH:
 }}
 
 {langInstruction}
+IMPORTANT: Use current date {currentDate:yyyy-MM-dd} for all dates!
 Analyze: ""{workoutText}""";
         }
 
@@ -1434,12 +1487,22 @@ CRITICAL:
                 {
                     var type = GetString(workoutData, "type", "strength");
 
+                    var parsedStartDate = GetDateTime(workoutData, "startDate");
+                    var parsedEndDate = GetNullableDateTime(workoutData, "endDate");
+
+                    if (parsedStartDate < DateTime.UtcNow.AddYears(-1))
+                    {
+                        _logger.LogWarning($"📝 Correcting old date from {parsedStartDate} to current date");
+                        parsedStartDate = DateTime.UtcNow;
+                        parsedEndDate = parsedStartDate.AddMinutes(type == "cardio" ? 60 : 45);
+                    }
+
                     var activityDto = new ActivityDto
                     {
                         Id = Guid.NewGuid().ToString(),
                         Type = type,
-                        StartDate = GetDateTime(workoutData, "startDate"),
-                        EndDate = GetNullableDateTime(workoutData, "endDate") ?? GetDateTime(workoutData, "startDate").AddMinutes(type == "cardio" ? 30 : 45),
+                        StartDate = parsedStartDate,
+                        EndDate = parsedEndDate ?? parsedStartDate.AddMinutes(type == "cardio" ? 60 : 45),
                         Calories = GetInt(workoutData, "estimatedCalories", type == "cardio" ? 300 : 250),
                         CreatedAt = DateTime.UtcNow
                     };
@@ -1448,7 +1511,7 @@ CRITICAL:
                     {
                         var activityDataDto = new ActivityDataDto
                         {
-                            Name = GetString(activityData, "name", type == "strength" ? "Силовое упражнение" : "Кардио упражнение"),
+                            Name = GetString(activityData, "name", type == "strength" ? "Strength exercise" : "Cardio exercise"),
                             Category = GetNullableString(activityData, "category"),
                             Equipment = GetNullableString(activityData, "equipment")
                         };
@@ -1884,49 +1947,17 @@ CRITICAL:
 
         private TextWorkoutResponse CreateFallbackTextWorkoutResponse(string reason, string? workoutType)
         {
-            var type = DetermineWorkoutType(workoutType);
-            var startDate = DateTime.UtcNow;
-            var endDate = startDate.AddMinutes(type == "cardio" ? 30 : 45);
+            _logger.LogInformation($"📝 Creating fallback text workout response: {reason}");
 
-            var workoutData = new ActivityDto
-            {
-                Id = Guid.NewGuid().ToString(),
-                Type = type,
-                StartDate = startDate,
-                EndDate = endDate,
-                Calories = type == "cardio" ? 300 : 250,
-                CreatedAt = DateTime.UtcNow,
-                ActivityData = new ActivityDataDto
-                {
-                    Name = type == "strength" ? "Базовое упражнение" : "Общее кардио",
-                    Category = type == "strength" ? "Strength" : "Cardio",
-                    Equipment = null,
-                    Count = type == "strength" ? 10 : null,
-                    MuscleGroup = type == "strength" ? "грудь" : null,
-                    Weight = null,
-                    RestTimeSeconds = type == "strength" ? 120 : null,
-                    Sets = type == "strength" ? new List<ActivitySetDto>
-            {
-                new ActivitySetDto
-                {
-                    SetNumber = 1,
-                    Weight = null,
-                    Reps = 10,
-                    IsCompleted = true
-                }
-            } : null,
-                    Distance = null,
-                    AvgPace = null,
-                    AvgPulse = null,
-                    MaxPulse = null
-                }
-            };
+            var type = DetermineWorkoutType(workoutType);
+            var defaultWorkout = CreateDefaultWorkoutData(reason, type);
 
             return new TextWorkoutResponse
             {
                 Success = true,
-                ProcessedText = $"Не удалось обработать текст ({reason}), создана базовая тренировка",
-                WorkoutData = workoutData
+                ErrorMessage = null,
+                ProcessedText = $"Workout processed ({reason})",
+                WorkoutData = defaultWorkout
             };
         }
 
@@ -2001,6 +2032,39 @@ CRITICAL:
                 TotalCalories = (int)Math.Round((calories * weight) / 100),
                 Confidence = 0.3m
             };
+        }
+
+        private ActivityDto CreateDefaultWorkoutData(string reason, string type)
+        {
+            var startDate = DateTime.UtcNow;
+            var endDate = startDate.AddMinutes(type == "cardio" ? 30 : 45);
+
+            var workout = new ActivityDto
+            {
+                Id = Guid.NewGuid().ToString(),
+                Type = type,
+                StartDate = startDate,
+                EndDate = endDate,
+                Calories = type == "cardio" ? 200 : 250,
+                CreatedAt = DateTime.UtcNow,
+                ActivityData = new ActivityDataDto
+                {
+                    Name = type == "strength" ? "Strength exercise" : "Cardio exercise",
+                    Category = type == "strength" ? "Strength" : "Cardio",
+                    Equipment = null,
+                    Count = null,
+                    MuscleGroup = null,
+                    Weight = null,
+                    RestTimeSeconds = null,
+                    Sets = null,
+                    Distance = null,
+                    AvgPace = null,
+                    AvgPulse = null,
+                    MaxPulse = null
+                }
+            };
+
+            return workout;
         }
     }
 }

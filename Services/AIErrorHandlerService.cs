@@ -262,7 +262,7 @@ namespace FitnessTracker.API.Services.AI
 
         private ActivityDto CreateDefaultWorkoutData(string reason, string type)
         {
-            var startDate = DateTime.UtcNow;
+            var startDate = DateTime.UtcNow; 
             var endDate = startDate.AddMinutes(type == "cardio" ? 30 : 45);
 
             var workout = new ActivityDto
@@ -275,14 +275,14 @@ namespace FitnessTracker.API.Services.AI
                 CreatedAt = DateTime.UtcNow,
                 ActivityData = new ActivityDataDto
                 {
-                    Name = type == "strength" ? "Силовое упражнение" : "Кардио упражнение",
+                    Name = type == "strength" ? "Strength exercise" : "Cardio exercise", 
                     Category = type == "strength" ? "Strength" : "Cardio",
-                    Equipment = type == "strength" ? null : null, 
-                    Count = type == "strength" ? null : null, 
-                    MuscleGroup = type == "strength" ? null : null, 
+                    Equipment = null,
+                    Count = null,
+                    MuscleGroup = null,
                     Weight = null,
-                    RestTimeSeconds = type == "strength" ? null : null, 
-                    Sets = type == "strength" ? null : null, 
+                    RestTimeSeconds = null,
+                    Sets = null,
                     Distance = null,
                     AvgPace = null,
                     AvgPulse = null,

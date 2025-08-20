@@ -22,61 +22,6 @@ namespace FitnessTracker.API.Services.AI
             _configuration = configuration;
         }
 
-        public async Task<FoodScanResponse> AnalyzeFoodImageAsync(byte[] imageData, string? userPrompt = null, string? locale = null)
-        {
-            const int maxAttempts = 3;
-            var lastException = new Exception("Unknown error");
-
-            for (int attempt = 1; attempt <= maxAttempts; attempt++)
-            {
-                try
-                {
-                    _logger.LogInformation($"🍎 Food analysis attempt {attempt}/{maxAttempts}");
-
-                    var result = await _primaryProvider.AnalyzeFoodImageAsync(imageData, userPrompt);
-
-                    if (result.Success && ValidateFoodScanResult(result))
-                    {
-                        _logger.LogInformation($"✅ Food analysis successful on attempt {attempt}");
-                        return result;
-                    }
-
-                    if (result.Success && !ValidateFoodScanResult(result))
-                    {
-                        _logger.LogWarning($"⚠️ Food analysis returned invalid data on attempt {attempt}");
-                        if (attempt == maxAttempts)
-                        {
-                            return _errorHandler.CreateFallbackFoodResponse("Invalid analysis result", imageData);
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogWarning($"❌ Food analysis failed on attempt {attempt}: {result.ErrorMessage}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    lastException = ex;
-                    _logger.LogError($"❌ Food analysis error on attempt {attempt}: {ex.Message}");
-
-                    if (!_errorHandler.ShouldRetryRequest(ex, attempt))
-                    {
-                        break;
-                    }
-
-                    if (attempt < maxAttempts)
-                    {
-                        var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)); // Exponential backoff
-                        _logger.LogInformation($"⏳ Retrying in {delay.TotalSeconds} seconds...");
-                        await Task.Delay(delay);
-                    }
-                }
-            }
-
-            _logger.LogError($"❌ All food analysis attempts failed. Creating fallback response.");
-            return _errorHandler.CreateFallbackFoodResponse($"Analysis failed after {maxAttempts} attempts: {lastException.Message}", imageData);
-        }
-
         public async Task<BodyScanResponse> AnalyzeBodyImagesAsync(
             byte[]? frontImageData,
             byte[]? sideImageData,
@@ -138,9 +83,9 @@ namespace FitnessTracker.API.Services.AI
             {
                 try
                 {
-                    _logger.LogInformation($"🎤 Voice workout analysis attempt {attempt}/{maxAttempts}");
+                    _logger.LogInformation($"🎤 Voice workout analysis attempt {attempt}/{maxAttempts} with locale: {locale}");
 
-                    var result = await _primaryProvider.AnalyzeVoiceWorkoutAsync(audioData, workoutType);
+                    var result = await _primaryProvider.AnalyzeVoiceWorkoutAsync(audioData, workoutType, locale);
 
                     if (result.Success && ValidateVoiceWorkoutResult(result))
                     {
@@ -222,9 +167,9 @@ namespace FitnessTracker.API.Services.AI
             {
                 try
                 {
-                    _logger.LogInformation($"📝 Text workout analysis attempt {attempt}/{maxAttempts}");
+                    _logger.LogInformation($"📝 Text workout analysis attempt {attempt}/{maxAttempts} with locale: {locale}");
 
-                    var result = await _primaryProvider.AnalyzeTextWorkoutAsync(workoutText, workoutType);
+                    var result = await _primaryProvider.AnalyzeTextWorkoutAsync(workoutText, workoutType, locale);
 
                     if (result.Success && ValidateTextWorkoutResult(result))
                     {
@@ -264,9 +209,9 @@ namespace FitnessTracker.API.Services.AI
             {
                 try
                 {
-                    _logger.LogInformation($"📝 Text food analysis attempt {attempt}/{maxAttempts}");
+                    _logger.LogInformation($"📝 Text food analysis attempt {attempt}/{maxAttempts} with locale: {locale}");
 
-                    var result = await _primaryProvider.AnalyzeTextFoodAsync(foodText, mealType);
+                    var result = await _primaryProvider.AnalyzeTextFoodAsync(foodText, mealType, locale);
 
                     if (result.Success && ValidateTextFoodResult(result))
                     {
@@ -295,6 +240,61 @@ namespace FitnessTracker.API.Services.AI
 
             _logger.LogError($"❌ All text food attempts failed. Creating fallback response.");
             return _errorHandler.CreateFallbackTextFoodResponse($"Analysis failed: {lastException.Message}", mealType);
+        }
+
+        public async Task<FoodScanResponse> AnalyzeFoodImageAsync(byte[] imageData, string? userPrompt = null, string? locale = null)
+        {
+            const int maxAttempts = 3;
+            var lastException = new Exception("Unknown error");
+
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    _logger.LogInformation($"🍎 Food analysis attempt {attempt}/{maxAttempts} with locale: {locale}");
+
+                    var result = await _primaryProvider.AnalyzeFoodImageAsync(imageData, userPrompt, locale);
+
+                    if (result.Success && ValidateFoodScanResult(result))
+                    {
+                        _logger.LogInformation($"✅ Food analysis successful on attempt {attempt}");
+                        return result;
+                    }
+
+                    if (result.Success && !ValidateFoodScanResult(result))
+                    {
+                        _logger.LogWarning($"⚠️ Food analysis returned invalid data on attempt {attempt}");
+                        if (attempt == maxAttempts)
+                        {
+                            return _errorHandler.CreateFallbackFoodResponse("Invalid analysis result", imageData);
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"❌ Food analysis failed on attempt {attempt}: {result.ErrorMessage}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    _logger.LogError($"❌ Food analysis error on attempt {attempt}: {ex.Message}");
+
+                    if (!_errorHandler.ShouldRetryRequest(ex, attempt))
+                    {
+                        break;
+                    }
+
+                    if (attempt < maxAttempts)
+                    {
+                        var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
+                        _logger.LogInformation($"⏳ Retrying in {delay.TotalSeconds} seconds...");
+                        await Task.Delay(delay);
+                    }
+                }
+            }
+
+            _logger.LogError($"❌ All food analysis attempts failed. Creating fallback response.");
+            return _errorHandler.CreateFallbackFoodResponse($"Analysis failed after {maxAttempts} attempts: {lastException.Message}", imageData);
         }
 
         public async Task<FoodCorrectionResponse> CorrectFoodItemAsync(string originalFoodName, string correctionText, string? locale = null)

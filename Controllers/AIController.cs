@@ -572,13 +572,21 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
-                // Получаем locale из профиля
-                var userLocale = request.Locale ?? await _localizationService.GetUserLocaleAsync(userId);
-                _logger.LogInformation($"📝 Text workout for user {userId} with locale: {userLocale}");
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user == null)
+                {
+                    return BadRequest(new { error = "User not found" });
+                }
+
+                var userLocale = user.Locale ?? "en"; 
+
+                _logger.LogInformation($"📝 Text workout for user {userId} with profile locale: {userLocale}");
 
                 if (string.IsNullOrWhiteSpace(request.WorkoutDescription))
                 {
-                    var errorMsg = _localizationService.Translate("error.invalid_data", userLocale);
+                    var errorMsg = userLocale.StartsWith("ru")
+                        ? "Описание тренировки не предоставлено"
+                        : "Workout description is required";
                     return BadRequest(new { error = errorMsg });
                 }
 
@@ -587,16 +595,23 @@ namespace FitnessTracker.API.Controllers
 
                 if (!canSpend)
                 {
-                    var errorMsg = _localizationService.Translate("error.insufficient_coins", userLocale);
+                    var errorMsg = userLocale.StartsWith("ru")
+                        ? "Недостаточно LW Coins"
+                        : "Insufficient LW Coins";
                     return BadRequest(new { error = errorMsg });
                 }
 
-                // Передаем locale в сервис
-                var result = await _geminiService.AnalyzeTextWorkoutAsync(request.WorkoutDescription, request.WorkoutType, userLocale);
+                var result = await _geminiService.AnalyzeTextWorkoutAsync(
+                    request.WorkoutDescription,
+                    request.WorkoutType,
+                    userLocale 
+                );
 
                 if (!result.Success)
                 {
-                    var errorMsg = _localizationService.Translate("error.analysis_failed", userLocale);
+                    var errorMsg = userLocale.StartsWith("ru")
+                        ? "Ошибка анализа"
+                        : "Analysis failed";
                     return BadRequest(new { error = result.ErrorMessage ?? errorMsg });
                 }
 
