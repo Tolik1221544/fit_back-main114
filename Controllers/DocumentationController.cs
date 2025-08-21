@@ -25,7 +25,7 @@ namespace FitnessTracker.API.Controllers
                         photoAnalysis = new { cost = 2.5m, description = "Анализ фото еды с помощью AI" },
                         voiceInput = new { cost = 1.5m, description = "Голосовой ввод тренировки/питания" },
                         textAnalysis = new { cost = 1.0m, description = "Текстовый анализ и обработка" },
-                        bodyAnalysis = new { cost = 0.0m, description = "Анализ тела (остается бесплатным)" },
+                        bodyAnalysis = new { cost = 1.0m, description = "Анализ тела" },
                         exerciseTracking = new { cost = 0.0m, description = "Отслеживание упражнений (бесплатно)" }
                     },
                     dailyLimits = new
@@ -36,18 +36,18 @@ namespace FitnessTracker.API.Controllers
                             calculation = "300 монет / 30 дней = 10 монет/день",
                             targetUsage = new
                             {
-                                photos = 3,    // 3 * 2.5 = 7.5 монеты
-                                voice = 1,     // 1 * 1.5 = 1.5 монеты  
-                                text = 2,      // 2 * 1.0 = 2.0 монеты
-                                total = 11.0m, // Итого: 11 монет
+                                photos = 3,    
+                                voice = 1,      
+                                text = 2,      
+                                total = 11.0m,
                                 note = "Слегка превышает дневной лимит, нужна оптимизация"
                             },
                             optimizedUsage = new
                             {
-                                photos = 3,    // 3 * 2.5 = 7.5 монеты
-                                voice = 1,     // 1 * 1.5 = 1.5 монеты
-                                text = 1,      // 1 * 1.0 = 1.0 монета
-                                total = 10.0m, // Итого: 10 монет (точно в лимите)
+                                photos = 3,   
+                                voice = 1,     
+                                text = 1,     
+                                total = 10.0m, 
                                 note = "Оптимальное использование для тарифа 'База'"
                             }
                         },
@@ -249,7 +249,7 @@ namespace FitnessTracker.API.Controllers
                                     photoCost = 2.5m,
                                     voiceCost = 1.5m,
                                     textCost = 1.0m,
-                                    bodyAnalysisCost = 0.0m,
+                                    bodyAnalysisCost = 1.0m,
                                     exerciseTrackingCost = 0.0m
                                 },
                                 dailyLimits = new {

@@ -11,6 +11,7 @@ namespace FitnessTracker.API.Services
         private readonly IStepsRepository _stepsRepository;
         private readonly IExperienceService _experienceService;
         private readonly IMissionService _missionService;
+        private readonly IUserRepository _userRepository;
         private readonly IMapper _mapper;
         private readonly ILogger<ActivityService> _logger;
 
@@ -19,6 +20,7 @@ namespace FitnessTracker.API.Services
             IStepsRepository stepsRepository,
             IExperienceService experienceService,
             IMissionService missionService,
+            IUserRepository userRepository,
             IMapper mapper,
             ILogger<ActivityService> logger)
         {
@@ -26,6 +28,7 @@ namespace FitnessTracker.API.Services
             _stepsRepository = stepsRepository;
             _experienceService = experienceService;
             _missionService = missionService;
+            _userRepository = userRepository;
             _mapper = mapper;
             _logger = logger;
         }
@@ -69,13 +72,21 @@ namespace FitnessTracker.API.Services
                 if (activityType != "strength" && activityType != "cardio")
                     throw new ArgumentException("Activity type must be 'strength' or 'cardio'");
 
+                var user = await _userRepository.GetByIdAsync(userId);
+                var userTimeZone = GetTimeZoneFromLocale(user?.Locale);
+
+                var startDate = ConvertToUtc(request.StartDate, userTimeZone);
+                var endDate = request.EndDate.HasValue ?
+                    ConvertToUtc(request.EndDate.Value, userTimeZone) :
+                    startDate.AddMinutes(30);
+
                 var activity = new Activity
                 {
                     Id = Guid.NewGuid().ToString(),
                     UserId = userId,
                     Type = activityType,
-                    StartDate = request.StartDate,
-                    EndDate = request.EndDate ?? request.StartDate.AddMinutes(30),
+                    StartDate = startDate,
+                    EndDate = endDate,
                     Calories = request.Calories ?? CalculateCalories(request),
                     CreatedAt = DateTime.UtcNow
                 };
@@ -94,14 +105,9 @@ namespace FitnessTracker.API.Services
 
                     if (activityType == "strength")
                     {
-                        var validMuscleGroups = new[] { "грудь", "руки", "спина", "ноги" };
-                        if (!string.IsNullOrEmpty(request.ActivityData.MuscleGroup) &&
-                            !validMuscleGroups.Contains(request.ActivityData.MuscleGroup.ToLowerInvariant()))
-                        {
-                            throw new ArgumentException("MuscleGroup должен быть одним из: грудь, руки, спина, ноги");
-                        }
+                        activityData.MuscleGroup = string.IsNullOrWhiteSpace(request.ActivityData.MuscleGroup) ?
+                            null : request.ActivityData.MuscleGroup.Trim();
 
-                        activityData.MuscleGroup = string.IsNullOrWhiteSpace(request.ActivityData.MuscleGroup) ? null : request.ActivityData.MuscleGroup.Trim();
                         activityData.Weight = request.ActivityData.Weight > 0 ? request.ActivityData.Weight : null;
                         activityData.RestTimeSeconds = request.ActivityData.RestTimeSeconds > 0 ? request.ActivityData.RestTimeSeconds : null;
 
@@ -126,22 +132,22 @@ namespace FitnessTracker.API.Services
                             }
 
                             activityData.Sets = validSets;
-                            activityData.Count = totalReps; // count = сумма всех reps
+                            activityData.Count = totalReps;
                         }
                         else
                         {
                             if (request.ActivityData.Count > 0)
                             {
                                 activityData.Sets = new List<ActivitySet>
-                        {
-                            new ActivitySet
-                            {
-                                SetNumber = 1,
-                                Weight = request.ActivityData.Weight > 0 ? request.ActivityData.Weight : null,
-                                Reps = request.ActivityData.Count.Value,
-                                IsCompleted = true
-                            }
-                        };
+                                {
+                                    new ActivitySet
+                                    {
+                                        SetNumber = 1,
+                                        Weight = request.ActivityData.Weight > 0 ? request.ActivityData.Weight : null,
+                                        Reps = request.ActivityData.Count.Value,
+                                        IsCompleted = true
+                                    }
+                                };
                                 activityData.Count = request.ActivityData.Count;
                             }
                         }
@@ -164,7 +170,12 @@ namespace FitnessTracker.API.Services
                 await _experienceService.AddExperienceAsync(userId, experienceAmount, "activity",
                     $"Тренировка: {activity.Type} ({experienceAmount} опыта)");
 
-                return _mapper.Map<ActivityDto>(createdActivity);
+                var activityDto = _mapper.Map<ActivityDto>(createdActivity);
+                activityDto.StartDate = ConvertFromUtc(createdActivity.StartDate, userTimeZone);
+                if (createdActivity.EndDate.HasValue)
+                    activityDto.EndDate = ConvertFromUtc(createdActivity.EndDate.Value, userTimeZone);
+
+                return activityDto;
             }
             catch (Exception ex)
             {
@@ -179,6 +190,9 @@ namespace FitnessTracker.API.Services
             if (activity == null || activity.UserId != userId)
                 throw new ArgumentException("Activity not found");
 
+            var user = await _userRepository.GetByIdAsync(userId);
+            var userTimeZone = GetTimeZoneFromLocale(user?.Locale);
+
             if (!string.IsNullOrWhiteSpace(request.Type))
             {
                 var activityType = request.Type.Trim().ToLowerInvariant();
@@ -189,12 +203,12 @@ namespace FitnessTracker.API.Services
 
             if (request.StartDate != default(DateTime))
             {
-                activity.StartDate = request.StartDate;
+                activity.StartDate = ConvertToUtc(request.StartDate, userTimeZone);
             }
 
             if (request.EndDate.HasValue)
             {
-                activity.EndDate = request.EndDate;
+                activity.EndDate = ConvertToUtc(request.EndDate.Value, userTimeZone);
             }
 
             if (request.Calories.HasValue)
@@ -215,14 +229,9 @@ namespace FitnessTracker.API.Services
 
                 if (activity.Type == "strength")
                 {
-                    var validMuscleGroups = new[] { "грудь", "руки", "спина", "ноги" };
-                    if (!string.IsNullOrEmpty(request.ActivityData.MuscleGroup) &&
-                        !validMuscleGroups.Contains(request.ActivityData.MuscleGroup.ToLowerInvariant()))
-                    {
-                        throw new ArgumentException("MuscleGroup должен быть одним из: грудь, руки, спина, ноги");
-                    }
+                    activityData.MuscleGroup = string.IsNullOrWhiteSpace(request.ActivityData.MuscleGroup) ?
+                        null : request.ActivityData.MuscleGroup.Trim();
 
-                    activityData.MuscleGroup = string.IsNullOrWhiteSpace(request.ActivityData.MuscleGroup) ? null : request.ActivityData.MuscleGroup.Trim();
                     activityData.Weight = request.ActivityData.Weight > 0 ? request.ActivityData.Weight : null;
                     activityData.RestTimeSeconds = request.ActivityData.RestTimeSeconds > 0 ? request.ActivityData.RestTimeSeconds : null;
 
@@ -268,7 +277,106 @@ namespace FitnessTracker.API.Services
             }
 
             var updatedActivity = await _activityRepository.UpdateAsync(activity);
-            return _mapper.Map<ActivityDto>(updatedActivity);
+
+            var activityDto = _mapper.Map<ActivityDto>(updatedActivity);
+            activityDto.StartDate = ConvertFromUtc(updatedActivity.StartDate, userTimeZone);
+            if (updatedActivity.EndDate.HasValue)
+                activityDto.EndDate = ConvertFromUtc(updatedActivity.EndDate.Value, userTimeZone);
+
+            return activityDto;
+        }
+
+        private TimeZoneInfo GetTimeZoneFromLocale(string? locale)
+        {
+            if (string.IsNullOrEmpty(locale))
+                return TimeZoneInfo.Utc;
+
+            var timeZoneMap = new Dictionary<string, string>
+            {
+                // Россия
+                ["ru_RU"] = "Russian Standard Time", // UTC+3 (Москва)
+                ["ru"] = "Russian Standard Time",
+
+                // США
+                ["en_US"] = "Eastern Standard Time", // UTC-5
+                ["en"] = "UTC",
+
+                // Европа
+                ["en_GB"] = "GMT Standard Time", // UTC+0
+                ["de_DE"] = "W. Europe Standard Time", // UTC+1
+                ["fr_FR"] = "Romance Standard Time", // UTC+1
+                ["es_ES"] = "Romance Standard Time", // UTC+1
+                ["it_IT"] = "W. Europe Standard Time", // UTC+1
+
+                // Азия
+                ["zh_CN"] = "China Standard Time", // UTC+8
+                ["ja_JP"] = "Tokyo Standard Time", // UTC+9
+                ["ko_KR"] = "Korea Standard Time", // UTC+9
+
+                // Латинская Америка
+                ["es_MX"] = "Central Standard Time (Mexico)", // UTC-6
+                ["pt_BR"] = "E. South America Standard Time", // UTC-3
+
+                // Другие
+                ["ar_SA"] = "Arab Standard Time", // UTC+3
+                ["hi_IN"] = "India Standard Time", // UTC+5:30
+                ["tr_TR"] = "Turkey Standard Time", // UTC+3
+            };
+
+            try
+            {
+                var localeKey = locale.ToLower();
+
+                // Пробуем точное совпадение
+                if (timeZoneMap.ContainsKey(localeKey))
+                {
+                    var tzId = timeZoneMap[localeKey];
+                    return TimeZoneInfo.FindSystemTimeZoneById(tzId);
+                }
+
+                // Пробуем по языковому коду (первые 2 символа)
+                var langCode = localeKey.Length >= 2 ? localeKey.Substring(0, 2) : localeKey;
+                if (timeZoneMap.ContainsKey(langCode))
+                {
+                    var tzId = timeZoneMap[langCode];
+                    return TimeZoneInfo.FindSystemTimeZoneById(tzId);
+                }
+
+                _logger.LogWarning($"TimeZone not found for locale: {locale}, using UTC");
+                return TimeZoneInfo.Utc;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error getting timezone for locale {locale}: {ex.Message}");
+                return TimeZoneInfo.Utc;
+            }
+        }
+
+        private DateTime ConvertToUtc(DateTime dateTime, TimeZoneInfo timeZone)
+        {
+            if (dateTime.Kind == DateTimeKind.Utc)
+                return dateTime;
+
+            try
+            {
+                return TimeZoneInfo.ConvertTimeToUtc(dateTime, timeZone);
+            }
+            catch
+            {
+                return dateTime;
+            }
+        }
+
+        private DateTime ConvertFromUtc(DateTime utcDateTime, TimeZoneInfo timeZone)
+        {
+            try
+            {
+                return TimeZoneInfo.ConvertTimeFromUtc(utcDateTime, timeZone);
+            }
+            catch
+            {
+                return utcDateTime;
+            }
         }
 
         public async Task DeleteActivityAsync(string userId, string activityId)

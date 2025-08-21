@@ -114,12 +114,10 @@ namespace FitnessTracker.API.Services
         {
             return featureUsed.ToLowerInvariant() switch
             {
-                // Платные функции
                 "photo" or "ai_food_scan" or "food_scan" => PHOTO_COST,           
                 "voice" or "ai_voice_workout" or "ai_voice_food" => VOICE_COST,   
                 "text" or "ai_text" => TEXT_COST,                             
-
-                // Бесплатные функции  
+ 
                 "ai_body_scan" or "body_analysis" => 0.0m,                        
                 "exercise" or "activity" => 0.0m,                                
 
@@ -153,7 +151,6 @@ namespace FitnessTracker.API.Services
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) return;
 
-            // Получаем текущий дробный баланс
             var currentFractional = await GetUserFractionalBalanceAsync(userId);
             var newFractional = currentFractional - amount;
 

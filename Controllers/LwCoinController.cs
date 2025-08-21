@@ -178,9 +178,6 @@ namespace FitnessTracker.API.Controllers
         /// <returns>Информация о лимитах пользователя</returns>
         /// <response code="200">Лимиты успешно получены</response>
         /// <response code="401">Требуется авторизация</response>
-        /// <remarks>
-        /// ✅ ОБНОВЛЕНО: Больше нет дневных лимитов для трат монет.
-        /// </remarks>
         [HttpGet("check-limit/{featureType}")]
         public async Task<IActionResult> CheckFeatureLimit(string featureType)
         {
@@ -204,9 +201,6 @@ namespace FitnessTracker.API.Controllers
         /// </summary>
         /// <returns>Актуальные цены с новой ценовой моделью</returns>
         /// <response code="200">Прайс-лист получен</response>
-        /// <remarks>
-        /// ✅ ОБНОВЛЕНО: Новая ценовая модель согласно требованиям заказчика.
-        /// </remarks>
         [HttpGet("pricing")]
         [AllowAnonymous]
         public IActionResult GetPricing()
@@ -215,11 +209,11 @@ namespace FitnessTracker.API.Controllers
             {
                 lwCoinPricing = new
                 {
-                    photoCost = 2.5m,        // Фото-анализ: 2.5 монеты
-                    voiceCost = 1.5m,        // Голосовой ввод: 1.5 монеты  
-                    textCost = 1.0m,         // Текстовый ввод: 1.0 монета
-                    exerciseTrackingCost = 0,
-                    bodyAnalysisCost = 0     // ✅ Анализ тела бесплатно
+                    photoCost = 2.5m,       
+                    voiceCost = 1.5m,        
+                    textCost = 1.0m,         
+                    exerciseTrackingCost = 1.0m,
+                    bodyAnalysisCost = 0     
                 },
 
                 statisticalLimits = new
@@ -227,16 +221,16 @@ namespace FitnessTracker.API.Controllers
                     averageDailyUsage = 10.0m,
                     baseDailyUsageExample = new
                     {
-                        photos = 3,     // 3 фото * 2.5 = 7.5 монеты
-                        voiceWorkouts = 1,      // 1 голосовая тренировка * 1.5 = 1.5 монеты  
-                        text = 2,       // 2 текста * 1.0 = 2.0 монеты
+                        photos = 3,   
+                        voiceWorkouts = 1,      
+                        text = 2,     
                         total = 11.0m,
                         note = "Анализ тренировки = голосовой ввод тренировки (1.5 монеты)"
                     },
                     optimizedDailyUsage = new
                     {
                         photos = 3,
-                        voiceWorkouts = 1,      // 1 голосовая тренировка * 1.5 = 1.5 монеты
+                        voiceWorkouts = 1,    
                         text = 1,
                         total = 10.0m,
                         note = "Рекомендуемое распределение трат для экономии монет"
