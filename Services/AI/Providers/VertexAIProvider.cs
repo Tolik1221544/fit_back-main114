@@ -592,8 +592,8 @@ CRITICAL: Return ONLY the JSON object, nothing else.";
             var langInstruction = GetLanguageInstruction(lang);
             var currentDate = DateTime.UtcNow;
 
-            var startDate = currentDate.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-            var endDate = currentDate.AddMinutes(60).ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            var startDate = currentDate.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'");
+            var endDate = currentDate.AddMinutes(60).ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'");
 
             var exerciseNameStrength = lang switch
             {
@@ -665,8 +665,8 @@ STRENGTH:
 {{
   ""workoutData"": {{
     ""type"": ""strength"",
-    ""startDate"": ""{currentDate.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")}"",
-    ""endDate"": ""{currentDate.AddMinutes(45).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")}"",
+    ""startDate"": ""{currentDate.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")}"",
+    ""endDate"": ""{currentDate.AddMinutes(45).ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")}"",
     ""estimatedCalories"": 250,
     ""activityData"": {{
       ""name"": ""{exerciseNameStrength}"",
@@ -1371,8 +1371,26 @@ CRITICAL:
             {
                 if (prop.ValueKind == JsonValueKind.Null) return null;
                 var dateString = prop.GetString();
-                if (!string.IsNullOrEmpty(dateString) && DateTime.TryParse(dateString, out var parsedDate))
-                    return parsedDate;
+                if (!string.IsNullOrEmpty(dateString))
+                {
+                    if (dateString.Contains("+") || dateString.Contains(" "))
+                    {
+                        var indexOfPlus = dateString.IndexOf('+');
+                        var indexOfSpace = dateString.IndexOf(' ');
+                        var cutIndex = indexOfPlus > 0 ? indexOfPlus : (indexOfSpace > 0 ? indexOfSpace : dateString.Length);
+                        dateString = dateString.Substring(0, cutIndex);
+
+                        if (!dateString.EndsWith("Z"))
+                        {
+                            dateString += "Z";
+                        }
+                    }
+
+                    if (DateTime.TryParse(dateString, out var parsedDate))
+                    {
+                        return DateTime.SpecifyKind(parsedDate, DateTimeKind.Utc);
+                    }
+                }
             }
             return null;
         }
@@ -1753,8 +1771,26 @@ CRITICAL:
                 if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.String)
                 {
                     var dateString = prop.GetString();
-                    if (!string.IsNullOrEmpty(dateString) && DateTime.TryParse(dateString, out var parsedDate))
-                        return parsedDate;
+                    if (!string.IsNullOrEmpty(dateString))
+                    {
+                        if (dateString.Contains("+") || dateString.Contains(" "))
+                        {
+                            var indexOfPlus = dateString.IndexOf('+');
+                            var indexOfSpace = dateString.IndexOf(' ');
+                            var cutIndex = indexOfPlus > 0 ? indexOfPlus : (indexOfSpace > 0 ? indexOfSpace : dateString.Length);
+                            dateString = dateString.Substring(0, cutIndex);
+
+                            if (!dateString.EndsWith("Z"))
+                            {
+                                dateString += "Z";
+                            }
+                        }
+
+                        if (DateTime.TryParse(dateString, out var parsedDate))
+                        {
+                            return DateTime.SpecifyKind(parsedDate, DateTimeKind.Utc);
+                        }
+                    }
                 }
                 return DateTime.UtcNow;
             }
