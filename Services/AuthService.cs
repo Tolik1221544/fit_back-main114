@@ -18,9 +18,17 @@ namespace FitnessTracker.API.Services
         private readonly IMapper _mapper;
         private readonly ILogger<AuthService> _logger;
 
-        
         private static readonly string JWT_SECRET_KEY = "fitness-tracker-super-secret-key-that-is-definitely-long-enough-for-security-2024";
         private static readonly ConcurrentDictionary<string, (string Code, DateTime Expiry)> _verificationCodes = new();
+
+        private static readonly Dictionary<string, string> TestCodes = new()
+        {
+            { "test@lightweightfit.com", "123456" },
+            { "demo@lightweightfit.com", "111111" },
+            { "review@lightweightfit.com", "777777" },
+            { "apple.review@lightweightfit.com", "999999" },
+            { "dev@lightweightfit.com", "000000" }
+        };
 
         public AuthService(
             IUserRepository userRepository,
@@ -41,21 +49,36 @@ namespace FitnessTracker.API.Services
             try
             {
                 email = email.Trim().ToLowerInvariant();
-                _logger.LogInformation($"Sending verification code to {email}");
+                _logger.LogInformation($"📧 Sending verification code to {email}");
 
-                // Generate 6-digit code
+                if (TestCodes.ContainsKey(email))
+                {
+                    var testCode = TestCodes[email];
+
+                    _verificationCodes.AddOrUpdate(email,
+                        (testCode, DateTime.UtcNow.AddMinutes(30)), 
+                        (key, oldValue) => (testCode, DateTime.UtcNow.AddMinutes(30)));
+
+                    _logger.LogInformation($"✅ Fixed code provided for: {email}");
+                    Console.WriteLine("==================================================");
+                    Console.WriteLine($"🔑 FIXED CODE FOR TESTING");
+                    Console.WriteLine($"📧 Email: {email}");
+                    Console.WriteLine($"🔐 Code: {testCode}");
+                    Console.WriteLine($"⏰ Valid for 30 minutes");
+                    Console.WriteLine($"✅ Use this code in /api/auth/confirm-email");
+                    Console.WriteLine("==================================================");
+
+                    return true;
+                }
+
                 var code = new Random().Next(100000, 999999).ToString();
-
-               
                 CleanExpiredCodes();
 
                 _verificationCodes.AddOrUpdate(email,
                     (code, DateTime.UtcNow.AddMinutes(5)),
                     (key, oldValue) => (code, DateTime.UtcNow.AddMinutes(5)));
 
-                // Send email
                 var result = await _emailService.SendVerificationEmailAsync(email, code);
-
                 _logger.LogInformation($"Verification code sent to {email}: {(result ? "success" : "failed")}");
                 return result;
             }
@@ -71,9 +94,8 @@ namespace FitnessTracker.API.Services
             try
             {
                 email = email.Trim().ToLowerInvariant();
-                _logger.LogInformation($"Confirming email for {email}");
+                _logger.LogInformation($"📧 Confirming email for {email}");
 
-                
                 if (!_verificationCodes.TryGetValue(email, out var storedData))
                 {
                     _logger.LogWarning($"No verification code found for {email}");
@@ -93,29 +115,26 @@ namespace FitnessTracker.API.Services
                     throw new UnauthorizedAccessException("Verification code has expired");
                 }
 
-               
                 _verificationCodes.TryRemove(email, out _);
 
                 var existingUser = await _userRepository.GetByEmailAsync(email);
-
                 User user;
+
                 if (existingUser == null)
                 {
                     _logger.LogInformation($"Creating new user for {email}");
-
-                    
                     var referralCode = await GenerateUniqueReferralCode();
 
                     user = new User
                     {
                         Id = Guid.NewGuid().ToString(),
                         Email = email,
-                        Name = "Пользователь",
+                        Name = GetUserNameForEmail(email), 
                         RegisteredVia = "email",
                         Level = 1,
                         Experience = 0,
                         LwCoins = 300,
-                        FractionalLwCoins = 300.0, 
+                        FractionalLwCoins = 300.0,
                         ReferralCode = referralCode,
                         JoinedAt = DateTime.UtcNow,
                         LastMonthlyRefill = DateTime.UtcNow,
@@ -138,7 +157,6 @@ namespace FitnessTracker.API.Services
                     user = existingUser;
                     _logger.LogInformation($"Existing user found: {user.Id}");
 
-                   
                     bool needsUpdate = false;
 
                     if (!user.IsEmailConfirmed)
@@ -149,7 +167,7 @@ namespace FitnessTracker.API.Services
 
                     if (string.IsNullOrEmpty(user.Name))
                     {
-                        user.Name = "Пользователь";
+                        user.Name = GetUserNameForEmail(email);
                         needsUpdate = true;
                     }
 
@@ -186,14 +204,15 @@ namespace FitnessTracker.API.Services
                 }
 
                 var userDto = _mapper.Map<UserDto>(user);
-
-              
                 var experienceData = CalculateExperienceData(user.Level, user.Experience);
                 userDto.MaxExperience = experienceData.MaxExperience;
                 userDto.ExperienceToNextLevel = experienceData.ExperienceToNextLevel;
                 userDto.ExperienceProgress = experienceData.ExperienceProgress;
 
-                _logger.LogInformation($"Authentication successful for {email}");
+                if (TestCodes.ContainsKey(email))
+                {
+                    _logger.LogInformation($"🔑 Fixed code login successful: {email}");
+                }
 
                 return new AuthResponseDto
                 {
@@ -222,12 +241,10 @@ namespace FitnessTracker.API.Services
             return Task.FromResult(true);
         }
 
-
         public async Task<string> GenerateJwtTokenAsync(string userId)
         {
             return await Task.FromResult(GenerateJwtToken(userId));
         }
-
 
         private string GenerateJwtToken(string userId)
         {
@@ -241,7 +258,7 @@ namespace FitnessTracker.API.Services
                     {
                         new Claim(ClaimTypes.NameIdentifier, userId),
                         new Claim("user_id", userId),
-                        new Claim("jti", Guid.NewGuid().ToString()), // ✅ Уникальный ID токена
+                        new Claim("jti", Guid.NewGuid().ToString()),
                         new Claim("iat", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64)
                     }),
                     Expires = DateTime.UtcNow.AddDays(30),
@@ -266,7 +283,41 @@ namespace FitnessTracker.API.Services
             }
         }
 
-      
+        private string GetUserNameForEmail(string email)
+        {
+            if (TestCodes.ContainsKey(email))
+            {
+                return email switch
+                {
+                    "test@lightweightfit.com" => "Test User",
+                    "demo@lightweightfit.com" => "Demo User",
+                    "review@lightweightfit.com" => "Review User",
+                    "apple.review@lightweightfit.com" => "Apple Review",
+                    "dev@lightweightfit.com" => "Developer",
+                    _ => "Test User"
+                };
+            }
+
+            var namePart = email.Split('@')[0];
+
+            namePart = namePart.Replace(".", " ");
+
+            if (!string.IsNullOrEmpty(namePart))
+            {
+                var words = namePart.Split(' ');
+                for (int i = 0; i < words.Length; i++)
+                {
+                    if (!string.IsNullOrEmpty(words[i]))
+                    {
+                        words[i] = char.ToUpper(words[i][0]) + words[i].Substring(1).ToLower();
+                    }
+                }
+                namePart = string.Join(" ", words);
+            }
+
+            return string.IsNullOrEmpty(namePart) ? "Пользователь" : namePart;
+        }
+
         private async Task<string> GenerateUniqueReferralCode()
         {
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -284,7 +335,6 @@ namespace FitnessTracker.API.Services
             return code;
         }
 
-      
         private void CleanExpiredCodes()
         {
             var expiredKeys = _verificationCodes
@@ -298,7 +348,6 @@ namespace FitnessTracker.API.Services
             }
         }
 
-   
         private (int MaxExperience, int ExperienceToNextLevel, decimal ExperienceProgress) CalculateExperienceData(int level, int currentExperience)
         {
             var levelRequirements = new[] { 0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700, 3250 };

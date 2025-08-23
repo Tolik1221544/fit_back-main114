@@ -590,10 +590,10 @@ CRITICAL: Return ONLY the JSON object, nothing else.";
         private string CreateTextWorkoutPrompt(string workoutText, string? workoutType, string lang)
         {
             var langInstruction = GetLanguageInstruction(lang);
-
             var currentDate = DateTime.UtcNow;
-            var startDate = currentDate.ToString("yyyy-MM-ddTHH:mm:ssZ");
-            var endDate = currentDate.AddMinutes(60).ToString("yyyy-MM-ddTHH:mm:ssZ");
+
+            var startDate = currentDate.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            var endDate = currentDate.AddMinutes(60).ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
 
             var exerciseNameStrength = lang switch
             {
@@ -665,8 +665,8 @@ STRENGTH:
 {{
   ""workoutData"": {{
     ""type"": ""strength"",
-    ""startDate"": ""{startDate}"",
-    ""endDate"": ""{currentDate.AddMinutes(45).ToString("yyyy-MM-ddTHH:mm:ssZ")}"",
+    ""startDate"": ""{currentDate.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")}"",
+    ""endDate"": ""{currentDate.AddMinutes(45).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")}"",
     ""estimatedCalories"": 250,
     ""activityData"": {{
       ""name"": ""{exerciseNameStrength}"",

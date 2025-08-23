@@ -72,12 +72,9 @@ namespace FitnessTracker.API.Services
                 if (activityType != "strength" && activityType != "cardio")
                     throw new ArgumentException("Activity type must be 'strength' or 'cardio'");
 
-                var user = await _userRepository.GetByIdAsync(userId);
-                var userTimeZone = GetTimeZoneFromLocale(user?.Locale);
-
-                var startDate = ConvertToUtc(request.StartDate, userTimeZone);
+                var startDate = EnsureUtc(request.StartDate);
                 var endDate = request.EndDate.HasValue ?
-                    ConvertToUtc(request.EndDate.Value, userTimeZone) :
+                    EnsureUtc(request.EndDate.Value) :
                     startDate.AddMinutes(30);
 
                 var activity = new Activity
@@ -171,10 +168,6 @@ namespace FitnessTracker.API.Services
                     $"Тренировка: {activity.Type} ({experienceAmount} опыта)");
 
                 var activityDto = _mapper.Map<ActivityDto>(createdActivity);
-                activityDto.StartDate = ConvertFromUtc(createdActivity.StartDate, userTimeZone);
-                if (createdActivity.EndDate.HasValue)
-                    activityDto.EndDate = ConvertFromUtc(createdActivity.EndDate.Value, userTimeZone);
-
                 return activityDto;
             }
             catch (Exception ex)
@@ -190,9 +183,6 @@ namespace FitnessTracker.API.Services
             if (activity == null || activity.UserId != userId)
                 throw new ArgumentException("Activity not found");
 
-            var user = await _userRepository.GetByIdAsync(userId);
-            var userTimeZone = GetTimeZoneFromLocale(user?.Locale);
-
             if (!string.IsNullOrWhiteSpace(request.Type))
             {
                 var activityType = request.Type.Trim().ToLowerInvariant();
@@ -203,12 +193,12 @@ namespace FitnessTracker.API.Services
 
             if (request.StartDate != default(DateTime))
             {
-                activity.StartDate = ConvertToUtc(request.StartDate, userTimeZone);
+                activity.StartDate = EnsureUtc(request.StartDate);
             }
 
             if (request.EndDate.HasValue)
             {
-                activity.EndDate = ConvertToUtc(request.EndDate.Value, userTimeZone);
+                activity.EndDate = EnsureUtc(request.EndDate.Value);
             }
 
             if (request.Calories.HasValue)
@@ -279,104 +269,18 @@ namespace FitnessTracker.API.Services
             var updatedActivity = await _activityRepository.UpdateAsync(activity);
 
             var activityDto = _mapper.Map<ActivityDto>(updatedActivity);
-            activityDto.StartDate = ConvertFromUtc(updatedActivity.StartDate, userTimeZone);
-            if (updatedActivity.EndDate.HasValue)
-                activityDto.EndDate = ConvertFromUtc(updatedActivity.EndDate.Value, userTimeZone);
-
             return activityDto;
         }
 
-        private TimeZoneInfo GetTimeZoneFromLocale(string? locale)
-        {
-            if (string.IsNullOrEmpty(locale))
-                return TimeZoneInfo.Utc;
-
-            var timeZoneMap = new Dictionary<string, string>
-            {
-                // Россия
-                ["ru_RU"] = "Russian Standard Time", // UTC+3 (Москва)
-                ["ru"] = "Russian Standard Time",
-
-                // США
-                ["en_US"] = "Eastern Standard Time", // UTC-5
-                ["en"] = "UTC",
-
-                // Европа
-                ["en_GB"] = "GMT Standard Time", // UTC+0
-                ["de_DE"] = "W. Europe Standard Time", // UTC+1
-                ["fr_FR"] = "Romance Standard Time", // UTC+1
-                ["es_ES"] = "Romance Standard Time", // UTC+1
-                ["it_IT"] = "W. Europe Standard Time", // UTC+1
-
-                // Азия
-                ["zh_CN"] = "China Standard Time", // UTC+8
-                ["ja_JP"] = "Tokyo Standard Time", // UTC+9
-                ["ko_KR"] = "Korea Standard Time", // UTC+9
-
-                // Латинская Америка
-                ["es_MX"] = "Central Standard Time (Mexico)", // UTC-6
-                ["pt_BR"] = "E. South America Standard Time", // UTC-3
-
-                // Другие
-                ["ar_SA"] = "Arab Standard Time", // UTC+3
-                ["hi_IN"] = "India Standard Time", // UTC+5:30
-                ["tr_TR"] = "Turkey Standard Time", // UTC+3
-            };
-
-            try
-            {
-                var localeKey = locale.ToLower();
-
-                // Пробуем точное совпадение
-                if (timeZoneMap.ContainsKey(localeKey))
-                {
-                    var tzId = timeZoneMap[localeKey];
-                    return TimeZoneInfo.FindSystemTimeZoneById(tzId);
-                }
-
-                // Пробуем по языковому коду (первые 2 символа)
-                var langCode = localeKey.Length >= 2 ? localeKey.Substring(0, 2) : localeKey;
-                if (timeZoneMap.ContainsKey(langCode))
-                {
-                    var tzId = timeZoneMap[langCode];
-                    return TimeZoneInfo.FindSystemTimeZoneById(tzId);
-                }
-
-                _logger.LogWarning($"TimeZone not found for locale: {locale}, using UTC");
-                return TimeZoneInfo.Utc;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error getting timezone for locale {locale}: {ex.Message}");
-                return TimeZoneInfo.Utc;
-            }
-        }
-
-        private DateTime ConvertToUtc(DateTime dateTime, TimeZoneInfo timeZone)
+        private DateTime EnsureUtc(DateTime dateTime)
         {
             if (dateTime.Kind == DateTimeKind.Utc)
                 return dateTime;
 
-            try
-            {
-                return TimeZoneInfo.ConvertTimeToUtc(dateTime, timeZone);
-            }
-            catch
-            {
-                return dateTime;
-            }
-        }
+            if (dateTime.Kind == DateTimeKind.Local)
+                return dateTime.ToUniversalTime();
 
-        private DateTime ConvertFromUtc(DateTime utcDateTime, TimeZoneInfo timeZone)
-        {
-            try
-            {
-                return TimeZoneInfo.ConvertTimeFromUtc(utcDateTime, timeZone);
-            }
-            catch
-            {
-                return utcDateTime;
-            }
+            return DateTime.SpecifyKind(dateTime, DateTimeKind.Utc);
         }
 
         public async Task DeleteActivityAsync(string userId, string activityId)
