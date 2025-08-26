@@ -43,7 +43,7 @@ namespace FitnessTracker.API.Services.AI
                     _logger.LogInformation($"💪 Body analysis attempt {attempt}/{maxAttempts}");
 
                     var result = await _primaryProvider.AnalyzeBodyImagesAsync(
-                        frontImageData, sideImageData, backImageData, weight, height, age, gender, goals);
+                        frontImageData, sideImageData, backImageData, weight, height, age, gender, goals, locale);
 
                     if (result.Success && ValidateBodyScanResult(result))
                     {
@@ -71,7 +71,7 @@ namespace FitnessTracker.API.Services.AI
             }
 
             _logger.LogError($"❌ All body analysis attempts failed. Creating fallback response.");
-            return _errorHandler.CreateFallbackBodyResponse($"Analysis failed: {lastException.Message}");
+            return _errorHandler.CreateFallbackBodyResponse($"Analysis failed: {lastException.Message}", locale);
         }
 
         public async Task<VoiceWorkoutResponse> AnalyzeVoiceWorkoutAsync(byte[] audioData, string? workoutType = null, string? locale = null)
@@ -113,7 +113,7 @@ namespace FitnessTracker.API.Services.AI
             }
 
             _logger.LogError($"❌ All voice workout attempts failed. Creating fallback response.");
-            return _errorHandler.CreateFallbackWorkoutResponse($"Analysis failed: {lastException.Message}", workoutType);
+            return _errorHandler.CreateFallbackWorkoutResponse($"Analysis failed: {lastException.Message}", locale, workoutType);
         }
 
         public async Task<VoiceFoodResponse> AnalyzeVoiceFoodAsync(byte[] audioData, string? mealType = null, string? locale = null)
@@ -127,7 +127,7 @@ namespace FitnessTracker.API.Services.AI
                 {
                     _logger.LogInformation($"🗣️ Voice food analysis attempt {attempt}/{maxAttempts}");
 
-                    var result = await _primaryProvider.AnalyzeVoiceFoodAsync(audioData, mealType);
+                    var result = await _primaryProvider.AnalyzeVoiceFoodAsync(audioData, mealType, locale);
 
                     if (result.Success && ValidateVoiceFoodResult(result))
                     {
@@ -155,7 +155,7 @@ namespace FitnessTracker.API.Services.AI
             }
 
             _logger.LogError($"❌ All voice food attempts failed. Creating fallback response.");
-            return _errorHandler.CreateFallbackVoiceFoodResponse($"Analysis failed: {lastException.Message}", mealType);
+            return _errorHandler.CreateFallbackVoiceFoodResponse($"Analysis failed: {lastException.Message}", locale, mealType);
         }
 
         public async Task<TextWorkoutResponse> AnalyzeTextWorkoutAsync(string workoutText, string? workoutType = null, string? locale = null)
@@ -197,7 +197,7 @@ namespace FitnessTracker.API.Services.AI
             }
 
             _logger.LogError($"❌ All text workout attempts failed. Creating fallback response.");
-            return _errorHandler.CreateFallbackTextWorkoutResponse($"Analysis failed: {lastException.Message}", workoutType);
+            return _errorHandler.CreateFallbackTextWorkoutResponse($"Analysis failed: {lastException.Message}", locale, workoutType);
         }
 
         public async Task<TextFoodResponse> AnalyzeTextFoodAsync(string foodText, string? mealType = null, string? locale = null)
@@ -239,7 +239,7 @@ namespace FitnessTracker.API.Services.AI
             }
 
             _logger.LogError($"❌ All text food attempts failed. Creating fallback response.");
-            return _errorHandler.CreateFallbackTextFoodResponse($"Analysis failed: {lastException.Message}", mealType);
+            return _errorHandler.CreateFallbackTextFoodResponse($"Analysis failed: {lastException.Message}", locale, mealType);
         }
 
         public async Task<FoodScanResponse> AnalyzeFoodImageAsync(byte[] imageData, string? userPrompt = null, string? locale = null)
@@ -266,7 +266,7 @@ namespace FitnessTracker.API.Services.AI
                         _logger.LogWarning($"⚠️ Food analysis returned invalid data on attempt {attempt}");
                         if (attempt == maxAttempts)
                         {
-                            return _errorHandler.CreateFallbackFoodResponse("Invalid analysis result", imageData);
+                            return _errorHandler.CreateFallbackFoodResponse("Invalid analysis result", locale, imageData);
                         }
                     }
                     else
@@ -294,7 +294,7 @@ namespace FitnessTracker.API.Services.AI
             }
 
             _logger.LogError($"❌ All food analysis attempts failed. Creating fallback response.");
-            return _errorHandler.CreateFallbackFoodResponse($"Analysis failed after {maxAttempts} attempts: {lastException.Message}", imageData);
+            return _errorHandler.CreateFallbackFoodResponse($"Analysis failed after {maxAttempts} attempts: {lastException.Message}", locale, imageData);
         }
 
         public async Task<FoodCorrectionResponse> CorrectFoodItemAsync(string originalFoodName, string correctionText, string? locale = null)
@@ -355,7 +355,6 @@ namespace FitnessTracker.API.Services.AI
             return status;
         }
 
-        // Legacy methods for backward compatibility
         public async Task<GeminiResponse> SendGeminiRequestAsync(List<GeminiContent> contents, GeminiGenerationConfig? config = null)
         {
             throw new NotImplementedException("Use specific analysis methods instead");

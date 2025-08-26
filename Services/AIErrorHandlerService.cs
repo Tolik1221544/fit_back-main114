@@ -4,12 +4,12 @@ namespace FitnessTracker.API.Services.AI
 {
     public interface IAIErrorHandlerService
     {
-        FoodScanResponse CreateFallbackFoodResponse(string reason, byte[]? imageData = null);
-        VoiceWorkoutResponse CreateFallbackWorkoutResponse(string reason, string? workoutType = null);
-        VoiceFoodResponse CreateFallbackVoiceFoodResponse(string reason, string? mealType = null);
-        BodyScanResponse CreateFallbackBodyResponse(string reason);
-        TextWorkoutResponse CreateFallbackTextWorkoutResponse(string reason, string? workoutType = null);
-        TextFoodResponse CreateFallbackTextFoodResponse(string reason, string? mealType = null);
+        FoodScanResponse CreateFallbackFoodResponse(string reason, string? locale = null, byte[]? imageData = null);
+        VoiceWorkoutResponse CreateFallbackWorkoutResponse(string reason, string? locale = null, string? workoutType = null);
+        VoiceFoodResponse CreateFallbackVoiceFoodResponse(string reason, string? locale = null, string? mealType = null);
+        BodyScanResponse CreateFallbackBodyResponse(string reason, string? locale = null);
+        TextWorkoutResponse CreateFallbackTextWorkoutResponse(string reason, string? locale = null, string? workoutType = null);
+        TextFoodResponse CreateFallbackTextFoodResponse(string reason, string? locale = null, string? mealType = null);
         bool ShouldRetryRequest(Exception ex, int currentAttempt);
     }
 
@@ -22,150 +22,136 @@ namespace FitnessTracker.API.Services.AI
             _logger = logger;
         }
 
-        public FoodScanResponse CreateFallbackFoodResponse(string reason, byte[]? imageData = null)
+        private string GetMaintenanceMessage(string? locale)
         {
-            _logger.LogInformation($"🍎 Food analysis failed: {reason}");
+            var lang = GetLanguageFromLocale(locale ?? "en");
 
-            var noFoodKeywords = new[]
+            return lang switch
             {
-                "не обнаружены продукты питания",
-                "не содержит еду",
-                "не является едой",
-                "no food detected"
+                "ru" => "Ведутся технические работы. Пожалуйста, попробуйте через 30 минут.",
+                "es" => "Mantenimiento del servidor en curso. Por favor, inténtelo de nuevo en 30 minutos.",
+                "de" => "Serverwartung im Gange. Bitte versuchen Sie es in 30 Minuten erneut.",
+                "fr" => "Maintenance du serveur en cours. Veuillez réessayer dans 30 minutes.",
+                "zh" => "服务器正在维护中。请30分钟后再试。",
+                "ja" => "サーバーメンテナンス中です。30分後にもう一度お試しください。",
+                "ko" => "서버 유지 보수 중입니다. 30분 후에 다시 시도해 주세요.",
+                "pt" => "Manutenção do servidor em andamento. Por favor, tente novamente em 30 minutos.",
+                "it" => "Manutenzione del server in corso. Si prega di riprovare tra 30 minuti.",
+                "ar" => "الخادم قيد الصيانة. يرجى المحاولة مرة أخرى بعد 30 دقيقة.",
+                "hi" => "सर्वर रखरखाव चल रहा है। कृपया 30 मिनट बाद पुनः प्रयास करें।",
+                "tr" => "Sunucu bakımı devam ediyor. Lütfen 30 dakika sonra tekrar deneyin.",
+                "pl" => "Trwa konserwacja serwera. Spróbuj ponownie za 30 minut.",
+                "uk" => "Проводяться технічні роботи. Будь ласка, спробуйте через 30 хвилин.",
+                _ => "Server maintenance in progress. Please try again in 30 minutes."
             };
+        }
 
-            bool isNoFoodDetected = noFoodKeywords.Any(keyword =>
-                reason.ToLowerInvariant().Contains(keyword.ToLowerInvariant()));
+        private string GetLanguageFromLocale(string? locale)
+        {
+            if (string.IsNullOrEmpty(locale))
+                return "en";
 
-            if (isNoFoodDetected)
-            {
-                return new FoodScanResponse
-                {
-                    Success = false,
-                    ErrorMessage = "На изображении не обнаружены продукты питания. Пожалуйста, сфотографируйте еду или продукты.",
-                    FoodItems = new List<FoodItemResponse>(),
-                    EstimatedCalories = 0,
-                    FullDescription = "Еда не найдена на изображении"
-                };
-            }
+            var normalizedLocale = locale.Replace("-", "_").ToLower();
+            var lang = normalizedLocale.Length >= 2 ? normalizedLocale.Substring(0, 2) : normalizedLocale;
+            return lang;
+        }
+
+        public FoodScanResponse CreateFallbackFoodResponse(string reason, string? locale = null, byte[]? imageData = null)
+        {
+            _logger.LogError($"🍎 Food analysis failed: {reason}");
 
             return new FoodScanResponse
             {
                 Success = false,
-                ErrorMessage = $"Техническая ошибка анализа: {reason}. Попробуйте сделать более четкое фото еды.",
+                ErrorMessage = GetMaintenanceMessage(locale),
                 FoodItems = new List<FoodItemResponse>(),
                 EstimatedCalories = 0,
-                FullDescription = "Анализ не выполнен из-за технической ошибки"
+                FullDescription = string.Empty
             };
         }
 
-        public VoiceWorkoutResponse CreateFallbackWorkoutResponse(string reason, string? workoutType = null)
+        public VoiceWorkoutResponse CreateFallbackWorkoutResponse(string reason, string? locale = null, string? workoutType = null)
         {
-            _logger.LogInformation($"🎤 Workout analysis failed: {reason}");
-
-            var noWorkoutKeywords = new[]
-            {
-                "не удалось распознать информацию о тренировке",
-                "отсутствует речь",
-                "только фоновые звуки",
-                "тишина",
-                "не о тренировках"
-            };
-
-            bool isNoWorkoutDetected = noWorkoutKeywords.Any(keyword =>
-                reason.ToLowerInvariant().Contains(keyword.ToLowerInvariant()));
-
-            if (isNoWorkoutDetected)
-            {
-                return new VoiceWorkoutResponse
-                {
-                    Success = false,
-                    ErrorMessage = "Не удалось распознать информацию о тренировке в аудиозаписи. Убедитесь, что говорите о физических упражнениях.",
-                    TranscribedText = "Информация о тренировке не найдена",
-                    WorkoutData = null
-                };
-            }
+            _logger.LogError($"🎤 Workout analysis failed: {reason}");
 
             return new VoiceWorkoutResponse
             {
                 Success = false,
-                ErrorMessage = $"Техническая ошибка анализа: {reason}. Попробуйте записать аудио заново.",
-                TranscribedText = "Анализ не выполнен",
+                ErrorMessage = GetMaintenanceMessage(locale),
+                TranscribedText = string.Empty,
                 WorkoutData = null
             };
         }
 
-
-        public VoiceFoodResponse CreateFallbackVoiceFoodResponse(string reason, string? mealType = null)
+        public VoiceFoodResponse CreateFallbackVoiceFoodResponse(string reason, string? locale = null, string? mealType = null)
         {
-            _logger.LogInformation($"🗣️ Food voice analysis failed: {reason}");
-
-            var noFoodKeywords = new[]
-            {
-                "не удалось распознать информацию о питании",
-                "отсутствует речь",
-                "только фоновые звуки",
-                "тишина",
-                "не о еде"
-            };
-
-            bool isNoFoodDetected = noFoodKeywords.Any(keyword =>
-                reason.ToLowerInvariant().Contains(keyword.ToLowerInvariant()));
-
-            if (isNoFoodDetected)
-            {
-                return new VoiceFoodResponse
-                {
-                    Success = false,
-                    ErrorMessage = "Не удалось распознать информацию о питании в аудиозаписи. Убедитесь, что говорите о еде или напитках.",
-                    TranscribedText = "Информация о питании не найдена",
-                    FoodItems = new List<FoodItemResponse>(),
-                    EstimatedTotalCalories = 0
-                };
-            }
+            _logger.LogError($"🗣️ Food voice analysis failed: {reason}");
 
             return new VoiceFoodResponse
             {
                 Success = false,
-                ErrorMessage = $"Техническая ошибка анализа: {reason}. Попробуйте записать аудио заново.",
-                TranscribedText = "Анализ не выполнен",
+                ErrorMessage = GetMaintenanceMessage(locale),
+                TranscribedText = string.Empty,
                 FoodItems = new List<FoodItemResponse>(),
                 EstimatedTotalCalories = 0
             };
         }
 
-        public BodyScanResponse CreateFallbackBodyResponse(string reason)
+        public BodyScanResponse CreateFallbackBodyResponse(string reason, string? locale = null)
         {
-            _logger.LogInformation($"💪 Creating fallback body response: {reason}");
+            _logger.LogError($"💪 Body analysis failed: {reason}");
 
             return new BodyScanResponse
             {
-                Success = true,
-                ErrorMessage = null,
+                Success = false,
+                ErrorMessage = GetMaintenanceMessage(locale),
                 BodyAnalysis = new BodyAnalysisDto
                 {
-                    EstimatedBodyFatPercentage = 15m,
-                    EstimatedMusclePercentage = 40m,
-                    BodyType = "Средний тип телосложения",
-                    PostureAnalysis = "Не удалось проанализировать осанку",
-                    OverallCondition = $"Анализ недоступен ({reason})",
-                    BMI = 22.5m,
-                    BMICategory = "Нормальный",
-                    EstimatedWaistCircumference = 80m,
-                    EstimatedChestCircumference = 100m,
-                    EstimatedHipCircumference = 95m,
-                    BasalMetabolicRate = 1600,
-                    MetabolicRateCategory = "Нормальный",
-                    ExerciseRecommendations = new List<string> { "Регулярные упражнения", "Кардио нагрузки" },
-                    NutritionRecommendations = new List<string> { "Сбалансированное питание", "Достаточное количество воды" },
-                    TrainingFocus = "Общая физическая подготовка"
+                    EstimatedBodyFatPercentage = 0,
+                    EstimatedMusclePercentage = 0,
+                    BodyType = string.Empty,
+                    PostureAnalysis = string.Empty,
+                    OverallCondition = string.Empty,
+                    BMI = 0,
+                    BMICategory = string.Empty,
+                    EstimatedWaistCircumference = 0,
+                    EstimatedChestCircumference = 0,
+                    EstimatedHipCircumference = 0,
+                    BasalMetabolicRate = 0,
+                    MetabolicRateCategory = string.Empty,
+                    TrainingFocus = string.Empty,
+                    ExerciseRecommendations = new List<string>(),
+                    NutritionRecommendations = new List<string>()
                 },
-                Recommendations = new List<string>
-                {
-                    "Рекомендуем повторить анализ с более качественными фотографиями",
-                    "Обратитесь к специалисту для точной оценки"
-                },
-                FullAnalysis = $"Анализ был выполнен автоматически из-за ошибки: {reason}"
+                Recommendations = new List<string>(),
+                FullAnalysis = string.Empty
+            };
+        }
+
+        public TextWorkoutResponse CreateFallbackTextWorkoutResponse(string reason, string? locale = null, string? workoutType = null)
+        {
+            _logger.LogError($"📝 Text workout analysis failed: {reason}");
+
+            return new TextWorkoutResponse
+            {
+                Success = false,
+                ErrorMessage = GetMaintenanceMessage(locale),
+                ProcessedText = string.Empty,
+                WorkoutData = null
+            };
+        }
+
+        public TextFoodResponse CreateFallbackTextFoodResponse(string reason, string? locale = null, string? mealType = null)
+        {
+            _logger.LogError($"📝 Text food analysis failed: {reason}");
+
+            return new TextFoodResponse
+            {
+                Success = false,
+                ErrorMessage = GetMaintenanceMessage(locale),
+                ProcessedText = string.Empty,
+                FoodItems = new List<FoodItemResponse>(),
+                EstimatedTotalCalories = 0
             };
         }
 
@@ -176,6 +162,12 @@ namespace FitnessTracker.API.Services.AI
             if (currentAttempt >= maxAttempts)
                 return false;
 
+            if (ex.Message.Contains("403") || ex.Message.Contains("401"))
+            {
+                _logger.LogError($"❌ Not retrying - authorization error: {ex.Message}");
+                return false;
+            }
+
             if (ex is HttpRequestException || ex is TaskCanceledException)
                 return true;
 
@@ -183,143 +175,6 @@ namespace FitnessTracker.API.Services.AI
                 return true;
 
             return false;
-        }
-
-        // Private helper methods
-
-        private (string Name, decimal Weight, string WeightType, NutritionPer100gDto Nutrition) DetermineDefaultFood(byte[]? imageData)
-        {
-            if (imageData != null && imageData.Length > 1024 * 1024) 
-            {
-                return ("Основное блюдо", 200m, "g", new NutritionPer100gDto
-                {
-                    Calories = 300,
-                    Proteins = 20,
-                    Fats = 15,
-                    Carbs = 25
-                });
-            }
-
-            return ("Неизвестный продукт", 150m, "g", new NutritionPer100gDto
-            {
-                Calories = 200,
-                Proteins = 10,
-                Fats = 8,
-                Carbs = 25
-            });
-        }
-
-        public TextWorkoutResponse CreateFallbackTextWorkoutResponse(string reason, string? workoutType = null)
-        {
-            _logger.LogInformation($"📝 Creating fallback text workout response: {reason}");
-
-            var type = DetermineWorkoutType(workoutType);
-            var defaultWorkout = CreateDefaultWorkoutData(reason, type);
-
-            return new TextWorkoutResponse
-            {
-                Success = true,
-                ErrorMessage = null,
-                ProcessedText = $"Не удалось обработать текст ({reason}), создана базовая тренировка",
-                WorkoutData = defaultWorkout
-            };
-        }
-
-        public TextFoodResponse CreateFallbackTextFoodResponse(string reason, string? mealType = null)
-        {
-            _logger.LogInformation($"📝 Creating fallback text food response: {reason}");
-
-            var defaultFood = GetDefaultFoodForMeal(mealType);
-
-            return new TextFoodResponse
-            {
-                Success = true,
-                ErrorMessage = null,
-                ProcessedText = $"Не удалось обработать текст ({reason}), создана базовая запись о питании",
-                FoodItems = new List<FoodItemResponse> { defaultFood },
-                EstimatedTotalCalories = defaultFood.TotalCalories
-            };
-        }
-
-        private string DetermineWorkoutType(string? workoutType)
-        {
-            if (string.IsNullOrEmpty(workoutType))
-                return "cardio"; 
-
-            var lowerType = workoutType.ToLowerInvariant();
-
-            var cardioKeywords = new[] {
-                "cardio", "кардио", "бег", "running", "cycling", "велосипед",
-                "swimming", "плавание", "walking", "ходьба", "jogging", "bike",
-                "бега", "беге"
-        };
-
-            if (cardioKeywords.Any(keyword => lowerType.Contains(keyword)))
-                return "cardio";
-
-            return "strength";
-        }
-
-        private ActivityDto CreateDefaultWorkoutData(string reason, string type)
-        {
-            var startDate = DateTime.UtcNow; 
-            var endDate = startDate.AddMinutes(type == "cardio" ? 30 : 45);
-
-            var workout = new ActivityDto
-            {
-                Id = Guid.NewGuid().ToString(),
-                Type = type,
-                StartDate = startDate,
-                EndDate = endDate,
-                Calories = type == "cardio" ? 200 : 250,
-                CreatedAt = DateTime.UtcNow,
-                ActivityData = new ActivityDataDto
-                {
-                    Name = type == "strength" ? "Strength exercise" : "Cardio exercise", 
-                    Category = type == "strength" ? "Strength" : "Cardio",
-                    Equipment = null,
-                    Count = null,
-                    MuscleGroup = null,
-                    Weight = null,
-                    RestTimeSeconds = null,
-                    Sets = null,
-                    Distance = null,
-                    AvgPace = null,
-                    AvgPulse = null,
-                    MaxPulse = null
-                }
-            };
-
-            return workout;
-        }
-
-        private FoodItemResponse GetDefaultFoodForMeal(string? mealType)
-        {
-            var (name, calories, proteins, fats, carbs, weight, weightType) = mealType?.ToLowerInvariant() switch
-            {
-                "breakfast" or "завтрак" => ("Завтрак", 250m, 12m, 8m, 35m, 200m, "g"),
-                "lunch" or "обед" => ("Обед", 400m, 25m, 15m, 45m, 300m, "g"),
-                "dinner" or "ужин" => ("Ужин", 350m, 20m, 12m, 40m, 250m, "g"),
-                "snack" or "перекус" => ("Перекус", 150m, 5m, 6m, 20m, 100m, "g"),
-                _ => ("Неизвестная еда", 200m, 10m, 8m, 25m, 150m, "g")
-            };
-
-            return new FoodItemResponse
-            {
-                Name = name,
-                EstimatedWeight = weight,
-                WeightType = weightType,
-                Description = "Автоматически созданная запись",
-                NutritionPer100g = new NutritionPer100gDto
-                {
-                    Calories = calories,
-                    Proteins = proteins,
-                    Fats = fats,
-                    Carbs = carbs
-                },
-                TotalCalories = (int)Math.Round((calories * weight) / 100),
-                Confidence = 0.3m
-            };
         }
     }
 }
