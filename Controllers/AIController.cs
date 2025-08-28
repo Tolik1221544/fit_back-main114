@@ -932,8 +932,8 @@ namespace FitnessTracker.API.Controllers
             }
         }
     }
-
-    public class SwitchProviderRequest
+    
+        public class SwitchProviderRequest
     {
         public string ProviderName { get; set; } = string.Empty;
     }
