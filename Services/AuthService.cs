@@ -14,6 +14,7 @@ namespace FitnessTracker.API.Services
     {
         private readonly IUserRepository _userRepository;
         private readonly IEmailService _emailService;
+        private readonly ILwCoinService _lwCoinService; 
         private readonly IConfiguration _configuration;
         private readonly IMapper _mapper;
         private readonly ILogger<AuthService> _logger;
@@ -33,12 +34,14 @@ namespace FitnessTracker.API.Services
         public AuthService(
             IUserRepository userRepository,
             IEmailService emailService,
+            ILwCoinService lwCoinService, 
             IConfiguration configuration,
             IMapper mapper,
             ILogger<AuthService> logger)
         {
             _userRepository = userRepository;
             _emailService = emailService;
+            _lwCoinService = lwCoinService; 
             _configuration = configuration;
             _mapper = mapper;
             _logger = logger;
@@ -54,20 +57,11 @@ namespace FitnessTracker.API.Services
                 if (TestCodes.ContainsKey(email))
                 {
                     var testCode = TestCodes[email];
-
                     _verificationCodes.AddOrUpdate(email,
-                        (testCode, DateTime.UtcNow.AddMinutes(30)), 
+                        (testCode, DateTime.UtcNow.AddMinutes(30)),
                         (key, oldValue) => (testCode, DateTime.UtcNow.AddMinutes(30)));
 
                     _logger.LogInformation($"✅ Fixed code provided for: {email}");
-                    Console.WriteLine("==================================================");
-                    Console.WriteLine($"🔑 FIXED CODE FOR TESTING");
-                    Console.WriteLine($"📧 Email: {email}");
-                    Console.WriteLine($"🔐 Code: {testCode}");
-                    Console.WriteLine($"⏰ Valid for 30 minutes");
-                    Console.WriteLine($"✅ Use this code in /api/auth/confirm-email");
-                    Console.WriteLine("==================================================");
-
                     return true;
                 }
 
@@ -104,7 +98,7 @@ namespace FitnessTracker.API.Services
 
                 if (storedData.Code != code.Trim())
                 {
-                    _logger.LogWarning($"Invalid verification code for {email}. Expected: {storedData.Code}, Got: {code}");
+                    _logger.LogWarning($"Invalid verification code for {email}");
                     throw new UnauthorizedAccessException("Invalid verification code");
                 }
 
@@ -119,9 +113,11 @@ namespace FitnessTracker.API.Services
 
                 var existingUser = await _userRepository.GetByEmailAsync(email);
                 User user;
+                bool isNewUser = false;
 
                 if (existingUser == null)
                 {
+                    isNewUser = true;
                     _logger.LogInformation($"Creating new user for {email}");
                     var referralCode = await GenerateUniqueReferralCode();
 
@@ -129,12 +125,12 @@ namespace FitnessTracker.API.Services
                     {
                         Id = Guid.NewGuid().ToString(),
                         Email = email,
-                        Name = GetUserNameForEmail(email), 
+                        Name = GetUserNameForEmail(email),
                         RegisteredVia = "email",
                         Level = 1,
                         Experience = 0,
-                        LwCoins = 300,
-                        FractionalLwCoins = 300.0,
+                        LwCoins = 50,  
+                        FractionalLwCoins = 50.0,  
                         ReferralCode = referralCode,
                         JoinedAt = DateTime.UtcNow,
                         LastMonthlyRefill = DateTime.UtcNow,
@@ -145,6 +141,9 @@ namespace FitnessTracker.API.Services
                     {
                         user = await _userRepository.CreateAsync(user);
                         _logger.LogInformation($"User created successfully: {user.Id}");
+
+                        await _lwCoinService.AddRegistrationBonusAsync(user.Id);
+                        _logger.LogInformation($"🎁 Registration bonus added for new user {user.Id}");
                     }
                     catch (Exception ex)
                     {
@@ -209,9 +208,9 @@ namespace FitnessTracker.API.Services
                 userDto.ExperienceToNextLevel = experienceData.ExperienceToNextLevel;
                 userDto.ExperienceProgress = experienceData.ExperienceProgress;
 
-                if (TestCodes.ContainsKey(email))
+                if (isNewUser)
                 {
-                    _logger.LogInformation($"🔑 Fixed code login successful: {email}");
+                    userDto.LwCoins = 50; 
                 }
 
                 return new AuthResponseDto
@@ -299,7 +298,6 @@ namespace FitnessTracker.API.Services
             }
 
             var namePart = email.Split('@')[0];
-
             namePart = namePart.Replace(".", " ");
 
             if (!string.IsNullOrEmpty(namePart))

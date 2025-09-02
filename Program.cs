@@ -15,8 +15,8 @@ using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddHostedService<CoinExpiryHostedService>();
 builder.Services.AddHttpContextAccessor();
-
 builder.Services.AddLogging(logging =>
 {
     logging.ClearProviders();
@@ -497,8 +497,22 @@ var port = Environment.GetEnvironmentVariable("PORT") ?? "60170";
 var url = $"http://0.0.0.0:{port}";
 
 Console.WriteLine("🚀 Fitness Tracker API with Universal AI starting...");
+Console.WriteLine("💰 NEW FEATURES:");
+Console.WriteLine("  ✅ Registration bonus: 50 coins");
+Console.WriteLine("  ✅ Manual coin balance setting");
+Console.WriteLine("  ✅ Subscription coins with auto-expiry");
+Console.WriteLine("  ✅ New pricing model:");
+Console.WriteLine("    - Photo food scan: 1 coin");
+Console.WriteLine("    - Voice food scan: 1 coin");
+Console.WriteLine("    - Text food scan: FREE");
+Console.WriteLine("    - Food correction: FREE");
+Console.WriteLine("    - Voice workout: 1 coin");
+Console.WriteLine("    - Text workout: FREE");
+Console.WriteLine("    - Body analysis: FREE");
+Console.WriteLine("  ✅ Background service for coin expiry every 30 minutes");
 Console.WriteLine("🤖 Now using Gemini 2.5 Flash (latest model)!");
 Console.WriteLine($"📊 Swagger: {url}/swagger");
+Console.WriteLine($"💰 Coin Management: {url}/api/coins");
 Console.WriteLine($"🌐 API: {url}");
 Console.WriteLine($"📚 Docs: {url}/api/docs");
 Console.WriteLine($"🤖 AI Status: {url}/api/ai/status");

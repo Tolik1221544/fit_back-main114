@@ -732,50 +732,52 @@ Return ONLY this JSON with food names in the user's language:
 Ingredient to add: ""{correctionText}""
 {langInstruction}
 
-IMPORTANT: DO NOT replace the dish completely! Only ADD the specified ingredient to the existing dish.
+CRITICAL RULES:
+1. NEVER REDUCE the original weight - ONLY INCREASE or keep the same
+2. ADD the ingredient weight to the existing dish weight
+3. DO NOT replace the dish - only ADD ingredient to it
+4. The new weight MUST be higher than the original weight
 
-Correction examples:
-- Original dish: ""Borscht 300g""
-- Added ingredient: ""sour cream""
-- CORRECT result: ""Borscht with sour cream 320g"" (added sour cream weight)
+Example corrections:
+- Original: ""Борщ 300г"" + ""сметана"" = ""Борщ со сметаной 320г"" (300г + 20г сметаны)
+- Original: ""Салат Цезарь 250г"" + ""курица"" = ""Салат Цезарь с курицей 350г"" (250г + 100г курицы)
+- Original: ""Паста 200г"" + ""сыр"" = ""Паста с сыром 230г"" (200г + 30г сыра)
 
-- Original dish: ""Caesar Salad 250g""  
-- Added ingredient: ""chicken""
-- CORRECT result: ""Caesar Salad with chicken 300g"" (added chicken weight)
+WEIGHT CALCULATION RULES:
+- Estimate realistic weight for added ingredient
+- Sour cream/mayo: +15-20g
+- Cheese: +20-30g
+- Meat/chicken: +50-100g  
+- Vegetables: +30-50g
+- Sauce: +10-15g
 
-Correction rules:
-1. PRESERVE the main dish name: ""{originalFoodName}""
-2. ADD ingredient to the name: ""+ {correctionText}""
-3. INCREASE total weight by added ingredient weight
-4. RECALCULATE calories considering the added ingredient
-5. DO NOT DECREASE weight! Only increase or keep the same
-
-Return ONLY this JSON with ADDED ingredient and all text fields in the user's language:
+Return ONLY this JSON with all text in the user's language:
 {{
   ""correctedFoodItem"": {{
-    ""name"": ""Original name + added ingredient"",
-    ""estimatedWeight"": [INCREASED_WEIGHT],
+    ""name"": ""{originalFoodName} + {correctionText} (combined name)"",
+    ""estimatedWeight"": [ORIGINAL_WEIGHT + ADDED_INGREDIENT_WEIGHT],
     ""weightType"": ""g"" or ""ml"",
-    ""description"": ""Description with added ingredient"",
+    ""description"": ""Description showing both original dish and added ingredient"",
     ""nutritionPer100g"": {{
-      ""calories"": [RECALCULATED_CALORIES_PER_100G],
-      ""proteins"": [RECALCULATED_PROTEINS_PER_100G],
-      ""fats"": [RECALCULATED_FATS_PER_100G],
-      ""carbs"": [RECALCULATED_CARBS_PER_100G]
+      ""calories"": [WEIGHTED_AVERAGE_CALORIES_PER_100G],
+      ""proteins"": [WEIGHTED_AVERAGE_PROTEINS_PER_100G],
+      ""fats"": [WEIGHTED_AVERAGE_FATS_PER_100G],
+      ""carbs"": [WEIGHTED_AVERAGE_CARBS_PER_100G]
     }},
-    ""totalCalories"": [TOTAL_CALORIES_WITH_ADDITION],
+    ""totalCalories"": [TOTAL_CALORIES_FOR_INCREASED_WEIGHT],
     ""confidence"": 0.85
   }},
-  ""correctionExplanation"": ""Added ingredient: {correctionText}. Weight increased from [OLD_WEIGHT] to [NEW_WEIGHT], calories recalculated."",
-  ""ingredients"": [""main ingredients"", ""{correctionText}""]
+  ""correctionExplanation"": ""Added {correctionText} to {originalFoodName}. Weight increased by estimated ingredient weight. Total calories recalculated."",
+  ""ingredients"": [""{originalFoodName}"", ""{correctionText}""]
 }}
 
 {langInstruction}
-CRITICAL: 
-- DO NOT replace dish with one ingredient!
-- ADD TO existing dish!
-- INCREASE weight, DO NOT decrease!
-- Return ONLY JSON with text in user's language.";
+
+MANDATORY: 
+- The new estimatedWeight MUST be larger than the original weight
+- DO NOT decrease weight under any circumstances
+- ADD ingredient weight, don't subtract
+- Return ONLY valid JSON with text in the user's language";
         }
 
         private bool ValidateFoodCorrection(string originalFoodName, FoodItemResponse correctedItem, string correctionText)

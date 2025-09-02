@@ -12,15 +12,16 @@ namespace FitnessTracker.API.Services
         private readonly IMapper _mapper;
         private readonly ILogger<LwCoinService> _logger;
 
-        private const decimal PHOTO_COST = 2.5m;      // Фото-анализ: 2.5 монеты
-        private const decimal VOICE_COST = 1.5m;      // Голосовой ввод: 1.5 монеты  
-        private const decimal TEXT_COST = 1.0m;       // Текстовый ввод: 1 монета
+        private const decimal PHOTO_FOOD_SCAN_COST = 1.0m;     
+        private const decimal VOICE_FOOD_SCAN_COST = 1.0m;    
+        private const decimal TEXT_FOOD_SCAN_COST = 0.0m;      
+        private const decimal FOOD_CORRECTION_COST = 0.0m;    
+        private const decimal VOICE_WORKOUT_COST = 1.0m;     
+        private const decimal TEXT_WORKOUT_COST = 0.0m;      
+        private const decimal BODY_ANALYSIS_COST = 0.0m;       
 
-        private const decimal DAILY_LIMIT_BASE = 10.0m;  
-
-        private const int MONTHLY_ALLOWANCE = 300;
-        private const int TRIAL_BONUS = 150;
-        private const int REFERRAL_BONUS = 150;
+        private const int REGISTRATION_BONUS = 50;              
+        private const int REFERRAL_BONUS = 150;                 
         private const decimal PREMIUM_PRICE = 8.99m;
 
         public LwCoinService(
@@ -35,41 +36,95 @@ namespace FitnessTracker.API.Services
             _logger = logger;
         }
 
+        public async Task<bool> SetUserCoinsAsync(string userId, decimal amount, string source = "manual")
+        {
+            try
+            {
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user == null) return false;
+
+                var oldBalance = user.FractionalLwCoins;
+                user.FractionalLwCoins = (double)amount;
+                user.LwCoins = (int)Math.Floor(amount);
+                await _userRepository.UpdateAsync(user);
+
+                await CreateTransactionAsync(userId, (int)amount, amount, "manual_set",
+                    $"Manual balance set from {oldBalance} to {amount}", "", source);
+
+                _logger.LogInformation($"💰 Manual set coins for user {userId}: {oldBalance} -> {amount}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error setting coins: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> AddRegistrationBonusAsync(string userId)
+        {
+            try
+            {
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user == null) return false;
+
+                var transactions = await _lwCoinRepository.GetUserTransactionsAsync(userId);
+                if (transactions.Any(t => t.CoinSource == "registration"))
+                {
+                    _logger.LogWarning($"User {userId} already received registration bonus");
+                    return false;
+                }
+
+                user.FractionalLwCoins += REGISTRATION_BONUS;
+                user.LwCoins = (int)Math.Floor(user.FractionalLwCoins);
+                await _userRepository.UpdateAsync(user);
+
+                await CreateTransactionAsync(userId, REGISTRATION_BONUS, REGISTRATION_BONUS,
+                    "registration_bonus", "Welcome bonus - 50 coins", "", "registration");
+
+                _logger.LogInformation($"🎁 Registration bonus added for user {userId}: +{REGISTRATION_BONUS} coins");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error adding registration bonus: {ex.Message}");
+                return false;
+            }
+        }
+
         public async Task<LwCoinBalanceDto> GetUserLwCoinBalanceAsync(string userId)
         {
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) throw new ArgumentException("User not found");
 
             var isPremium = await IsUserPremiumAsync(userId);
-            var todayUsage = await GetTodayUsageAsync(userId);
+            var balanceDetails = await GetDetailedBalanceAsync(userId);
             var premiumExpiresAt = await GetPremiumExpiryAsync(userId);
-
             var notification = await GeneratePremiumNotificationAsync(userId, isPremium, premiumExpiresAt);
-
-            var dailyRemaining = isPremium ? decimal.MaxValue : decimal.MaxValue; 
-
-            var currentBalance = await GetUserFractionalBalanceAsync(userId);
-            var usedThisMonth = await GetUsedCoinsThisMonthAsync(userId);
 
             return new LwCoinBalanceDto
             {
-                Balance = (int)Math.Floor(currentBalance),
-                MonthlyAllowance = MONTHLY_ALLOWANCE,
-                UsedThisMonth = (int)usedThisMonth,
-                RemainingThisMonth = isPremium ? int.MaxValue : Math.Max(0, MONTHLY_ALLOWANCE - (int)usedThisMonth),
+                Balance = (int)Math.Floor(user.FractionalLwCoins),
+
+                DetailedBalance = new
+                {
+                    Subscription = balanceDetails.SubscriptionCoins,
+                    Referral = balanceDetails.ReferralCoins,
+                    Bonus = balanceDetails.BonusCoins,
+                    Permanent = balanceDetails.PermanentCoins,
+                    Registration = balanceDetails.RegistrationCoins,
+                    Total = balanceDetails.TotalCoins
+                },
+
                 IsPremium = isPremium,
                 PremiumExpiresAt = premiumExpiresAt,
                 NextRefillDate = GetNextRefillDate(user.LastMonthlyRefill),
-                PremiumNotification = notification,
-
-                DailyUsage = todayUsage,
-                DailyLimit = isPremium ? decimal.MaxValue : decimal.MaxValue, 
-                DailyRemaining = decimal.MaxValue 
+                PremiumNotification = notification
             };
         }
 
         /// <summary>
-        /// Пользователь может тратить монеты пока они есть на балансе
+        /// Основной метод траты монет с новыми ценами
         /// </summary>
         public async Task<bool> SpendLwCoinsAsync(string userId, int legacyAmount, string type, string description, string featureUsed = "")
         {
@@ -80,98 +135,121 @@ namespace FitnessTracker.API.Services
 
             _logger.LogInformation($"🪙 Spending: user={userId}, feature={featureUsed}, cost={actualCost}");
 
-            // Check if user is premium (unlimited usage)
+            if (actualCost == 0)
+            {
+                await CreateTransactionAsync(userId, 0, 0, "free_action",
+                    $"Free action: {description}", featureUsed, "free");
+                _logger.LogInformation($"✅ Free action for user {userId}: {featureUsed}");
+                return true;
+            }
+
             var isPremium = await IsUserPremiumAsync(userId);
             if (isPremium)
             {
-                // Premium users don't spend actual coins, but we log the usage
-                await CreateTransactionAsync(userId, 0, actualCost, "spent", description, featureUsed, null, "premium");
+                await CreateTransactionAsync(userId, 0, actualCost, "premium_usage",
+                    description, featureUsed, "premium");
                 _logger.LogInformation($"✅ Premium user {userId} used {featureUsed} for free");
                 return true;
             }
 
-            // Check if user has enough coins (используем дробные монеты)
-            var userFractionalBalance = await GetUserFractionalBalanceAsync(userId);
+            var userFractionalBalance = (decimal)user.FractionalLwCoins;
             if (userFractionalBalance < actualCost)
             {
                 _logger.LogWarning($"❌ Insufficient coins: user={userId}, balance={userFractionalBalance}, cost={actualCost}");
                 return false;
             }
 
-            await DeductFractionalCoinsAsync(userId, actualCost);
+            await DeductCoinsWithPriority(userId, actualCost);
 
-            // Create transaction record with fractional amount
-            await CreateTransactionAsync(userId, -(int)Math.Ceiling(actualCost), actualCost, "spent", description, featureUsed);
-
-            _logger.LogInformation($"✅ User {userId} spent {actualCost} LW Coins for {featureUsed}. Remaining balance: {userFractionalBalance - actualCost}");
+            _logger.LogInformation($"✅ User {userId} spent {actualCost} coins for {featureUsed}");
             return true;
         }
 
-        /// <summary>
-        /// Получение стоимости действия
-        /// </summary>
         private decimal GetActionCost(string featureUsed)
         {
             return featureUsed.ToLowerInvariant() switch
             {
-                "photo" or "ai_food_scan" or "food_scan" => PHOTO_COST,           
-                "voice" or "ai_voice_workout" or "ai_voice_food" => VOICE_COST,   
-                "text" or "ai_text" => TEXT_COST,                             
- 
-                "ai_body_scan" or "body_analysis" => 0.0m,                        
-                "exercise" or "activity" => 0.0m,                                
+                "photo" or "ai_food_scan" or "food_scan" => PHOTO_FOOD_SCAN_COST,
+                "voice_food" or "ai_voice_food" => VOICE_FOOD_SCAN_COST,
+                "voice_workout" or "ai_voice_workout" => VOICE_WORKOUT_COST,
 
-                _ => 1.0m  
+                "text_food" or "ai_text_food" => TEXT_FOOD_SCAN_COST,
+                "food_correction" or "ai_food_correction" => FOOD_CORRECTION_COST,
+                "text_workout" or "ai_text_workout" => TEXT_WORKOUT_COST,
+                "body_analysis" or "ai_body_scan" => BODY_ANALYSIS_COST,
+
+                _ => 0.0m 
             };
         }
 
-        /// <summary>
-        /// Получение дробного баланса пользователя
-        /// </summary>
-        private async Task<decimal> GetUserFractionalBalanceAsync(string userId)
-        {
-            var user = await _userRepository.GetByIdAsync(userId);
-            if (user == null) return 0;
-
-            if (user.FractionalLwCoins <= 0 && user.LwCoins > 0)
-            {
-                user.FractionalLwCoins = user.LwCoins;
-                await _userRepository.UpdateAsync(user);
-                _logger.LogInformation($"Initialized FractionalLwCoins for user {userId}: {user.LwCoins}");
-            }
-
-            return user.FractionalLwCoins > 0 ? (decimal)user.FractionalLwCoins : user.LwCoins;
-        }
-
-        /// <summary>
-        /// Списание дробных монет
-        /// </summary>
-        private async Task DeductFractionalCoinsAsync(string userId, decimal amount)
+        private async Task DeductCoinsWithPriority(string userId, decimal amount)
         {
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) return;
 
-            var currentFractional = await GetUserFractionalBalanceAsync(userId);
-            var newFractional = currentFractional - amount;
+            var balanceDetails = await GetDetailedBalanceAsync(userId);
+            decimal remainingToDeduct = amount;
 
-            user.FractionalLwCoins = (double)newFractional;
-            user.LwCoins = (int)Math.Floor(newFractional); 
+            if (balanceDetails.SubscriptionCoins > 0 && remainingToDeduct > 0)
+            {
+                var toDeduct = Math.Min(balanceDetails.SubscriptionCoins, remainingToDeduct);
+                remainingToDeduct -= toDeduct;
 
+                await CreateTransactionAsync(userId, -(int)Math.Ceiling(toDeduct), toDeduct,
+                    "spent", "Used subscription coins", "", "subscription");
+            }
+
+            if (remainingToDeduct > 0)
+            {
+                await CreateTransactionAsync(userId, -(int)Math.Ceiling(remainingToDeduct), remainingToDeduct,
+                    "spent", "Used permanent coins", "", "permanent");
+            }
+
+            user.FractionalLwCoins -= (double)amount;
+            user.LwCoins = (int)Math.Floor(user.FractionalLwCoins);
             await _userRepository.UpdateAsync(user);
-            _logger.LogInformation($"Deducted {amount} fractional coins from user {userId}. New balance: {newFractional}");
         }
 
-        /// <summary>
-        /// ✅ ОБНОВЛЕНО: Получение использования монет за сегодня (только для статистики)
-        /// </summary>
-        private async Task<decimal> GetTodayUsageAsync(string userId)
+        private async Task<UserCoinBalance> GetDetailedBalanceAsync(string userId)
         {
-            var today = DateTime.UtcNow.Date;
             var transactions = await _lwCoinRepository.GetUserTransactionsAsync(userId);
 
-            return transactions
-                .Where(t => t.Type == "spent" && t.CreatedAt.Date == today)
-                .Sum(t => t.FractionalAmount > 0 ? (decimal)t.FractionalAmount : Math.Abs(t.Amount));
+            var balance = new UserCoinBalance
+            {
+                UserId = userId,
+                SubscriptionCoins = 0,
+                ReferralCoins = 0,
+                BonusCoins = 0,
+                PermanentCoins = 0,
+                RegistrationCoins = 0
+            };
+
+            foreach (var transaction in transactions.Where(t => !t.IsExpired))
+            {
+                var amount = transaction.FractionalAmount > 0 ?
+                    (decimal)transaction.FractionalAmount : transaction.Amount;
+
+                switch (transaction.CoinSource)
+                {
+                    case "subscription":
+                        balance.SubscriptionCoins += amount;
+                        break;
+                    case "referral":
+                        balance.ReferralCoins += amount;
+                        break;
+                    case "bonus":
+                        balance.BonusCoins += amount;
+                        break;
+                    case "registration":
+                        balance.RegistrationCoins += amount;
+                        break;
+                    default:
+                        balance.PermanentCoins += amount;
+                        break;
+                }
+            }
+
+            return balance;
         }
 
         public async Task<bool> AddLwCoinsAsync(string userId, int amount, string type, string description)
@@ -179,43 +257,82 @@ namespace FitnessTracker.API.Services
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) return false;
 
-            var currentFractional = await GetUserFractionalBalanceAsync(userId);
-            var newFractional = currentFractional + amount;
-
-            user.FractionalLwCoins = (double)newFractional;
-            user.LwCoins = (int)Math.Floor(newFractional);
+            user.FractionalLwCoins += amount;
+            user.LwCoins = (int)Math.Floor(user.FractionalLwCoins);
             await _userRepository.UpdateAsync(user);
 
-            await CreateTransactionAsync(userId, amount, amount, type, description);
+            var coinSource = type switch
+            {
+                "referral" => "referral",
+                "registration_bonus" => "registration",
+                "purchase" => "permanent",
+                "subscription" => "subscription",
+                _ => "bonus"
+            };
 
-            _logger.LogInformation($"User {userId} earned {amount} LW Coins: {description}. New balance: {newFractional}");
+            await CreateTransactionAsync(userId, amount, amount, type, description, "", coinSource);
+
+            _logger.LogInformation($"💰 User {userId} earned {amount} coins ({coinSource}): {description}");
             return true;
         }
 
         public async Task<IEnumerable<LwCoinTransactionDto>> GetUserLwCoinTransactionsAsync(string userId)
         {
             var transactions = await _lwCoinRepository.GetUserTransactionsAsync(userId);
-            return _mapper.Map<IEnumerable<LwCoinTransactionDto>>(transactions);
+            var dtos = _mapper.Map<IEnumerable<LwCoinTransactionDto>>(transactions);
+
+            foreach (var dto in dtos)
+            {
+                var transaction = transactions.FirstOrDefault(t => t.Id == dto.Id);
+                if (transaction != null)
+                {
+                    dto.CoinSource = transaction.CoinSource;
+                    dto.IsExpired = transaction.IsExpired;
+                    dto.ExpiryDate = transaction.ExpiryDate;
+                }
+            }
+
+            return dtos;
         }
 
-        public async Task<bool> ProcessMonthlyRefillAsync(string userId)
+        public async Task<bool> PurchaseSubscriptionCoinsAsync(string userId, int coinsAmount, int durationDays, decimal price)
         {
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) return false;
 
-            // Check if refill is due
-            var nextRefillDate = GetNextRefillDate(user.LastMonthlyRefill);
-            if (DateTime.UtcNow < nextRefillDate) return false;
+            var expiryDate = DateTime.UtcNow.AddDays(durationDays);
 
-            // Add monthly allowance
-            user.LwCoins += MONTHLY_ALLOWANCE;
-            user.FractionalLwCoins += MONTHLY_ALLOWANCE;
-            user.LastMonthlyRefill = DateTime.UtcNow;
+            user.FractionalLwCoins += coinsAmount;
+            user.LwCoins = (int)Math.Floor(user.FractionalLwCoins);
             await _userRepository.UpdateAsync(user);
 
-            await CreateTransactionAsync(userId, MONTHLY_ALLOWANCE, MONTHLY_ALLOWANCE, "refill", "Monthly allowance refill", "", null, "monthly");
+            var subscription = new Subscription
+            {
+                UserId = userId,
+                Type = $"coin_subscription_{coinsAmount}",
+                Price = price,
+                ExpiresAt = expiryDate,
+                PaymentTransactionId = Guid.NewGuid().ToString()
+            };
 
-            _logger.LogInformation($"Monthly refill processed for user {userId}: +{MONTHLY_ALLOWANCE} LW Coins");
+            await _lwCoinRepository.CreateSubscriptionAsync(subscription);
+
+            var transaction = new LwCoinTransaction
+            {
+                UserId = userId,
+                Amount = coinsAmount,
+                FractionalAmount = coinsAmount,
+                Type = "subscription_purchase",
+                Description = $"Subscription coins: {coinsAmount} for {durationDays} days",
+                CoinSource = "subscription",
+                ExpiryDate = expiryDate,
+                SubscriptionId = subscription.Id,
+                Price = price
+            };
+
+            await _lwCoinRepository.CreateTransactionAsync(transaction);
+
+            _logger.LogInformation($"📅 Subscription coins purchased: {coinsAmount} coins for {durationDays} days, expires {expiryDate}");
             return true;
         }
 
@@ -224,7 +341,6 @@ namespace FitnessTracker.API.Services
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) return false;
 
-            // Create premium subscription
             var subscription = new Subscription
             {
                 UserId = userId,
@@ -236,9 +352,10 @@ namespace FitnessTracker.API.Services
 
             await _lwCoinRepository.CreateSubscriptionAsync(subscription);
 
-            await CreateTransactionAsync(userId, 0, 0, "purchase", "Premium subscription purchased", "premium", request.Price, request.Period);
+            await CreateTransactionAsync(userId, 0, 0, "purchase",
+                "Premium subscription purchased", "premium", "premium", request.Price, request.Period);
 
-            _logger.LogInformation($"Premium subscription purchased for user {userId}");
+            _logger.LogInformation($"👑 Premium subscription purchased for user {userId}");
             return true;
         }
 
@@ -247,26 +364,21 @@ namespace FitnessTracker.API.Services
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) return false;
 
-            int coinsToAdd = 0;
-
-            switch (request.PackType)
+            int coinsToAdd = request.PackType switch
             {
-                case "pack_50":
-                    coinsToAdd = 50;
-                    break;
-                case "pack_100":
-                    coinsToAdd = 100;
-                    break;
-                default:
-                    return false;
-            }
+                "pack_50" => 50,
+                "pack_100" => 100,
+                "pack_200" => 200,
+                "pack_500" => 500,
+                _ => 0
+            };
 
-            // Add coins to user (both integer and fractional)
-            user.LwCoins += coinsToAdd;
+            if (coinsToAdd == 0) return false;
+
             user.FractionalLwCoins += coinsToAdd;
+            user.LwCoins = (int)Math.Floor(user.FractionalLwCoins);
             await _userRepository.UpdateAsync(user);
 
-            // Create subscription record
             var subscription = new Subscription
             {
                 UserId = userId,
@@ -277,107 +389,34 @@ namespace FitnessTracker.API.Services
 
             await _lwCoinRepository.CreateSubscriptionAsync(subscription);
 
-            await CreateTransactionAsync(userId, coinsToAdd, coinsToAdd, "purchase", $"Purchased {request.PackType} ({coinsToAdd} LW Coins)", "", request.Price, request.Period);
+            await CreateTransactionAsync(userId, coinsToAdd, coinsToAdd, "purchase",
+                $"Purchased {request.PackType} ({coinsToAdd} coins)", "", "permanent", request.Price, "one-time");
 
-            _logger.LogInformation($"Coin pack {request.PackType} purchased for user {userId}: +{coinsToAdd} LW Coins");
+            _logger.LogInformation($"💰 Coin pack {request.PackType} purchased: +{coinsToAdd} permanent coins");
             return true;
         }
 
         public async Task<LwCoinLimitsDto> GetUserLimitsAsync(string userId)
         {
+            var balanceDetails = await GetDetailedBalanceAsync(userId);
             var isPremium = await IsUserPremiumAsync(userId);
-            var usedThisMonth = await GetUsedCoinsThisMonthAsync(userId);
             var featureUsage = await GetFeatureUsageThisMonthAsync(userId);
-            var todayUsage = await GetTodayUsageAsync(userId);
 
             return new LwCoinLimitsDto
             {
-                MonthlyAllowance = MONTHLY_ALLOWANCE,
-                UsedThisMonth = (int)usedThisMonth,
-                RemainingThisMonth = isPremium ? int.MaxValue : Math.Max(0, MONTHLY_ALLOWANCE - (int)usedThisMonth),
+                MonthlyAllowance = 0, 
+                UsedThisMonth = (int)featureUsage.Values.Sum(),
+                RemainingThisMonth = isPremium ? int.MaxValue : (int)balanceDetails.TotalCoins,
                 IsPremium = isPremium,
                 FeatureUsage = featureUsage,
 
-                DailyUsage = todayUsage,
-                DailyLimit = decimal.MaxValue, 
-                DailyRemaining = decimal.MaxValue 
-            };
-        }
-
-        private async Task<PremiumNotificationDto?> GeneratePremiumNotificationAsync(string userId, bool isPremium, DateTime? premiumExpiresAt)
-        {
-            if (!isPremium || !premiumExpiresAt.HasValue)
-            {
-                var recentExpiredSubscription = await GetRecentExpiredSubscriptionAsync(userId);
-                if (recentExpiredSubscription != null)
+                DetailedBalance = new
                 {
-                    return new PremiumNotificationDto
-                    {
-                        Type = "downgraded",
-                        Message = "Ваша премиум подписка истекла. Вы переведены на стандартный план.",
-                        ExpiresAt = null,
-                        DaysRemaining = 0,
-                        IsUrgent = true
-                    };
+                    Subscription = balanceDetails.SubscriptionCoins,
+                    Permanent = balanceDetails.PermanentTotal,
+                    Total = balanceDetails.TotalCoins
                 }
-                return null;
-            }
-
-            var daysRemaining = (int)(premiumExpiresAt.Value - DateTime.UtcNow).TotalDays;
-
-            if (daysRemaining <= 0)
-            {
-                await DowngradePremiumSubscriptionAsync(userId);
-
-                return new PremiumNotificationDto
-                {
-                    Type = "expired",
-                    Message = "Ваша премиум подписка истекла. Вы переведены на стандартный план.",
-                    ExpiresAt = premiumExpiresAt,
-                    DaysRemaining = 0,
-                    IsUrgent = true
-                };
-            }
-
-            if (daysRemaining <= 3)
-            {
-                return new PremiumNotificationDto
-                {
-                    Type = "expiring_soon",
-                    Message = $"Ваша премиум подписка истекает через {daysRemaining} дн. Продлите сейчас!",
-                    ExpiresAt = premiumExpiresAt,
-                    DaysRemaining = daysRemaining,
-                    IsUrgent = daysRemaining <= 1
-                };
-            }
-
-            return null;
-        }
-
-        private async Task DowngradePremiumSubscriptionAsync(string userId)
-        {
-            var subscriptions = await _lwCoinRepository.GetUserSubscriptionsAsync(userId);
-            var expiredPremium = subscriptions.FirstOrDefault(s => s.Type == "premium" &&
-                s.IsActive && s.ExpiresAt.HasValue && s.ExpiresAt <= DateTime.UtcNow);
-
-            if (expiredPremium != null)
-            {
-                expiredPremium.IsActive = false;
-
-                await CreateTransactionAsync(userId, 0, 0, "downgrade", "Premium subscription expired - downgraded to standard", "premium", 0, "expired");
-
-                _logger.LogInformation($"User {userId} downgraded from premium to standard due to expiration");
-            }
-        }
-
-        private async Task<Subscription?> GetRecentExpiredSubscriptionAsync(string userId)
-        {
-            var subscriptions = await _lwCoinRepository.GetUserSubscriptionsAsync(userId);
-            var threeDaysAgo = DateTime.UtcNow.AddDays(-3);
-
-            return subscriptions.FirstOrDefault(s => s.Type == "premium" &&
-                !s.IsActive && s.ExpiresAt.HasValue &&
-                s.ExpiresAt >= threeDaysAgo && s.ExpiresAt <= DateTime.UtcNow);
+            };
         }
 
         private async Task<bool> IsUserPremiumAsync(string userId)
@@ -392,16 +431,6 @@ namespace FitnessTracker.API.Services
             var subscriptions = await _lwCoinRepository.GetUserSubscriptionsAsync(userId);
             var premiumSub = subscriptions.FirstOrDefault(s => s.Type == "premium" && s.IsActive);
             return premiumSub?.ExpiresAt;
-        }
-
-        private async Task<decimal> GetUsedCoinsThisMonthAsync(string userId)
-        {
-            var startOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
-            var transactions = await _lwCoinRepository.GetUserTransactionsAsync(userId);
-
-            return transactions
-                .Where(t => t.Type == "spent" && t.CreatedAt >= startOfMonth)
-                .Sum(t => t.FractionalAmount > 0 ? (decimal)t.FractionalAmount : Math.Abs(t.Amount));
         }
 
         private async Task<Dictionary<string, int>> GetFeatureUsageThisMonthAsync(string userId)
@@ -420,10 +449,34 @@ namespace FitnessTracker.API.Services
             return new DateTime(lastRefill.Year, lastRefill.Month, 1).AddMonths(1);
         }
 
+        private async Task<PremiumNotificationDto?> GeneratePremiumNotificationAsync(string userId, bool isPremium, DateTime? premiumExpiresAt)
+        {
+            if (!isPremium || !premiumExpiresAt.HasValue)
+                return null;
+
+            var daysRemaining = (int)(premiumExpiresAt.Value - DateTime.UtcNow).TotalDays;
+
+            if (daysRemaining <= 3)
+            {
+                return new PremiumNotificationDto
+                {
+                    Type = "expiring_soon",
+                    Message = $"Premium expires in {daysRemaining} days",
+                    ExpiresAt = premiumExpiresAt,
+                    DaysRemaining = daysRemaining,
+                    IsUrgent = daysRemaining <= 1
+                };
+            }
+
+            return null;
+        }
+
         /// <summary>
-        /// Создание транзакции
+        /// Создание транзакции с расширенными параметрами
         /// </summary>
-        private async Task CreateTransactionAsync(string userId, int amount, decimal fractionalAmount, string type, string description, string featureUsed = "", decimal? price = null, string period = "")
+        private async Task CreateTransactionAsync(string userId, int amount, decimal fractionalAmount,
+            string type, string description, string featureUsed = "", string coinSource = "permanent",
+            decimal? price = null, string period = "")
         {
             var transaction = new LwCoinTransaction
             {
@@ -433,6 +486,7 @@ namespace FitnessTracker.API.Services
                 Type = type,
                 Description = description,
                 FeatureUsed = featureUsed,
+                CoinSource = coinSource,
                 Price = price,
                 Period = period,
                 UsageDate = DateTime.UtcNow.Date.ToString("yyyy-MM-dd")
