@@ -6,6 +6,7 @@ namespace FitnessTracker.API.Models
         public string Email { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string RegisteredVia { get; set; } = string.Empty;
+        public string? AppleUserId { get; set; } 
         public int Level { get; set; } = 1;
         public int Experience { get; set; } = 0;
         public int LwCoins { get; set; } = 300;

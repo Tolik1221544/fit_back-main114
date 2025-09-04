@@ -197,7 +197,53 @@ namespace FitnessTracker.API.Controllers
                 return BadRequest(new { error = ex.Message });
             }
         }
+        /// <summary>
+        /// 🗑️ Удалить аккаунт пользователя полностью
+        /// </summary>
+        /// <returns>Результат удаления</returns>
+        /// <response code="200">Аккаунт успешно удален</response>
+        /// <response code="401">Требуется авторизация</response>
+        [HttpDelete("delete-account")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> DeleteAccount([FromBody] DeleteAccountRequest? request = null)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
 
+                _logger.LogInformation($"🗑️ User {userId} requested account deletion");
+
+                if (request != null && !string.IsNullOrEmpty(request.Reason))
+                {
+                    _logger.LogInformation($"🗑️ Deletion reason: {request.Reason}");
+                }
+
+                await _userService.DeleteUserCompletelyAsync(userId);
+
+                _logger.LogInformation($"✅ Account deleted successfully for user {userId}");
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Account deleted successfully",
+                    timestamp = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error deleting account: {ex.Message}");
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        public class DeleteAccountRequest
+        {
+            public string? Reason { get; set; }
+            public string? Feedback { get; set; }
+        }
         public class SetLocaleRequest
         {
             public string Locale { get; set; } = string.Empty;

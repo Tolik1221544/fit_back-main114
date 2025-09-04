@@ -7,7 +7,7 @@ using System.Security.Claims;
 namespace FitnessTracker.API.Controllers
 {
     /// <summary>
-    /// 💰 Управление LW Coins и подписками - Тратьте монеты без ограничений!
+    /// 💰 Управление LW Coins - основной контроллер для монет
     /// </summary>
     [ApiController]
     [Route("api/lw-coin")]
@@ -15,23 +15,17 @@ namespace FitnessTracker.API.Controllers
     public class LwCoinController : ControllerBase
     {
         private readonly ILwCoinService _lwCoinService;
+        private readonly ILogger<LwCoinController> _logger;
 
-        public LwCoinController(ILwCoinService lwCoinService)
+        public LwCoinController(ILwCoinService lwCoinService, ILogger<LwCoinController> logger)
         {
             _lwCoinService = lwCoinService;
+            _logger = logger;
         }
 
         /// <summary>
-        /// 💰 Получить баланс LW Coins
+        /// 💰 Получить баланс LW Coins с детализацией по типам
         /// </summary>
-        /// <returns>Баланс и информация о подписке</returns>
-        /// <response code="200">Баланс успешно получен</response>
-        /// <response code="401">Требуется авторизация</response>
-        /// <remarks>
-        /// - Тратьте монеты пока они есть на балансе
-        /// - Премиум пользователи: безлимитное использование ИИ
-        /// - Цены: Фото 2.5, Голос 1.5, Текст 1.0 монеты
-        /// </remarks>
         [HttpGet("balance")]
         public async Task<IActionResult> GetBalance()
         {
@@ -46,25 +40,104 @@ namespace FitnessTracker.API.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError($"❌ Error getting balance: {ex.Message}");
                 return BadRequest(new { error = ex.Message });
             }
         }
 
         /// <summary>
-        /// 💸 Потратить LW Coins
+        /// 💸 Установить баланс монет (админская функция)
         /// </summary>
-        /// <param name="request">Данные о трате монет</param>
-        /// <returns>Результат траты</returns>
-        /// <response code="200">Монеты успешно потрачены</response>
-        /// <response code="400">Недостаточно монет на балансе</response>
-        /// <response code="401">Требуется авторизация</response>
-        /// <remarks>
-        /// - Фото-анализ: 2.5 монеты
-        /// - Голосовой ввод: 1.5 монеты  
-        /// - Текстовый ввод: 1.0 монета
-        /// - Тратьте сколько угодно, пока есть баланс
-        /// - Премиум пользователи: без ограничений
-        /// </remarks>
+        /// <param name="request">Количество монет и источник</param>
+        /// <returns>Результат установки баланса</returns>
+        [HttpPost("set-balance")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(400)]
+        public async Task<IActionResult> SetBalance([FromBody] SetBalanceRequest request)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                if (request.Amount < 0)
+                    return BadRequest(new { error = "Amount cannot be negative" });
+
+                var success = await _lwCoinService.SetUserCoinsAsync(userId, request.Amount, request.Source ?? "manual");
+
+                if (success)
+                {
+                    _logger.LogInformation($"💰 Balance set for user {userId}: {request.Amount} coins");
+                    return Ok(new
+                    {
+                        success = true,
+                        message = $"Balance set to {request.Amount} coins",
+                        newBalance = request.Amount
+                    });
+                }
+
+                return BadRequest(new { error = "Failed to set balance" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error setting balance: {ex.Message}");
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 🎁 Купить подписку с монетами (автоматическое удаление по истечении)
+        /// </summary>
+        /// <param name="request">Данные подписки</param>
+        [HttpPost("purchase-subscription")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(400)]
+        public async Task<IActionResult> PurchaseSubscription([FromBody] PurchaseSubscriptionRequest request)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                if (request.CoinsAmount <= 0)
+                    return BadRequest(new { error = "Coins amount must be positive" });
+
+                if (request.DurationDays <= 0)
+                    return BadRequest(new { error = "Duration must be positive" });
+
+                var success = await _lwCoinService.PurchaseSubscriptionCoinsAsync(
+                    userId,
+                    request.CoinsAmount,
+                    request.DurationDays,
+                    request.Price);
+
+                if (success)
+                {
+                    var expiryDate = DateTime.UtcNow.AddDays(request.DurationDays);
+                    return Ok(new
+                    {
+                        success = true,
+                        message = $"Subscription activated: {request.CoinsAmount} coins for {request.DurationDays} days",
+                        coinsAdded = request.CoinsAmount,
+                        expiresAt = expiryDate,
+                        autoRemovalDate = expiryDate
+                    });
+                }
+
+                return BadRequest(new { error = "Failed to purchase subscription" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error purchasing subscription: {ex.Message}");
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 💸 Потратить LW Coins (с учетом новых цен)
+        /// </summary>
         [HttpPost("spend")]
         public async Task<IActionResult> SpendCoins([FromBody] SpendLwCoinsRequest request)
         {
@@ -81,7 +154,7 @@ namespace FitnessTracker.API.Controllers
                     return BadRequest(new
                     {
                         error = "Insufficient LW Coins",
-                        message = "Недостаточно монет на балансе. Купите больше монет или оформите премиум подписку."
+                        message = "Недостаточно монет на балансе"
                     });
 
                 return Ok(new { success = true });
@@ -95,9 +168,6 @@ namespace FitnessTracker.API.Controllers
         /// <summary>
         /// 📊 Получить историю транзакций
         /// </summary>
-        /// <returns>История транзакций с дробными монетами</returns>
-        /// <response code="200">История успешно получена</response>
-        /// <response code="401">Требуется авторизация</response>
         [HttpGet("transactions")]
         public async Task<IActionResult> GetTransactions()
         {
@@ -119,14 +189,6 @@ namespace FitnessTracker.API.Controllers
         /// <summary>
         /// 👑 Купить премиум подписку
         /// </summary>
-        /// <param name="request">Данные о покупке премиума</param>
-        /// <returns>Результат покупки</returns>
-        /// <response code="200">Премиум подписка успешно активирована</response>
-        /// <response code="400">Ошибка при покупке</response>
-        /// <response code="401">Требуется авторизация</response>
-        /// <remarks>
-        /// Премиум подписка дает безлимитное использование всех AI функций без трат монет.
-        /// </remarks>
         [HttpPost("purchase-premium")]
         public async Task<IActionResult> PurchasePremium([FromBody] PurchasePremiumRequest request)
         {
@@ -148,11 +210,6 @@ namespace FitnessTracker.API.Controllers
         /// <summary>
         /// 🪙 Купить пакет LW Coins
         /// </summary>
-        /// <param name="request">Данные о покупке пакета монет</param>
-        /// <returns>Результат покупки</returns>
-        /// <response code="200">Пакет монет успешно куплен</response>
-        /// <response code="400">Ошибка при покупке</response>
-        /// <response code="401">Требуется авторизация</response>
         [HttpPost("purchase-coins")]
         public async Task<IActionResult> PurchaseCoins([FromBody] PurchaseCoinPackRequest request)
         {
@@ -172,178 +229,75 @@ namespace FitnessTracker.API.Controllers
         }
 
         /// <summary>
-        /// 📊 Проверить лимиты использования
+        /// 💲 Получить актуальные цены
         /// </summary>
-        /// <param name="featureType">Тип функции для проверки</param>
-        /// <returns>Информация о лимитах пользователя</returns>
-        /// <response code="200">Лимиты успешно получены</response>
-        /// <response code="401">Требуется авторизация</response>
-        [HttpGet("check-limit/{featureType}")]
-        public async Task<IActionResult> CheckFeatureLimit(string featureType)
-        {
-            try
-            {
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(userId))
-                    return Unauthorized();
-
-                var limits = await _lwCoinService.GetUserLimitsAsync(userId);
-                return Ok(limits);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { error = ex.Message });
-            }
-        }
-
-        /// <summary>
-        /// 💲 Получить обновленный прайс-лист
-        /// </summary>
-        /// <returns>Актуальные цены с новой ценовой моделью</returns>
-        /// <response code="200">Прайс-лист получен</response>
         [HttpGet("pricing")]
         [AllowAnonymous]
         public IActionResult GetPricing()
         {
             return Ok(new
             {
-                lwCoinPricing = new
+                actionPricing = new
                 {
-                    photoCost = 2.5m,       
-                    voiceCost = 1.5m,        
-                    textCost = 1.0m,         
-                    exerciseTrackingCost = 1.0m,
-                    bodyAnalysisCost = 0     
-                },
-
-                statisticalLimits = new
-                {
-                    averageDailyUsage = 10.0m,
-                    baseDailyUsageExample = new
+                    foodScan = new
                     {
-                        photos = 3,   
-                        voiceWorkouts = 1,      
-                        text = 2,     
-                        total = 11.0m,
-                        note = "Анализ тренировки = голосовой ввод тренировки (1.5 монеты)"
+                        photo = 1.0m,
+                        voice = 1.0m,
+                        text = 0.0m,
+                        correction = 0.0m
                     },
-                    optimizedDailyUsage = new
+                    workoutAnalysis = new
                     {
-                        photos = 3,
-                        voiceWorkouts = 1,    
-                        text = 1,
-                        total = 10.0m,
-                        note = "Рекомендуемое распределение трат для экономии монет"
-                    }
+                        voice = 1.0m,
+                        text = 0.0m
+                    },
+                    bodyAnalysis = 0.0m
                 },
-
+                bonuses = new
+                {
+                    registration = 50,
+                    referral = 150,
+                    referralLevel2 = 75
+                },
                 subscriptions = new[]
                 {
-                    new {
-                        type = "premium",
-                        price = 8.99m,
-                        currency = "USD",
-                        description = "Unlimited usage - no limits at all",
-                        period = "monthly",
-                        features = new[] {
-                            "Unlimited photo scans",
-                            "Unlimited voice input",
-                            "Unlimited text analysis",
-                            "No daily limits",
-                            "Priority support",
-                            "Advanced analytics"
-                        }
-                    }
+                    new { coins = 50, days = 7, price = 0.99m },
+                    new { coins = 100, days = 14, price = 1.99m },
+                    new { coins = 200, days = 30, price = 3.99m },
+                    new { coins = 500, days = 30, price = 7.99m }
                 },
-                coinPacks = new[]
+                permanentPacks = new[]
                 {
-                    new {
-                        type = "pack_50",
-                        price = 0.50m,
-                        currency = "USD",
-                        description = "50 LW Coins",
-                        period = "one-time",
-                        coins = 50,
-                        additionalDays = "Примерно 5 дополнительных дней использования"
-                    },
-                    new {
-                        type = "pack_100",
-                        price = 1.00m,
-                        currency = "USD",
-                        description = "100 LW Coins",
-                        period = "one-time",
-                        coins = 100,
-                        additionalDays = "Примерно 10 дополнительных дней использования"
-                    }
+                    new { coins = 50, price = 0.99m },
+                    new { coins = 100, price = 1.99m },
+                    new { coins = 200, price = 3.99m },
+                    new { coins = 500, price = 8.99m }
                 },
-                freeFeatures = new[]
+                premium = new
                 {
-                    "Exercise tracking",
-                    "Basic statistics",
-                    "Skin system with XP boost",
-                    "Body analysis (unlimited)",
-                    "Weekly body scans"
-                },
-                monthlyAllowance = new
-                {
-                    freeUsers = 300,
-                    trialBonus = 150,
-                    referralBonus = 150,
-                    averageDailyEquivalent = 10.0m,  
-                    note = "Месячное пополнение 300 монет - тратьте как хотите в течение месяца"
-                },
-
-                economicModel = new
-                {
-                    philosophyTitle = "Свобода трат - ваши монеты, ваш выбор",
-                    philosophy = "Пользователи должны иметь возможность тратить свои монеты когда угодно и сколько угодно. Никаких дневных блокировок!",
-                    targetDailyUsage = new
+                    monthlyPrice = 8.99m,
+                    features = new[]
                     {
-                        photos = 3,
-                        voiceWorkouts = 1,    
-                        text = 2,
-                        totalCost = 11.0m,
-                        note = "Средний пользователь тарифа 'База' делает примерно столько операций в день"
-                    },
-                    costBreakdown = new
-                    {
-                        photoAnalysis = "2.5 монеты за анализ фото еды",
-                        voiceWorkoutAnalysis = "1.5 монеты за голосовой анализ тренировки",   
-                        voiceFoodAnalysis = "1.5 монеты за голосовой анализ питания",
-                        textAnalysis = "1.0 монета за текстовый анализ",
-                        bodyAnalysis = "0 монет - бесплатно для всех",                       
-                        exerciseTracking = "0 монет - бесплатно для всех"
-                    },
-                    flexibilityNote = "Хотите потратить все 300 монет за один день? Пожалуйста! Хотите растянуть на месяц? Тоже отлично!"
+                        "Unlimited AI features",
+                        "No coin limits",
+                        "Priority support",
+                        "Advanced analytics"
+                    }
                 }
             });
         }
+    }
 
-        /// <summary>
-        /// </summary>
-        /// <returns>Результат обновления</returns>
-        /// <response code="200">Пополнение выполнено</response>
-        /// <response code="401">Требуется авторизация</response>
-        [HttpPost("force-refill")]
-        public async Task<IActionResult> ForceMonthlyRefill()
-        {
-            try
-            {
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(userId))
-                    return Unauthorized();
+    public class SetBalanceRequest
+    {
+        public decimal Amount { get; set; }
+        public string? Source { get; set; } = "manual";
+    }
 
-                var success = await _lwCoinService.ProcessMonthlyRefillAsync(userId);
-                return Ok(new
-                {
-                    success,
-                    message = success ? "Monthly refill processed" : "Refill not due yet"
-                });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { error = ex.Message });
-            }
-        }
+    public class PurchaseSubscriptionRequest
+    {
+        public int CoinsAmount { get; set; }
+        public int DurationDays { get; set; }
+        public decimal Price { get; set; }
     }
 }

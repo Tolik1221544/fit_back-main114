@@ -41,7 +41,6 @@
         public string? Period { get; set; }
         public string UsageDate { get; set; } = string.Empty;
 
-        // ✅ НОВЫЕ ПОЛЯ
         public string CoinSource { get; set; } = "permanent";
         public DateTime? ExpiryDate { get; set; }
         public bool IsExpired { get; set; } = false;

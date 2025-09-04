@@ -1,6 +1,8 @@
 ﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using FitnessTracker.API.Data;
+using FitnessTracker.API.Models;
+using FitnessTracker.API.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 namespace FitnessTracker.API.Services
@@ -62,7 +64,7 @@ namespace FitnessTracker.API.Services
                     t.ExpiryDate.HasValue &&
                     t.ExpiryDate <= now &&
                     !t.IsExpired &&
-                    t.Amount > 0) 
+                    t.Amount > 0)  
                 .ToListAsync();
 
             if (!expiredTransactions.Any())
@@ -118,7 +120,7 @@ namespace FitnessTracker.API.Services
                         Description = $"Subscription coins expired ({totalExpiredCoins} coins)",
                         CoinSource = "subscription",
                         FeatureUsed = "auto_expiry",
-                        IsExpired = false 
+                        IsExpired = false  
                     };
 
                     context.LwCoinTransactions.Add(expiryTransaction);
@@ -138,6 +140,7 @@ namespace FitnessTracker.API.Services
         private async Task NotifyUserAboutExpiredCoinsAsync(string userId, decimal expiredAmount)
         {
             _logger.LogInformation($"📧 Notification queued for user {userId}: {expiredAmount} coins expired");
+
             await Task.CompletedTask;
         }
     }

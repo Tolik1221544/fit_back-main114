@@ -125,16 +125,20 @@ namespace FitnessTracker.API.Services
                     {
                         Id = Guid.NewGuid().ToString(),
                         Email = email,
-                        Name = GetUserNameForEmail(email),
+                        Name = "",  
                         RegisteredVia = "email",
                         Level = 1,
                         Experience = 0,
-                        LwCoins = 50,  
-                        FractionalLwCoins = 50.0,  
+                        LwCoins = 0,  
+                        FractionalLwCoins = 0.0,
                         ReferralCode = referralCode,
                         JoinedAt = DateTime.UtcNow,
                         LastMonthlyRefill = DateTime.UtcNow,
-                        IsEmailConfirmed = true
+                        IsEmailConfirmed = true,
+                        Age = 0,  
+                        Gender = "",  
+                        Weight = 0,  
+                        Height = 0   
                     };
 
                     try

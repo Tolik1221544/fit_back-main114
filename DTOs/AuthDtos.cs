@@ -29,6 +29,13 @@ namespace FitnessTracker.API.DTOs
         public UserDto User { get; set; } = new UserDto();
     }
 
+    public class AppleAuthRequest
+    {
+        public string IdToken { get; set; } = string.Empty;
+        public string? AuthorizationCode { get; set; }
+        public string? User { get; set; } 
+    }
+
     public class GoogleTokenResponse
     {
         public string access_token { get; set; } = string.Empty;

@@ -15,6 +15,7 @@ namespace FitnessTracker.API.Controllers
     {
         private readonly IAuthService _authService;
         private readonly IGoogleAuthService _googleAuthService;
+        private readonly IAppleAuthService _appleAuthService; 
         private readonly IUserRepository _userRepository;
         private readonly IActivityService _activityService;
         private readonly IFoodIntakeService _foodIntakeService;
@@ -24,6 +25,7 @@ namespace FitnessTracker.API.Controllers
         public AuthController(
             IAuthService authService,
             IGoogleAuthService googleAuthService,
+            IAppleAuthService appleAuthService, 
             IUserRepository userRepository,
             IActivityService activityService,
             IFoodIntakeService foodIntakeService,
@@ -32,6 +34,7 @@ namespace FitnessTracker.API.Controllers
         {
             _authService = authService;
             _googleAuthService = googleAuthService;
+            _appleAuthService = appleAuthService; 
             _userRepository = userRepository;
             _activityService = activityService;
             _foodIntakeService = foodIntakeService;
@@ -152,6 +155,41 @@ namespace FitnessTracker.API.Controllers
             }
             catch (Exception ex)
             {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("apple")]
+        [ProducesResponseType(typeof(AuthResponseDto), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> AppleAuth([FromBody] AppleAuthRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.IdToken))
+                {
+                    _logger.LogWarning("No idToken provided in Apple auth request");
+                    return BadRequest(new { error = "idToken is required" });
+                }
+
+                _logger.LogInformation($"🍎 Processing Apple ID token authentication");
+
+                var result = await _appleAuthService.AuthenticateWithIdTokenAsync(request.IdToken, request.AuthorizationCode);
+
+                _logger.LogInformation($"🍎 Apple authentication successful for user: {result.User.Email}");
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning($"🍎 Apple authentication failed: {ex.Message}");
+                return Unauthorized(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"🍎 Apple authentication error: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
                 return BadRequest(new { error = ex.Message });
             }
         }

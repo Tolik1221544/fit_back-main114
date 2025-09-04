@@ -17,6 +17,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHostedService<CoinExpiryHostedService>();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IAppleAuthService, AppleAuthService>();
+builder.Services.AddHttpClient<AppleAuthService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.Add("User-Agent", "FitnessTracker-API/3.0.0");
+});
 builder.Services.AddLogging(logging =>
 {
     logging.ClearProviders();
@@ -241,7 +247,6 @@ builder.Services.AddCors(options =>
             .AllowCredentials();
     });
 
-    // ✅ НОВАЯ ПОЛИТИКА для поддомена
     options.AddPolicy("Production", policy =>
     {
         policy
@@ -358,7 +363,84 @@ using (var scope = app.Services.CreateScope())
             }
         }
 
-        Console.WriteLine("✅ Database initialized successfully!");
+        Console.WriteLine("🔄 Checking for coin management schema updates...");
+
+        await context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS UserCoinBalances (
+                Id TEXT PRIMARY KEY,
+                UserId TEXT NOT NULL,
+                SubscriptionCoins REAL DEFAULT 0,
+                ReferralCoins REAL DEFAULT 0,
+                BonusCoins REAL DEFAULT 0,
+                PermanentCoins REAL DEFAULT 0,
+                RegistrationCoins REAL DEFAULT 0,
+                UpdatedAt TEXT NOT NULL,
+                FOREIGN KEY (UserId) REFERENCES Users(Id) ON DELETE CASCADE
+            )
+        ");
+        Console.WriteLine("✅ UserCoinBalances table created/verified");
+
+        var tableInfo = await context.Database.ExecuteSqlRawAsync(@"
+            SELECT COUNT(*) FROM pragma_table_info('LwCoinTransactions') WHERE name = 'CoinSource'
+        ");
+
+        var hasColumn = await context.Database.ExecuteSqlRawAsync(
+            "SELECT COUNT(*) as count FROM pragma_table_info('LwCoinTransactions') WHERE name = 'CoinSource'") > 0;
+
+        if (!hasColumn)
+        {
+            Console.WriteLine("📦 Adding new columns to LwCoinTransactions table...");
+
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE LwCoinTransactions ADD COLUMN CoinSource TEXT DEFAULT 'permanent'");
+                Console.WriteLine("✅ Added CoinSource column");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ CoinSource column might already exist: {ex.Message}");
+            }
+
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE LwCoinTransactions ADD COLUMN ExpiryDate TEXT NULL");
+                Console.WriteLine("✅ Added ExpiryDate column");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ ExpiryDate column might already exist: {ex.Message}");
+            }
+
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE LwCoinTransactions ADD COLUMN IsExpired INTEGER DEFAULT 0");
+                Console.WriteLine("✅ Added IsExpired column");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ IsExpired column might already exist: {ex.Message}");
+            }
+
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE LwCoinTransactions ADD COLUMN SubscriptionId TEXT NULL");
+                Console.WriteLine("✅ Added SubscriptionId column");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ SubscriptionId column might already exist: {ex.Message}");
+            }
+        }
+        else
+        {
+            Console.WriteLine("✅ LwCoinTransactions table already has new columns");
+        }
+
+        Console.WriteLine("✅ Database initialized and updated successfully!");
     }
     catch (Exception ex)
     {
@@ -480,7 +562,6 @@ app.Use(async (context, next) =>
     {
         var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
 
-        // Только для AI endpoints
         if (context.Request.Path.StartsWithSegments("/api/ai"))
         {
             var lang = acceptLanguage.ToLower().Substring(0, Math.Min(2, acceptLanguage.Length));

@@ -118,6 +118,32 @@ namespace FitnessTracker.API.Services
             await _userRepository.DeleteAsync(userId);
         }
 
+        public async Task DeleteUserCompletelyAsync(string userId)
+        {
+            try
+            {
+                _logger.LogInformation($"🗑️ Starting complete deletion for user {userId}");
+
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user == null)
+                {
+                    _logger.LogWarning($"User {userId} not found for deletion");
+                    return;
+                }
+
+                var userEmail = user.Email;
+
+                await _userRepository.DeleteAsync(userId);
+
+                _logger.LogInformation($"✅ Successfully deleted all data for user {userId} ({userEmail})");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error during complete user deletion: {ex.Message}");
+                throw new InvalidOperationException($"Failed to delete user account: {ex.Message}");
+            }
+        }
+
         private (int MaxExperience, int ExperienceToNextLevel, decimal ExperienceProgress) CalculateExperienceData(int level, int currentExperience)
         {
             int currentLevelMinExperience = level > 1 && level - 1 < LevelExperienceRequirements.Length

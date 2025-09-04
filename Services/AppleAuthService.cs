@@ -1,111 +1,85 @@
 ﻿using FitnessTracker.API.DTOs;
 using FitnessTracker.API.Models;
 using FitnessTracker.API.Repositories;
-using Google.Apis.Auth;
 using AutoMapper;
+using System.IdentityModel.Tokens.Jwt;
+using Microsoft.IdentityModel.Tokens;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace FitnessTracker.API.Services
 {
-    public class GoogleAuthService : IGoogleAuthService
+    public interface IAppleAuthService
+    {
+        Task<AuthResponseDto> AuthenticateWithIdTokenAsync(string idToken, string? authorizationCode = null);
+    }
+
+    public class AppleAuthService : IAppleAuthService
     {
         private readonly IUserRepository _userRepository;
         private readonly IAuthService _authService;
         private readonly ILwCoinService _lwCoinService;
         private readonly IMapper _mapper;
         private readonly IConfiguration _configuration;
-        private readonly ILogger<GoogleAuthService> _logger;
+        private readonly ILogger<AppleAuthService> _logger;
         private readonly HttpClient _httpClient;
 
-        public GoogleAuthService(
+        public AppleAuthService(
             IUserRepository userRepository,
             IAuthService authService,
+            ILwCoinService lwCoinService,
             IMapper mapper,
             IConfiguration configuration,
-            ILogger<GoogleAuthService> logger,
+            ILogger<AppleAuthService> logger,
             HttpClient httpClient)
         {
             _userRepository = userRepository;
             _authService = authService;
+            _lwCoinService = lwCoinService;
             _mapper = mapper;
             _configuration = configuration;
             _logger = logger;
             _httpClient = httpClient;
         }
 
-        public async Task<AuthResponseDto> AuthenticateWithIdTokenAsync(string idToken)
+        /// <summary>
+        /// 🍎 Аутентификация через Apple ID token (Firebase или прямой)
+        /// </summary>
+        public async Task<AuthResponseDto> AuthenticateWithIdTokenAsync(string idToken, string? authorizationCode = null)
         {
             try
             {
-                var androidClientId = "810583785090-3alv9frm8kllkvm1bvjhs3frtmkt0tr3.apps.googleusercontent.com";
-                var webClientId = "810583785090-j8c5du1shjc3auabhofnukkskroabavu.apps.googleusercontent.com";
+                _logger.LogInformation($"🍎 Validating Apple ID token");
 
-                var configClientId = _configuration["GoogleAuth:ClientId"];
+                var handler = new JwtSecurityTokenHandler();
+                var jsonToken = handler.ReadJwtToken(idToken);
 
-                _logger.LogInformation($"🔐 Validating Google ID token");
-                _logger.LogInformation($"Android ClientId: {androidClientId}");
-                _logger.LogInformation($"Web ClientId: {webClientId}");
-                _logger.LogInformation($"Config ClientId: {configClientId}");
+                var email = jsonToken.Claims.FirstOrDefault(c => c.Type == "email")?.Value;
+                var sub = jsonToken.Claims.FirstOrDefault(c => c.Type == "sub")?.Value; // Apple User ID
+                var emailVerified = jsonToken.Claims.FirstOrDefault(c => c.Type == "email_verified")?.Value;
 
-                GoogleJsonWebSignature.Payload? payload = null;
-                Exception? lastException = null;
-
-                var clientIds = new[] { androidClientId, webClientId, configClientId }.Where(id => !string.IsNullOrEmpty(id)).Distinct().ToArray();
-
-                foreach (var clientId in clientIds)
+                var firebaseSign = jsonToken.Claims.FirstOrDefault(c => c.Type == "firebase")?.Value;
+                if (!string.IsNullOrEmpty(firebaseSign))
                 {
-                    try
-                    {
-                        _logger.LogInformation($"Trying to validate with ClientId: {clientId}");
-
-                        payload = await GoogleJsonWebSignature.ValidateAsync(idToken, new GoogleJsonWebSignature.ValidationSettings
-                        {
-                            Audience = new[] { clientId }
-                        });
-
-                        if (payload != null)
-                        {
-                            _logger.LogInformation($"✅ Token validated successfully with ClientId: {clientId}");
-                            break;
-                        }
-                    }
-                    catch (InvalidJwtException ex)
-                    {
-                        _logger.LogWarning($"❌ Validation failed with ClientId {clientId}: {ex.Message}");
-                        lastException = ex;
-                    }
+                    _logger.LogInformation($"🍎 Token from Firebase detected");
+                    email = email ?? jsonToken.Claims.FirstOrDefault(c => c.Type == "user_id")?.Value;
                 }
 
-                if (payload == null)
+                if (string.IsNullOrEmpty(email) && !string.IsNullOrEmpty(sub))
                 {
-                    try
-                    {
-                        _logger.LogWarning($"⚠️ Trying to validate without audience check (less secure)");
-                        payload = await GoogleJsonWebSignature.ValidateAsync(idToken);
-                        _logger.LogInformation($"✅ Token validated without audience check");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError($"❌ Token validation failed completely: {ex.Message}");
-                        throw new UnauthorizedAccessException($"Invalid Google ID token: {lastException?.Message ?? ex.Message}");
-                    }
+                    email = $"{sub}@privaterelay.appleid.com";
+                    _logger.LogWarning($"🍎 Email not provided, using Apple ID: {email}");
                 }
 
-                if (payload.EmailVerified != true)
-                {
-                    throw new UnauthorizedAccessException("Email not verified by Google");
-                }
-
-                var email = payload.Email;
                 if (string.IsNullOrEmpty(email))
                 {
-                    throw new UnauthorizedAccessException("Unable to get email from Google token");
+                    throw new UnauthorizedAccessException("Unable to get email from Apple token");
                 }
 
-                _logger.LogInformation($"✅ Google ID token validated for email: {email}");
-                _logger.LogInformation($"User info - Name: {payload.Name}, Subject: {payload.Subject}");
+                _logger.LogInformation($"🍎 Apple ID token validated for email: {email}");
 
-                var user = await GetOrCreateUserAsync(email, payload.Name, "google");
+                var user = await GetOrCreateUserAsync(email, sub, "apple");
 
                 var jwtToken = await _authService.GenerateJwtTokenAsync(user.Id);
 
@@ -117,31 +91,17 @@ namespace FitnessTracker.API.Services
                     User = userDto
                 };
             }
-            catch (InvalidJwtException ex)
-            {
-                _logger.LogError($"❌ Invalid Google ID token: {ex.Message}");
-                throw new UnauthorizedAccessException($"Invalid Google ID token: {ex.Message}");
-            }
             catch (Exception ex)
             {
-                _logger.LogError($"❌ Google ID token authentication error: {ex.Message}");
-                _logger.LogError($"Stack trace: {ex.StackTrace}");
-                throw;
+                _logger.LogError($"❌ Apple authentication error: {ex.Message}");
+                throw new UnauthorizedAccessException($"Invalid Apple ID token: {ex.Message}");
             }
         }
 
-        public async Task<AuthResponseDto> AuthenticateWithServerCodeAsync(string serverAuthCode)
-        {
-            _logger.LogWarning($"⚠️ AuthenticateWithServerCodeAsync called but Flutter cannot provide serverAuthCode");
-            throw new NotSupportedException("Flutter client cannot provide serverAuthCode. Use idToken instead.");
-        }
-
-        public async Task<AuthResponseDto> AuthenticateGoogleTokenAsync(string googleToken)
-        {
-            return await AuthenticateWithIdTokenAsync(googleToken);
-        }
-
-        private async Task<User> GetOrCreateUserAsync(string email, string? googleName, string registeredVia)
+        /// <summary>
+        /// 👤 Создание или получение пользователя
+        /// </summary>
+        private async Task<User> GetOrCreateUserAsync(string email, string? appleUserId, string registeredVia)
         {
             email = email.Trim().ToLowerInvariant();
 
@@ -149,8 +109,33 @@ namespace FitnessTracker.API.Services
 
             if (existingUser != null)
             {
-
                 _logger.LogInformation($"✅ Existing user found: {email}");
+
+                bool needsUpdate = false;
+
+                if (!existingUser.IsEmailConfirmed)
+                {
+                    existingUser.IsEmailConfirmed = true;
+                    needsUpdate = true;
+                }
+
+                if (string.IsNullOrEmpty(existingUser.ReferralCode))
+                {
+                    existingUser.ReferralCode = await GenerateUniqueReferralCodeAsync();
+                    needsUpdate = true;
+                }
+
+                if (!string.IsNullOrEmpty(appleUserId) && existingUser.AppleUserId != appleUserId)
+                {
+                    existingUser.AppleUserId = appleUserId;
+                    needsUpdate = true;
+                }
+
+                if (needsUpdate)
+                {
+                    await _userRepository.UpdateAsync(existingUser);
+                }
+
                 return existingUser;
             }
             else
@@ -163,6 +148,7 @@ namespace FitnessTracker.API.Services
                     Email = email,
                     Name = "",  
                     RegisteredVia = registeredVia,
+                    AppleUserId = appleUserId, 
                     Level = 1,
                     Experience = 0,
                     LwCoins = 0,  
@@ -173,15 +159,16 @@ namespace FitnessTracker.API.Services
                     LastMonthlyRefill = DateTime.UtcNow,
                     Age = 0,  
                     Gender = "",  
-                    Weight = 0,  
-                    Height = 0   
+                    Weight = 0, 
+                    Height = 0, 
+                    Locale = "ru_RU"
                 };
 
                 var createdUser = await _userRepository.CreateAsync(newUser);
 
                 await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
 
-                _logger.LogInformation($"✅ New user created via Google: {email}");
+                _logger.LogInformation($"✅ New user created via Apple: {email} with 50 bonus coins");
                 return createdUser;
             }
         }
@@ -241,16 +228,5 @@ namespace FitnessTracker.API.Services
                 ExperienceProgress: Math.Round(progress, 1)
             );
         }
-    }
-
-    public class GoogleUserInfo
-    {
-        public string Id { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty;
-        public string Given_Name { get; set; } = string.Empty;
-        public string Family_Name { get; set; } = string.Empty;
-        public string Picture { get; set; } = string.Empty;
-        public bool Verified_Email { get; set; }
     }
 }

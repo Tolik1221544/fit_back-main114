@@ -118,8 +118,12 @@ namespace FitnessTracker.API.Services
 
                 IsPremium = isPremium,
                 PremiumExpiresAt = premiumExpiresAt,
-                NextRefillDate = GetNextRefillDate(user.LastMonthlyRefill),
-                PremiumNotification = notification
+                NextRefillDate = DateTime.MaxValue, 
+                PremiumNotification = notification,
+
+                MonthlyAllowance = 0,
+                UsedThisMonth = 0,
+                RemainingThisMonth = (int)balanceDetails.TotalCoins
             };
         }
 
@@ -396,6 +400,23 @@ namespace FitnessTracker.API.Services
             return true;
         }
 
+        public async Task<bool> ProcessMonthlyRefillAsync(string userId)
+        {
+            try
+            {
+
+                _logger.LogInformation($"ProcessMonthlyRefillAsync called for user {userId} - no action taken (monthly refills disabled)");
+
+                await Task.CompletedTask;
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error in ProcessMonthlyRefillAsync: {ex.Message}");
+                return false;
+            }
+        }
+
         public async Task<LwCoinLimitsDto> GetUserLimitsAsync(string userId)
         {
             var balanceDetails = await GetDetailedBalanceAsync(userId);
@@ -446,7 +467,7 @@ namespace FitnessTracker.API.Services
 
         private DateTime GetNextRefillDate(DateTime lastRefill)
         {
-            return new DateTime(lastRefill.Year, lastRefill.Month, 1).AddMonths(1);
+            return DateTime.MaxValue;
         }
 
         private async Task<PremiumNotificationDto?> GeneratePremiumNotificationAsync(string userId, bool isPremium, DateTime? premiumExpiresAt)
