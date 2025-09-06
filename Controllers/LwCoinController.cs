@@ -287,17 +287,4 @@ namespace FitnessTracker.API.Controllers
             });
         }
     }
-
-    public class SetBalanceRequest
-    {
-        public decimal Amount { get; set; }
-        public string? Source { get; set; } = "manual";
-    }
-
-    public class PurchaseSubscriptionRequest
-    {
-        public int CoinsAmount { get; set; }
-        public int DurationDays { get; set; }
-        public decimal Price { get; set; }
-    }
 }

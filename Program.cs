@@ -380,17 +380,24 @@ using (var scope = app.Services.CreateScope())
         ");
         Console.WriteLine("✅ UserCoinBalances table created/verified");
 
-        var tableInfo = await context.Database.ExecuteSqlRawAsync(@"
-            SELECT COUNT(*) FROM pragma_table_info('LwCoinTransactions') WHERE name = 'CoinSource'
-        ");
+        Console.WriteLine("🔄 Checking LwCoinTransactions table columns...");
 
-        var hasColumn = await context.Database.ExecuteSqlRawAsync(
-            "SELECT COUNT(*) as count FROM pragma_table_info('LwCoinTransactions') WHERE name = 'CoinSource'") > 0;
-
-        if (!hasColumn)
+        var coinSourceExists = false;
+        try
         {
-            Console.WriteLine("📦 Adding new columns to LwCoinTransactions table...");
+            var result = await context.Database
+                .SqlQueryRaw<int>("SELECT COUNT(*) as Value FROM pragma_table_info('LwCoinTransactions') WHERE name = 'CoinSource'")
+                .ToListAsync();
+            coinSourceExists = result.FirstOrDefault() > 0;
+        }
+        catch
+        {
+            coinSourceExists = false;
+        }
 
+        if (!coinSourceExists)
+        {
+            Console.WriteLine("📦 Adding CoinSource column...");
             try
             {
                 await context.Database.ExecuteSqlRawAsync(
@@ -399,9 +406,30 @@ using (var scope = app.Services.CreateScope())
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️ CoinSource column might already exist: {ex.Message}");
+                Console.WriteLine($"⚠️ Failed to add CoinSource column: {ex.Message}");
             }
+        }
+        else
+        {
+            Console.WriteLine("✅ CoinSource column already exists");
+        }
 
+        var expiryDateExists = false;
+        try
+        {
+            var result = await context.Database
+                .SqlQueryRaw<int>("SELECT COUNT(*) as Value FROM pragma_table_info('LwCoinTransactions') WHERE name = 'ExpiryDate'")
+                .ToListAsync();
+            expiryDateExists = result.FirstOrDefault() > 0;
+        }
+        catch
+        {
+            expiryDateExists = false;
+        }
+
+        if (!expiryDateExists)
+        {
+            Console.WriteLine("📦 Adding ExpiryDate column...");
             try
             {
                 await context.Database.ExecuteSqlRawAsync(
@@ -410,9 +438,30 @@ using (var scope = app.Services.CreateScope())
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️ ExpiryDate column might already exist: {ex.Message}");
+                Console.WriteLine($"⚠️ Failed to add ExpiryDate column: {ex.Message}");
             }
+        }
+        else
+        {
+            Console.WriteLine("✅ ExpiryDate column already exists");
+        }
 
+        var isExpiredExists = false;
+        try
+        {
+            var result = await context.Database
+                .SqlQueryRaw<int>("SELECT COUNT(*) as Value FROM pragma_table_info('LwCoinTransactions') WHERE name = 'IsExpired'")
+                .ToListAsync();
+            isExpiredExists = result.FirstOrDefault() > 0;
+        }
+        catch
+        {
+            isExpiredExists = false;
+        }
+
+        if (!isExpiredExists)
+        {
+            Console.WriteLine("📦 Adding IsExpired column...");
             try
             {
                 await context.Database.ExecuteSqlRawAsync(
@@ -421,9 +470,30 @@ using (var scope = app.Services.CreateScope())
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️ IsExpired column might already exist: {ex.Message}");
+                Console.WriteLine($"⚠️ Failed to add IsExpired column: {ex.Message}");
             }
+        }
+        else
+        {
+            Console.WriteLine("✅ IsExpired column already exists");
+        }
 
+        var subscriptionIdExists = false;
+        try
+        {
+            var result = await context.Database
+                .SqlQueryRaw<int>("SELECT COUNT(*) as Value FROM pragma_table_info('LwCoinTransactions') WHERE name = 'SubscriptionId'")
+                .ToListAsync();
+            subscriptionIdExists = result.FirstOrDefault() > 0;
+        }
+        catch
+        {
+            subscriptionIdExists = false;
+        }
+
+        if (!subscriptionIdExists)
+        {
+            Console.WriteLine("📦 Adding SubscriptionId column...");
             try
             {
                 await context.Database.ExecuteSqlRawAsync(
@@ -432,16 +502,50 @@ using (var scope = app.Services.CreateScope())
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️ SubscriptionId column might already exist: {ex.Message}");
+                Console.WriteLine($"⚠️ Failed to add SubscriptionId column: {ex.Message}");
             }
         }
         else
         {
-            Console.WriteLine("✅ LwCoinTransactions table already has new columns");
+            Console.WriteLine("✅ SubscriptionId column already exists");
+        }
+
+        Console.WriteLine("🔄 Checking Users table columns...");
+        var appleUserIdExists = false;
+        try
+        {
+            var result = await context.Database
+                .SqlQueryRaw<int>("SELECT COUNT(*) as Value FROM pragma_table_info('Users') WHERE name = 'AppleUserId'")
+                .ToListAsync();
+            appleUserIdExists = result.FirstOrDefault() > 0;
+        }
+        catch
+        {
+            appleUserIdExists = false;
+        }
+
+        if (!appleUserIdExists)
+        {
+            Console.WriteLine("📦 Adding AppleUserId column to Users table...");
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE Users ADD COLUMN AppleUserId TEXT NULL");
+                Console.WriteLine("✅ AppleUserId column added successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ Could not add AppleUserId column: {ex.Message}");
+            }
+        }
+        else
+        {
+            Console.WriteLine("✅ AppleUserId column already exists");
         }
 
         Console.WriteLine("✅ Database initialized and updated successfully!");
     }
+
     catch (Exception ex)
     {
         Console.WriteLine($"❌ Database initialization error: {ex.Message}");
