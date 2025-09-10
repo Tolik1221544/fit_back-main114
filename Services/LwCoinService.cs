@@ -102,7 +102,7 @@ namespace FitnessTracker.API.Services
             var premiumExpiresAt = await GetPremiumExpiryAsync(userId);
             var notification = await GeneratePremiumNotificationAsync(userId, isPremium, premiumExpiresAt);
 
-            return new LwCoinBalanceDto
+            var balanceDto = new LwCoinBalanceDto
             {
                 Balance = (int)Math.Floor(user.FractionalLwCoins),
 
@@ -118,18 +118,32 @@ namespace FitnessTracker.API.Services
 
                 IsPremium = isPremium,
                 PremiumExpiresAt = premiumExpiresAt,
-                NextRefillDate = DateTime.MaxValue, 
+                NextRefillDate = DateTime.MaxValue,
                 PremiumNotification = notification,
 
                 MonthlyAllowance = 0,
                 UsedThisMonth = 0,
                 RemainingThisMonth = (int)balanceDetails.TotalCoins
             };
+
+            var subscriptions = await _lwCoinRepository.GetUserSubscriptionsAsync(userId);
+            var activeSubscription = subscriptions
+                .Where(s => s.Type.StartsWith("coin_subscription_") &&
+                            s.ExpiresAt.HasValue &&
+                            s.ExpiresAt > DateTime.UtcNow)
+                .FirstOrDefault();
+
+            if (activeSubscription != null)
+            {
+                balanceDto.HasActiveSubscription = true;
+                balanceDto.SubscriptionExpiresAt = activeSubscription.ExpiresAt;
+                balanceDto.SubscriptionCoinsTotal = ExtractCoinsFromType(activeSubscription.Type);
+                balanceDto.SubscriptionCoinsRemaining = (int)balanceDetails.SubscriptionCoins;
+            }
+
+            return balanceDto;
         }
 
-        /// <summary>
-        /// Основной метод траты монет с новыми ценами
-        /// </summary>
         public async Task<bool> SpendLwCoinsAsync(string userId, int legacyAmount, string type, string description, string featureUsed = "")
         {
             var user = await _userRepository.GetByIdAsync(userId);
@@ -440,6 +454,39 @@ namespace FitnessTracker.API.Services
             };
         }
 
+        public async Task<SubscriptionStatusDto> GetSubscriptionStatusAsync(string userId)
+        {
+            var subscriptions = await _lwCoinRepository.GetUserSubscriptionsAsync(userId);
+            var activeSubscription = subscriptions
+                .Where(s => s.Type.StartsWith("coin_subscription_") &&
+                            s.ExpiresAt.HasValue &&
+                            s.ExpiresAt > DateTime.UtcNow)
+                .FirstOrDefault();
+
+            if (activeSubscription == null)
+            {
+                return new SubscriptionStatusDto
+                {
+                    HasActiveSubscription = false
+                };
+            }
+
+            var coinsAmount = ExtractCoinsFromType(activeSubscription.Type);
+            var balanceDetails = await GetDetailedBalanceAsync(userId);
+
+            return new SubscriptionStatusDto
+            {
+                HasActiveSubscription = true,
+                SubscriptionId = activeSubscription.Id,
+                ExpiresAt = activeSubscription.ExpiresAt,
+                PurchasedCoins = coinsAmount,
+                RemainingCoins = (int)balanceDetails.SubscriptionCoins,
+                UsedCoins = coinsAmount - (int)balanceDetails.SubscriptionCoins,
+                DaysRemaining = activeSubscription.ExpiresAt.HasValue ?
+                    (int)(activeSubscription.ExpiresAt.Value - DateTime.UtcNow).TotalDays : 0
+            };
+        }
+
         private async Task<bool> IsUserPremiumAsync(string userId)
         {
             var subscriptions = await _lwCoinRepository.GetUserSubscriptionsAsync(userId);
@@ -492,9 +539,6 @@ namespace FitnessTracker.API.Services
             return null;
         }
 
-        /// <summary>
-        /// Создание транзакции с расширенными параметрами
-        /// </summary>
         private async Task CreateTransactionAsync(string userId, int amount, decimal fractionalAmount,
             string type, string description, string featureUsed = "", string coinSource = "permanent",
             decimal? price = null, string period = "")
@@ -515,5 +559,16 @@ namespace FitnessTracker.API.Services
 
             await _lwCoinRepository.CreateTransactionAsync(transaction);
         }
+
+        private int ExtractCoinsFromType(string subscriptionType)
+        {
+            var parts = subscriptionType.Split('_');
+            if (parts.Length == 3 && int.TryParse(parts[2], out var coins))
+            {
+                return coins;
+            }
+            return 0;
+        }
+
     }
 }

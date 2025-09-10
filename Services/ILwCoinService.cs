@@ -12,6 +12,7 @@ namespace FitnessTracker.API.Services
         Task<bool> PurchasePremiumAsync(string userId, PurchasePremiumRequest request);
         Task<bool> PurchaseCoinPackAsync(string userId, PurchaseCoinPackRequest request);
         Task<LwCoinLimitsDto> GetUserLimitsAsync(string userId);
+        Task<SubscriptionStatusDto> GetSubscriptionStatusAsync(string userId);
 
         Task<bool> SetUserCoinsAsync(string userId, decimal amount, string source = "manual");
         Task<bool> AddRegistrationBonusAsync(string userId);

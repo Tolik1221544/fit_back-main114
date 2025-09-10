@@ -8,7 +8,7 @@
         public DateTime NextRefillDate { get; set; }
         public PremiumNotificationDto? PremiumNotification { get; set; }
 
-        public object? DetailedBalance { get; set; } 
+        public object? DetailedBalance { get; set; }
 
         public int MonthlyAllowance { get; set; }
         public int UsedThisMonth { get; set; }
@@ -16,6 +16,11 @@
         public decimal DailyUsage { get; set; }
         public decimal DailyLimit { get; set; }
         public decimal DailyRemaining { get; set; }
+
+        public bool HasActiveSubscription { get; set; }
+        public DateTime? SubscriptionExpiresAt { get; set; }
+        public int? SubscriptionCoinsTotal { get; set; }
+        public int? SubscriptionCoinsRemaining { get; set; }
     }
 
     public class SpendLwCoinsRequest
@@ -94,6 +99,17 @@
         public int CoinsAmount { get; set; }
         public int DurationDays { get; set; }
         public decimal Price { get; set; }
+    }
+
+    public class SubscriptionStatusDto
+    {
+        public bool HasActiveSubscription { get; set; }
+        public string? SubscriptionId { get; set; }
+        public DateTime? ExpiresAt { get; set; }
+        public int PurchasedCoins { get; set; }
+        public int RemainingCoins { get; set; }
+        public int UsedCoins { get; set; }
+        public int DaysRemaining { get; set; }
     }
 
 }
