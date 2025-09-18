@@ -88,7 +88,7 @@ namespace FitnessTracker.API.Controllers
                 }
 
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_voice_workout",
-                    "AI Voice Workout", "voice");
+                    "AI Voice Workout", "ai_voice_workout"); 
 
                 if (!canSpend)
                 {
@@ -213,7 +213,7 @@ namespace FitnessTracker.API.Controllers
                 _logger.LogInformation($"🗣️ Voice food for user {userId} with locale: {userLocale}");
 
                 var canSpend = await _lwCoinService.SpendLwCoinsAsync(userId, 1, "ai_voice_food",
-                    "AI Voice Food", "voice");
+                    "AI Voice Food", "ai_voice_food"); 
 
                 if (!canSpend)
                 {

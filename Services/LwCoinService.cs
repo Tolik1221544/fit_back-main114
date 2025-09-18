@@ -188,6 +188,7 @@ namespace FitnessTracker.API.Services
             return featureUsed.ToLowerInvariant() switch
             {
                 "photo" or "ai_food_scan" or "food_scan" => PHOTO_FOOD_SCAN_COST,
+                "voice" => VOICE_FOOD_SCAN_COST,
                 "voice_food" or "ai_voice_food" => VOICE_FOOD_SCAN_COST,
                 "voice_workout" or "ai_voice_workout" => VOICE_WORKOUT_COST,
 
@@ -196,7 +197,7 @@ namespace FitnessTracker.API.Services
                 "text_workout" or "ai_text_workout" => TEXT_WORKOUT_COST,
                 "body_analysis" or "ai_body_scan" => BODY_ANALYSIS_COST,
 
-                _ => 0.0m 
+                _ => 0.0m
             };
         }
 
