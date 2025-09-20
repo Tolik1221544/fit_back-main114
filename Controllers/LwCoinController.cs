@@ -91,8 +91,6 @@ namespace FitnessTracker.API.Controllers
         /// </summary>
         /// <param name="request">Данные подписки</param>
         [HttpPost("purchase-subscription")]
-        [ProducesResponseType(200)]
-        [ProducesResponseType(400)]
         public async Task<IActionResult> PurchaseSubscription([FromBody] PurchaseSubscriptionRequest request)
         {
             try
@@ -101,11 +99,54 @@ namespace FitnessTracker.API.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized();
 
+                // Подробное логирование входящего запроса
+                _logger.LogInformation($"📱 Purchase subscription request from user {userId}");
+                _logger.LogInformation($"   CoinsAmount: {request.CoinsAmount}");
+                _logger.LogInformation($"   DurationDays: {request.DurationDays}");
+                _logger.LogInformation($"   Price: {request.Price}");
+
+                // Если пришли нули, пытаемся определить пакет по цене
+                if (request.CoinsAmount == 0 && request.Price > 0)
+                {
+                    _logger.LogWarning($"⚠️ Received zero coins, attempting to determine package by price: ${request.Price}");
+
+                    // Определяем пакет по цене
+                    (request.CoinsAmount, request.DurationDays) = request.Price switch
+                    {
+                        0.99m => (50, 7),   // Недельная подписка
+                        1.99m => (100, 14), // Двухнедельная
+                        2.99m => (100, 30), // Месячная базовая (как в заказе)
+                        3.99m => (200, 30), // Месячная стандарт
+                        7.99m => (500, 30), // Месячная премиум
+                        8.99m => (9999, 30), // Безлимит
+                        _ => (0, 0)
+                    };
+
+                    _logger.LogInformation($"📦 Determined package: {request.CoinsAmount} coins for {request.DurationDays} days");
+                }
+
+                // Проверка после попытки определения
                 if (request.CoinsAmount <= 0)
-                    return BadRequest(new { error = "Coins amount must be positive" });
+                {
+                    _logger.LogError($"❌ Invalid coins amount: {request.CoinsAmount}");
+                    return BadRequest(new
+                    {
+                        error = "Coins amount must be positive",
+                        receivedCoins = request.CoinsAmount,
+                        receivedPrice = request.Price
+                    });
+                }
 
                 if (request.DurationDays <= 0)
-                    return BadRequest(new { error = "Duration must be positive" });
+                {
+                    _logger.LogError($"❌ Invalid duration: {request.DurationDays}");
+                    return BadRequest(new
+                    {
+                        error = "Duration must be positive",
+                        receivedDays = request.DurationDays,
+                        receivedPrice = request.Price
+                    });
+                }
 
                 var success = await _lwCoinService.PurchaseSubscriptionCoinsAsync(
                     userId,
@@ -116,6 +157,14 @@ namespace FitnessTracker.API.Controllers
                 if (success)
                 {
                     var expiryDate = DateTime.UtcNow.AddDays(request.DurationDays);
+
+                    _logger.LogInformation($"✅ Subscription purchased successfully:");
+                    _logger.LogInformation($"   User: {userId}");
+                    _logger.LogInformation($"   Coins: {request.CoinsAmount}");
+                    _logger.LogInformation($"   Days: {request.DurationDays}");
+                    _logger.LogInformation($"   Price: ${request.Price}");
+                    _logger.LogInformation($"   Expires: {expiryDate}");
+
                     return Ok(new
                     {
                         success = true,
@@ -126,11 +175,13 @@ namespace FitnessTracker.API.Controllers
                     });
                 }
 
+                _logger.LogError($"❌ Failed to purchase subscription for user {userId}");
                 return BadRequest(new { error = "Failed to purchase subscription" });
             }
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Error purchasing subscription: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
                 return BadRequest(new { error = ex.Message });
             }
         }
