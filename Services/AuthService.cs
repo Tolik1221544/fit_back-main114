@@ -18,10 +18,13 @@ namespace FitnessTracker.API.Services
         private readonly IConfiguration _configuration;
         private readonly IMapper _mapper;
         private readonly ILogger<AuthService> _logger;
+        private readonly IActivityService _activityService;
+        private readonly IFoodIntakeService _foodIntakeService;
 
         private static readonly string JWT_SECRET_KEY = "fitness-tracker-super-secret-key-that-is-definitely-long-enough-for-security-2024";
         private static readonly ConcurrentDictionary<string, (string Code, DateTime Expiry)> _verificationCodes = new();
 
+<<<<<<< HEAD
         private static readonly Dictionary<string, string> TestCodes = new()
         {
             { "test@lightweightfit.com", "123456" },
@@ -29,6 +32,15 @@ namespace FitnessTracker.API.Services
             { "review@lightweightfit.com", "777777" },
             { "apple.review@lightweightfit.com", "999999" },
             { "dev@lightweightfit.com", "000000" }
+=======
+        private static readonly Dictionary<string, string> TestAccounts = new()
+        {
+            { "test@lightweightfit.com", "123456" },          
+            { "demo@lightweightfit.com", "111111" },         
+            { "review@lightweightfit.com", "777777" },        
+            { "apple.review@lightweightfit.com", "999999" },  
+            { "dev@lightweightfit.com", "000000" }            
+>>>>>>> 256726b44a1526a7c91f0f56019b02232bc514e1
         };
 
         public AuthService(
@@ -37,7 +49,9 @@ namespace FitnessTracker.API.Services
             ILwCoinService lwCoinService, 
             IConfiguration configuration,
             IMapper mapper,
-            ILogger<AuthService> logger)
+            ILogger<AuthService> logger,
+            IActivityService activityService,
+            IFoodIntakeService foodIntakeService)
         {
             _userRepository = userRepository;
             _emailService = emailService;
@@ -45,6 +59,8 @@ namespace FitnessTracker.API.Services
             _configuration = configuration;
             _mapper = mapper;
             _logger = logger;
+            _activityService = activityService;
+            _foodIntakeService = foodIntakeService;
         }
 
         public async Task<bool> SendVerificationCodeAsync(string email)
@@ -54,14 +70,41 @@ namespace FitnessTracker.API.Services
                 email = email.Trim().ToLowerInvariant();
                 _logger.LogInformation($"📧 Sending verification code to {email}");
 
+<<<<<<< HEAD
                 if (TestCodes.ContainsKey(email))
                 {
                     var testCode = TestCodes[email];
+<<<<<<< HEAD
+=======
+
+=======
+                if (TestAccounts.ContainsKey(email))
+                {
+                    var testCode = TestAccounts[email];
+>>>>>>> 256726b44a1526a7c91f0f56019b02232bc514e1
+>>>>>>> 112b3bd2466885611c43be0d41921f7ee92f7aa9
                     _verificationCodes.AddOrUpdate(email,
                         (testCode, DateTime.UtcNow.AddMinutes(30)),
                         (key, oldValue) => (testCode, DateTime.UtcNow.AddMinutes(30)));
 
+<<<<<<< HEAD
                     _logger.LogInformation($"✅ Fixed code provided for: {email}");
+<<<<<<< HEAD
+=======
+                    Console.WriteLine("==================================================");
+                    Console.WriteLine($"🔑 FIXED CODE FOR TESTING");
+=======
+                    _logger.LogInformation($"✅ Test account detected: {email}");
+                    Console.WriteLine("==================================================");
+                    Console.WriteLine($"🧪 TEST ACCOUNT LOGIN");
+>>>>>>> 256726b44a1526a7c91f0f56019b02232bc514e1
+                    Console.WriteLine($"📧 Email: {email}");
+                    Console.WriteLine($"🔐 Code: {testCode}");
+                    Console.WriteLine($"⏰ Valid for 30 minutes");
+                    Console.WriteLine($"✅ Use this code in /api/auth/confirm-email");
+                    Console.WriteLine("==================================================");
+
+>>>>>>> 112b3bd2466885611c43be0d41921f7ee92f7aa9
                     return true;
                 }
 
@@ -125,20 +168,46 @@ namespace FitnessTracker.API.Services
                     {
                         Id = Guid.NewGuid().ToString(),
                         Email = email,
+<<<<<<< HEAD
                         Name = "",  
                         RegisteredVia = "email",
                         Level = 1,
                         Experience = 0,
                         LwCoins = 0,  
                         FractionalLwCoins = 0.0,
+=======
+<<<<<<< HEAD
+                        Name = GetUserNameForEmail(email), 
+                        RegisteredVia = "email",
+                        Level = 1,
+                        Experience = 0,
+                        LwCoins = 300,
+                        FractionalLwCoins = 300.0,
+=======
+                        Name = GetUserNameForEmail(email),
+                        RegisteredVia = TestAccounts.ContainsKey(email) ? "test" : "email",
+                        Level = TestAccounts.ContainsKey(email) ? 5 : 1,
+                        Experience = TestAccounts.ContainsKey(email) ? 750 : 0,
+                        LwCoins = TestAccounts.ContainsKey(email) ? 500 : 300,
+                        FractionalLwCoins = TestAccounts.ContainsKey(email) ? 500.0 : 300.0,
+>>>>>>> 256726b44a1526a7c91f0f56019b02232bc514e1
+>>>>>>> 112b3bd2466885611c43be0d41921f7ee92f7aa9
                         ReferralCode = referralCode,
-                        JoinedAt = DateTime.UtcNow,
+                        JoinedAt = TestAccounts.ContainsKey(email) ? DateTime.UtcNow.AddDays(-30) : DateTime.UtcNow,
                         LastMonthlyRefill = DateTime.UtcNow,
                         IsEmailConfirmed = true,
+<<<<<<< HEAD
                         Age = 0,  
                         Gender = "",  
                         Weight = 0,  
                         Height = 0   
+=======
+                        Age = 28,
+                        Gender = "мужской",
+                        Weight = 75,
+                        Height = 180,
+                        Locale = "ru_RU"
+>>>>>>> 112b3bd2466885611c43be0d41921f7ee92f7aa9
                     };
 
                     try
@@ -146,8 +215,15 @@ namespace FitnessTracker.API.Services
                         user = await _userRepository.CreateAsync(user);
                         _logger.LogInformation($"User created successfully: {user.Id}");
 
+<<<<<<< HEAD
                         await _lwCoinService.AddRegistrationBonusAsync(user.Id);
                         _logger.LogInformation($"🎁 Registration bonus added for new user {user.Id}");
+=======
+                        if (TestAccounts.ContainsKey(email))
+                        {
+                            _ = Task.Run(async () => await CreateDemoDataAsync(user.Id));
+                        }
+>>>>>>> 112b3bd2466885611c43be0d41921f7ee92f7aa9
                     }
                     catch (Exception ex)
                     {
@@ -212,9 +288,21 @@ namespace FitnessTracker.API.Services
                 userDto.ExperienceToNextLevel = experienceData.ExperienceToNextLevel;
                 userDto.ExperienceProgress = experienceData.ExperienceProgress;
 
+<<<<<<< HEAD
                 if (isNewUser)
                 {
                     userDto.LwCoins = 50; 
+=======
+<<<<<<< HEAD
+                if (TestCodes.ContainsKey(email))
+                {
+                    _logger.LogInformation($"🔑 Fixed code login successful: {email}");
+=======
+                if (TestAccounts.ContainsKey(email))
+                {
+                    _logger.LogInformation($"🧪 Test account login successful: {email}");
+>>>>>>> 256726b44a1526a7c91f0f56019b02232bc514e1
+>>>>>>> 112b3bd2466885611c43be0d41921f7ee92f7aa9
                 }
 
                 return new AuthResponseDto
@@ -288,6 +376,7 @@ namespace FitnessTracker.API.Services
 
         private string GetUserNameForEmail(string email)
         {
+<<<<<<< HEAD
             if (TestCodes.ContainsKey(email))
             {
                 return email switch
@@ -318,6 +407,125 @@ namespace FitnessTracker.API.Services
             }
 
             return string.IsNullOrEmpty(namePart) ? "Пользователь" : namePart;
+=======
+            return email switch
+            {
+                "test@lightweightfit.com" => "Тестовый пользователь",
+                "demo@lightweightfit.com" => "Демо пользователь",
+                "review@lightweightfit.com" => "Ревьюер",
+                "apple.review@lightweightfit.com" => "Apple Review Team",
+                "dev@lightweightfit.com" => "Разработчик",
+                _ => "Пользователь"
+            };
+        }
+
+        private async Task CreateDemoDataAsync(string userId)
+        {
+            try
+            {
+                _logger.LogInformation($"🧪 Creating demo data for test user: {userId}");
+
+                var demoActivities = new[]
+                {
+                    new AddActivityRequest
+                    {
+                        Type = "cardio",
+                        StartDate = DateTime.UtcNow.AddDays(-2),
+                        EndDate = DateTime.UtcNow.AddDays(-2).AddMinutes(30),
+                        Calories = 300,
+                        ActivityData = new ActivityDataDto
+                        {
+                            Name = "Утренняя пробежка",
+                            Category = "Cardio",
+                            Distance = 5.0m,
+                            AvgPace = "6:00 мин/км",
+                            AvgPulse = 140,
+                            MaxPulse = 165
+                        }
+                    },
+                    new AddActivityRequest
+                    {
+                        Type = "strength",
+                        StartDate = DateTime.UtcNow.AddDays(-1),
+                        EndDate = DateTime.UtcNow.AddDays(-1).AddMinutes(45),
+                        Calories = 250,
+                        ActivityData = new ActivityDataDto
+                        {
+                            Name = "Отжимания",
+                            Category = "Strength",
+                            MuscleGroup = "грудь",
+                            RestTimeSeconds = 90,
+                            Sets = new List<ActivitySetDto>
+                            {
+                                new() { SetNumber = 1, Reps = 15, IsCompleted = true },
+                                new() { SetNumber = 2, Reps = 12, IsCompleted = true },
+                                new() { SetNumber = 3, Reps = 10, IsCompleted = true }
+                            }
+                        }
+                    }
+                };
+
+                foreach (var activity in demoActivities)
+                {
+                    await _activityService.AddActivityAsync(userId, activity);
+                }
+
+                var demoFoodItems = new[]
+                {
+                    new AddFoodIntakeRequest
+                    {
+                        Items = new List<FoodItemRequest>
+                        {
+                            new()
+                            {
+                                Name = "Овсяная каша с фруктами",
+                                Weight = 250,
+                                WeightType = "g",
+                                NutritionPer100g = new NutritionPer100gDto
+                                {
+                                    Calories = 200,
+                                    Proteins = 12,
+                                    Fats = 8,
+                                    Carbs = 25
+                                }
+                            }
+                        },
+                        DateTime = DateTime.UtcNow.AddHours(-2)
+                    },
+                    new AddFoodIntakeRequest
+                    {
+                        Items = new List<FoodItemRequest>
+                        {
+                            new()
+                            {
+                                Name = "Протеиновый коктейль",
+                                Weight = 300,
+                                WeightType = "ml",
+                                NutritionPer100g = new NutritionPer100gDto
+                                {
+                                    Calories = 120,
+                                    Proteins = 25,
+                                    Fats = 2,
+                                    Carbs = 5
+                                }
+                            }
+                        },
+                        DateTime = DateTime.UtcNow.AddDays(-1).AddHours(8)
+                    }
+                };
+
+                foreach (var food in demoFoodItems)
+                {
+                    await _foodIntakeService.AddFoodIntakeAsync(userId, food);
+                }
+
+                _logger.LogInformation($"✅ Demo data created successfully for test user: {userId}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error creating demo data for user {userId}: {ex.Message}");
+            }
+>>>>>>> 256726b44a1526a7c91f0f56019b02232bc514e1
         }
 
         private async Task<string> GenerateUniqueReferralCode()
