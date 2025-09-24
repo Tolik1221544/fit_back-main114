@@ -231,12 +231,12 @@ namespace FitnessTracker.API.Services
                     return acceptLanguage;
                 }
 
-                return "ru_RU";
+                return "en";
             }
             catch (Exception ex)
             {
                 _logger.LogError($"Error getting user locale: {ex.Message}");
-                return "ru_RU";
+                return "en";
             }
         }
 
@@ -248,7 +248,7 @@ namespace FitnessTracker.API.Services
         public string GetLanguageFromLocale(string locale)
         {
             if (string.IsNullOrEmpty(locale))
-                return "ru";
+                return "en";
 
             try
             {

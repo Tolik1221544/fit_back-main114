@@ -165,7 +165,7 @@ namespace FitnessTracker.API.Services
                     RegisteredVia = registeredVia,
                     Level = 1,
                     Experience = 0,
-                    LwCoins = 0,  
+                    LwCoins = 50,  
                     FractionalLwCoins = 0.0,
                     ReferralCode = referralCode,
                     IsEmailConfirmed = true,
