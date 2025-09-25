@@ -66,28 +66,44 @@ namespace FitnessTracker.API.Services
             try
             {
                 var user = await _userRepository.GetByIdAsync(userId);
-                if (user == null) return false;
+                if (user == null)
+                {
+                    _logger.LogError($"User {userId} not found for registration bonus");
+                    return false;
+                }
 
                 var transactions = await _lwCoinRepository.GetUserTransactionsAsync(userId);
-                if (transactions.Any(t => t.CoinSource == "registration"))
+                if (transactions.Any(t => t.CoinSource == "registration" || t.Description.Contains("Welcome bonus")))
                 {
-                    _logger.LogWarning($"User {userId} already received registration bonus");
-                    return false;
+                    _logger.LogWarning($"User {userId} already has registration bonus");
+                    return true; 
                 }
 
                 user.FractionalLwCoins += REGISTRATION_BONUS;
                 user.LwCoins = (int)Math.Floor(user.FractionalLwCoins);
+
                 await _userRepository.UpdateAsync(user);
 
-                await CreateTransactionAsync(userId, REGISTRATION_BONUS, REGISTRATION_BONUS,
-                    "registration_bonus", "Welcome bonus - 50 coins", "", "registration");
+                var transaction = new LwCoinTransaction
+                {
+                    UserId = userId,
+                    Amount = REGISTRATION_BONUS,
+                    FractionalAmount = REGISTRATION_BONUS,
+                    Type = "registration",
+                    Description = "Welcome bonus - 50 coins",
+                    CoinSource = "registration",
+                    FeatureUsed = "",
+                    CreatedAt = DateTime.UtcNow
+                };
 
-                _logger.LogInformation($"🎁 Registration bonus added for user {userId}: +{REGISTRATION_BONUS} coins");
+                await _lwCoinRepository.CreateTransactionAsync(transaction);
+
+                _logger.LogInformation($"🎁 Registration bonus successfully added for user {userId}: +{REGISTRATION_BONUS} coins");
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError($"❌ Error adding registration bonus: {ex.Message}");
+                _logger.LogError($"❌ Critical error adding registration bonus for {userId}: {ex.Message}");
                 return false;
             }
         }

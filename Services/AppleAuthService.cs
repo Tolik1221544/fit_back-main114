@@ -111,6 +111,18 @@ namespace FitnessTracker.API.Services
             {
                 _logger.LogInformation($"✅ Existing user found: {email}");
 
+                if (existingUser.LwCoins == 0 || existingUser.FractionalLwCoins == 0)
+                {
+                    var transactions = await _lwCoinService.GetUserLwCoinTransactionsAsync(existingUser.Id);
+                    var hasRegistrationBonus = transactions.Any(t => t.CoinSource == "registration");
+
+                    if (!hasRegistrationBonus)
+                    {
+                        _logger.LogWarning($"⚠️ User {email} missing registration bonus, adding now");
+                        await _lwCoinService.AddRegistrationBonusAsync(existingUser.Id);
+                    }
+                };
+
                 bool needsUpdate = false;
 
                 if (!existingUser.IsEmailConfirmed)
@@ -148,9 +160,10 @@ namespace FitnessTracker.API.Services
                     Email = email,
                     Name = "",
                     RegisteredVia = registeredVia,
+                    AppleUserId = appleUserId,
                     Level = 1,
                     Experience = 0,
-                    LwCoins = 50,  
+                    LwCoins = 0,  
                     FractionalLwCoins = 0.0,
                     ReferralCode = referralCode,
                     IsEmailConfirmed = true,
@@ -160,14 +173,22 @@ namespace FitnessTracker.API.Services
                     Gender = "",
                     Weight = 0,
                     Height = 0,
-                    Locale = "en"  
+                    Locale = "en"
                 };
 
                 var createdUser = await _userRepository.CreateAsync(newUser);
 
-                await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
+                var bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
+                if (!bonusAdded)
+                {
+                    _logger.LogError($"❌ Failed to add registration bonus for {email}");
+                    await Task.Delay(500);
+                    bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
+                }
 
-                _logger.LogInformation($"✅ New user created via Apple: {email} with 50 bonus coins");
+                createdUser = await _userRepository.GetByIdAsync(createdUser.Id);
+
+                _logger.LogInformation($"✅ New Apple user created: {email} with {createdUser.LwCoins} coins");
                 return createdUser;
             }
         }

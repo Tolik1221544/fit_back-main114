@@ -166,8 +166,8 @@ namespace FitnessTracker.API.Services
                         RegisteredVia = "email",
                         Level = 1,
                         Experience = 0,
-                        LwCoins = 50,  
-                        FractionalLwCoins = 0.0, 
+                        LwCoins = 0,  
+                        FractionalLwCoins = 0.0,
                         ReferralCode = referralCode,
                         IsEmailConfirmed = true,
                         JoinedAt = DateTime.UtcNow,
@@ -176,7 +176,7 @@ namespace FitnessTracker.API.Services
                         Gender = "",
                         Weight = 0,
                         Height = 0,
-                        Locale = "en"  
+                        Locale = "en"
                     };
 
                     try
@@ -184,8 +184,16 @@ namespace FitnessTracker.API.Services
                         user = await _userRepository.CreateAsync(user);
                         _logger.LogInformation($"User created successfully: {user.Id}");
 
-                        await _lwCoinService.AddRegistrationBonusAsync(user.Id);
-                        _logger.LogInformation($"🎁 Registration bonus added for new user {user.Id}");
+                        var bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(user.Id);
+                        if (bonusAdded)
+                        {
+                            _logger.LogInformation($"🎁 Registration bonus added for new user {user.Id}");
+                            user = await _userRepository.GetByIdAsync(user.Id);
+                        }
+                        else
+                        {
+                            _logger.LogError($"❌ Failed to add registration bonus for {user.Id}");
+                        }
                         if (TestAccounts.ContainsKey(email))
                         {
                             _ = Task.Run(async () => await CreateDemoDataAsync(user.Id));
