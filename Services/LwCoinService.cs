@@ -12,16 +12,16 @@ namespace FitnessTracker.API.Services
         private readonly IMapper _mapper;
         private readonly ILogger<LwCoinService> _logger;
 
-        private const decimal PHOTO_FOOD_SCAN_COST = 1.0m;     
-        private const decimal VOICE_FOOD_SCAN_COST = 1.0m;    
-        private const decimal TEXT_FOOD_SCAN_COST = 0.0m;      
-        private const decimal FOOD_CORRECTION_COST = 0.0m;    
-        private const decimal VOICE_WORKOUT_COST = 1.0m;     
-        private const decimal TEXT_WORKOUT_COST = 0.0m;      
-        private const decimal BODY_ANALYSIS_COST = 0.0m;       
+        private const decimal PHOTO_FOOD_SCAN_COST = 1.0m;
+        private const decimal VOICE_FOOD_SCAN_COST = 1.0m;
+        private const decimal TEXT_FOOD_SCAN_COST = 0.0m;
+        private const decimal FOOD_CORRECTION_COST = 0.0m;
+        private const decimal VOICE_WORKOUT_COST = 1.0m;
+        private const decimal TEXT_WORKOUT_COST = 0.0m;
+        private const decimal BODY_ANALYSIS_COST = 0.0m;
 
-        private const int REGISTRATION_BONUS = 50;              
-        private const int REFERRAL_BONUS = 150;                 
+        private const int REGISTRATION_BONUS = 50;
+        private const int REFERRAL_BONUS = 150;
         private const decimal PREMIUM_PRICE = 8.99m;
 
         public LwCoinService(
@@ -440,7 +440,7 @@ namespace FitnessTracker.API.Services
 
             return new LwCoinLimitsDto
             {
-                MonthlyAllowance = 0, 
+                MonthlyAllowance = 0,
                 UsedThisMonth = (int)featureUsage.Values.Sum(),
                 RemainingThisMonth = isPremium ? int.MaxValue : (int)balanceDetails.TotalCoins,
                 IsPremium = isPremium,

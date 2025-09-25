@@ -161,20 +161,19 @@ namespace FitnessTracker.API.Services
                 {
                     Id = Guid.NewGuid().ToString(),
                     Email = email,
-                    Name = "",  
+                    Name = "",
                     RegisteredVia = registeredVia,
                     Level = 1,
                     Experience = 0,
-                    LwCoins = 50,  
-                    FractionalLwCoins = 0.0,
+                    LwCoins = 50,
                     ReferralCode = referralCode,
                     IsEmailConfirmed = true,
                     JoinedAt = DateTime.UtcNow,
                     LastMonthlyRefill = DateTime.UtcNow,
-                    Age = 0,  
-                    Gender = "",  
-                    Weight = 0,  
-                    Height = 0   
+                    Age = 0,
+                    Gender = "",
+                    Weight = 0,
+                    Height = 0
                 };
 
                 var createdUser = await _userRepository.CreateAsync(newUser);

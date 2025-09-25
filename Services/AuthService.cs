@@ -14,7 +14,7 @@ namespace FitnessTracker.API.Services
     {
         private readonly IUserRepository _userRepository;
         private readonly IEmailService _emailService;
-        private readonly ILwCoinService _lwCoinService; 
+        private readonly ILwCoinService _lwCoinService;
         private readonly IConfiguration _configuration;
         private readonly IMapper _mapper;
         private readonly ILogger<AuthService> _logger;
@@ -23,6 +23,7 @@ namespace FitnessTracker.API.Services
 
         private static readonly string JWT_SECRET_KEY = "fitness-tracker-super-secret-key-that-is-definitely-long-enough-for-security-2024";
         private static readonly ConcurrentDictionary<string, (string Code, DateTime Expiry)> _verificationCodes = new();
+
 
         private static readonly Dictionary<string, string> TestCodes = new()
         {
@@ -40,12 +41,13 @@ namespace FitnessTracker.API.Services
             { "review@lightweightfit.com", "777777" },        
             { "apple.review@lightweightfit.com", "999999" },  
             { "dev@lightweightfit.com", "000000" }            
+
         };
 
         public AuthService(
             IUserRepository userRepository,
             IEmailService emailService,
-            ILwCoinService lwCoinService, 
+            ILwCoinService lwCoinService,
             IConfiguration configuration,
             IMapper mapper,
             ILogger<AuthService> logger,
@@ -54,7 +56,7 @@ namespace FitnessTracker.API.Services
         {
             _userRepository = userRepository;
             _emailService = emailService;
-            _lwCoinService = lwCoinService; 
+            _lwCoinService = lwCoinService;
             _configuration = configuration;
             _mapper = mapper;
             _logger = logger;
@@ -74,11 +76,13 @@ namespace FitnessTracker.API.Services
                 {
                     var testCode = TestCodes[email];
 
+
                 }
 
                 if (TestAccounts.ContainsKey(email))
                 {
                     var testCode = TestAccounts[email];
+
                     _verificationCodes.AddOrUpdate(email,
                         (testCode, DateTime.UtcNow.AddMinutes(30)),
                         (key, oldValue) => (testCode, DateTime.UtcNow.AddMinutes(30)));
@@ -89,6 +93,7 @@ namespace FitnessTracker.API.Services
 
                     Console.WriteLine("==================================================");
                     Console.WriteLine($"🔑 FIXED CODE FOR TESTING");
+
                     _logger.LogInformation($"✅ Test account detected: {email}");
                     Console.WriteLine("==================================================");
                     Console.WriteLine($"🧪 TEST ACCOUNT LOGIN");
@@ -97,6 +102,7 @@ namespace FitnessTracker.API.Services
                     Console.WriteLine($"⏰ Valid for 30 minutes");
                     Console.WriteLine($"✅ Use this code in /api/auth/confirm-email");
                     Console.WriteLine("==================================================");
+
                     return true;
                 }
 
@@ -109,10 +115,8 @@ namespace FitnessTracker.API.Services
 
                 var result = await _emailService.SendVerificationEmailAsync(email, code);
                 _logger.LogInformation($"Verification code sent to {email}: {(result ? "success" : "failed")}");
-
                 return result;
             }
-
             catch (Exception ex)
             {
                 _logger.LogError($"Error sending verification code to {email}: {ex.Message}");
@@ -166,8 +170,7 @@ namespace FitnessTracker.API.Services
                         RegisteredVia = "email",
                         Level = 1,
                         Experience = 0,
-                        LwCoins = 50,  
-                        FractionalLwCoins = 0.0, 
+                        LwCoins = 50,
                         ReferralCode = referralCode,
                         IsEmailConfirmed = true,
                         JoinedAt = DateTime.UtcNow,
@@ -176,7 +179,7 @@ namespace FitnessTracker.API.Services
                         Gender = "",
                         Weight = 0,
                         Height = 0,
-                        Locale = "en"  
+                        Locale = "en"
                     };
 
                     try
@@ -184,8 +187,17 @@ namespace FitnessTracker.API.Services
                         user = await _userRepository.CreateAsync(user);
                         _logger.LogInformation($"User created successfully: {user.Id}");
 
-                        await _lwCoinService.AddRegistrationBonusAsync(user.Id);
-                        _logger.LogInformation($"🎁 Registration bonus added for new user {user.Id}");
+                        var bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(user.Id);
+                        if (bonusAdded)
+                        {
+                            _logger.LogInformation($"🎁 Registration bonus added for new user {user.Id}");
+                            user = await _userRepository.GetByIdAsync(user.Id);
+                        }
+                        else
+                        {
+                            _logger.LogError($"❌ Failed to add registration bonus for {user.Id}");
+                        }
+
                         if (TestAccounts.ContainsKey(email))
                         {
                             _ = Task.Run(async () => await CreateDemoDataAsync(user.Id));
@@ -258,14 +270,15 @@ namespace FitnessTracker.API.Services
                 {
                     userDto.LwCoins = 50;
                 }
+
                 if (TestCodes.ContainsKey(email))
                 {
-                        _logger.LogInformation($"🔑 Fixed code login successful: {email}");
-                }
+                    _logger.LogInformation($"🔑 Fixed code login successful: {email}");
 
-                if (TestAccounts.ContainsKey(email))
-                {
-                    _logger.LogInformation($"🧪 Test account login successful: {email}");
+                    if (TestAccounts.ContainsKey(email))
+                    {
+                        _logger.LogInformation($"🧪 Test account login successful: {email}");
+                    }
                 }
 
                 return new AuthResponseDto

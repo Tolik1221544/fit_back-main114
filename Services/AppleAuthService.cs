@@ -148,10 +148,10 @@ namespace FitnessTracker.API.Services
                     Email = email,
                     Name = "",
                     RegisteredVia = registeredVia,
+                    AppleUserId = appleUserId,
                     Level = 1,
                     Experience = 0,
-                    LwCoins = 50,  
-                    FractionalLwCoins = 0.0,
+                    LwCoins = 50,
                     ReferralCode = referralCode,
                     IsEmailConfirmed = true,
                     JoinedAt = DateTime.UtcNow,
@@ -160,7 +160,7 @@ namespace FitnessTracker.API.Services
                     Gender = "",
                     Weight = 0,
                     Height = 0,
-                    Locale = "en"  
+                    Locale = "ru_RU"
                 };
 
                 var createdUser = await _userRepository.CreateAsync(newUser);
