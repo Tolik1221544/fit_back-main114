@@ -149,8 +149,20 @@ namespace FitnessTracker.API.Services
 
             if (existingUser != null)
             {
-
                 _logger.LogInformation($"✅ Existing user found: {email}");
+
+                if (existingUser.LwCoins == 0 || existingUser.FractionalLwCoins == 0)
+                {
+                    var transactions = await _lwCoinService.GetUserLwCoinTransactionsAsync(existingUser.Id);
+                    var hasRegistrationBonus = transactions.Any(t => t.CoinSource == "registration");
+
+                    if (!hasRegistrationBonus)
+                    {
+                        _logger.LogWarning($"⚠️ User {email} has no registration bonus, adding now");
+                        await _lwCoinService.AddRegistrationBonusAsync(existingUser.Id);
+                    }
+                }
+
                 return existingUser;
             }
             else
@@ -165,7 +177,12 @@ namespace FitnessTracker.API.Services
                     RegisteredVia = registeredVia,
                     Level = 1,
                     Experience = 0,
+<<<<<<< HEAD
                     LwCoins = 50,
+=======
+                    LwCoins = 0,  
+                    FractionalLwCoins = 0.0,
+>>>>>>> 7529a9123b9f438413454aade598df630316f3c9
                     ReferralCode = referralCode,
                     IsEmailConfirmed = true,
                     JoinedAt = DateTime.UtcNow,
@@ -178,9 +195,20 @@ namespace FitnessTracker.API.Services
 
                 var createdUser = await _userRepository.CreateAsync(newUser);
 
-                await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
+                var bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
+                if (!bonusAdded)
+                {
+                    _logger.LogError($"❌ Failed to add registration bonus for new user {email}");
+                    await Task.Delay(500);
+                    bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
+                    if (!bonusAdded)
+                    {
+                        _logger.LogError($"❌ Second attempt failed for registration bonus {email}");
+                    }
+                }
+                createdUser = await _userRepository.GetByIdAsync(createdUser.Id);
 
-                _logger.LogInformation($"✅ New user created via Google: {email}");
+                _logger.LogInformation($"✅ New user created via Google: {email} with {createdUser.LwCoins} coins");
                 return createdUser;
             }
         }

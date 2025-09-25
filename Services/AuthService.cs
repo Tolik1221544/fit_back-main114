@@ -170,7 +170,12 @@ namespace FitnessTracker.API.Services
                         RegisteredVia = "email",
                         Level = 1,
                         Experience = 0,
+<<<<<<< HEAD
                         LwCoins = 50,
+=======
+                        LwCoins = 0,  
+                        FractionalLwCoins = 0.0,
+>>>>>>> 7529a9123b9f438413454aade598df630316f3c9
                         ReferralCode = referralCode,
                         IsEmailConfirmed = true,
                         JoinedAt = DateTime.UtcNow,
@@ -197,7 +202,10 @@ namespace FitnessTracker.API.Services
                         {
                             _logger.LogError($"❌ Failed to add registration bonus for {user.Id}");
                         }
+<<<<<<< HEAD
 
+=======
+>>>>>>> 7529a9123b9f438413454aade598df630316f3c9
                         if (TestAccounts.ContainsKey(email))
                         {
                             _ = Task.Run(async () => await CreateDemoDataAsync(user.Id));
