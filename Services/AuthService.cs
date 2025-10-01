@@ -24,7 +24,6 @@ namespace FitnessTracker.API.Services
         private static readonly string JWT_SECRET_KEY = "fitness-tracker-super-secret-key-that-is-definitely-long-enough-for-security-2024";
         private static readonly ConcurrentDictionary<string, (string Code, DateTime Expiry)> _verificationCodes = new();
 
-
         private static readonly Dictionary<string, string> TestCodes = new()
         {
             { "test@lightweightfit.com", "123456" },
@@ -36,12 +35,11 @@ namespace FitnessTracker.API.Services
 
         private static readonly Dictionary<string, string> TestAccounts = new()
         {
-            { "test@lightweightfit.com", "123456" },          
-            { "demo@lightweightfit.com", "111111" },         
-            { "review@lightweightfit.com", "777777" },        
-            { "apple.review@lightweightfit.com", "999999" },  
-            { "dev@lightweightfit.com", "000000" }            
-
+            { "test@lightweightfit.com", "123456" },
+            { "demo@lightweightfit.com", "111111" },
+            { "review@lightweightfit.com", "777777" },
+            { "apple.review@lightweightfit.com", "999999" },
+            { "dev@lightweightfit.com", "000000" }
         };
 
         public AuthService(
@@ -71,12 +69,9 @@ namespace FitnessTracker.API.Services
                 email = email.Trim().ToLowerInvariant();
                 _logger.LogInformation($"📧 Sending verification code to {email}");
 
-
                 if (TestCodes.ContainsKey(email))
                 {
                     var testCode = TestCodes[email];
-
-
                 }
 
                 if (TestAccounts.ContainsKey(email))
@@ -87,9 +82,7 @@ namespace FitnessTracker.API.Services
                         (testCode, DateTime.UtcNow.AddMinutes(30)),
                         (key, oldValue) => (testCode, DateTime.UtcNow.AddMinutes(30)));
 
-
                     _logger.LogInformation($"✅ Fixed code provided for: {email}");
-
 
                     Console.WriteLine("==================================================");
                     Console.WriteLine($"🔑 FIXED CODE FOR TESTING");
@@ -170,12 +163,8 @@ namespace FitnessTracker.API.Services
                         RegisteredVia = "email",
                         Level = 1,
                         Experience = 0,
-<<<<<<< HEAD
-                        LwCoins = 50,
-=======
                         LwCoins = 0,  
                         FractionalLwCoins = 0.0,
->>>>>>> 7529a9123b9f438413454aade598df630316f3c9
                         ReferralCode = referralCode,
                         IsEmailConfirmed = true,
                         JoinedAt = DateTime.UtcNow,
@@ -202,10 +191,7 @@ namespace FitnessTracker.API.Services
                         {
                             _logger.LogError($"❌ Failed to add registration bonus for {user.Id}");
                         }
-<<<<<<< HEAD
 
-=======
->>>>>>> 7529a9123b9f438413454aade598df630316f3c9
                         if (TestAccounts.ContainsKey(email))
                         {
                             _ = Task.Run(async () => await CreateDemoDataAsync(user.Id));
@@ -221,6 +207,19 @@ namespace FitnessTracker.API.Services
                 {
                     user = existingUser;
                     _logger.LogInformation($"Existing user found: {user.Id}");
+
+                    if (user.LwCoins == 0 || user.FractionalLwCoins == 0)
+                    {
+                        var transactions = await _lwCoinService.GetUserLwCoinTransactionsAsync(user.Id);
+                        var hasRegistrationBonus = transactions.Any(t => t.CoinSource == "registration");
+
+                        if (!hasRegistrationBonus)
+                        {
+                            _logger.LogWarning($"⚠️ User {email} missing registration bonus, adding now");
+                            await _lwCoinService.AddRegistrationBonusAsync(user.Id);
+                            user = await _userRepository.GetByIdAsync(user.Id);
+                        }
+                    }
 
                     bool needsUpdate = false;
 
@@ -274,10 +273,7 @@ namespace FitnessTracker.API.Services
                 userDto.ExperienceToNextLevel = experienceData.ExperienceToNextLevel;
                 userDto.ExperienceProgress = experienceData.ExperienceProgress;
 
-                if (isNewUser)
-                {
-                    userDto.LwCoins = 50;
-                }
+                userDto.LwCoins = user.LwCoins;
 
                 if (TestCodes.ContainsKey(email))
                 {
@@ -389,17 +385,7 @@ namespace FitnessTracker.API.Services
                 namePart = string.Join(" ", words);
             }
 
-            return string.IsNullOrEmpty(namePart) ? "Пользователь" : namePart;
-
-            return email switch
-            {
-                "test@lightweightfit.com" => "Тестовый пользователь",
-                "demo@lightweightfit.com" => "Демо пользователь",
-                "review@lightweightfit.com" => "Ревьюер",
-                "apple.review@lightweightfit.com" => "Apple Review Team",
-                "dev@lightweightfit.com" => "Разработчик",
-                _ => "Пользователь"
-            };
+            return string.IsNullOrEmpty(namePart) ? "User" : namePart;
         }
 
         private async Task CreateDemoDataAsync(string userId)
@@ -418,10 +404,10 @@ namespace FitnessTracker.API.Services
                         Calories = 300,
                         ActivityData = new ActivityDataDto
                         {
-                            Name = "Утренняя пробежка",
+                            Name = "Morning Run",
                             Category = "Cardio",
                             Distance = 5.0m,
-                            AvgPace = "6:00 мин/км",
+                            AvgPace = "6:00 min/km",
                             AvgPulse = 140,
                             MaxPulse = 165
                         }
@@ -434,9 +420,9 @@ namespace FitnessTracker.API.Services
                         Calories = 250,
                         ActivityData = new ActivityDataDto
                         {
-                            Name = "Отжимания",
+                            Name = "Push-ups",
                             Category = "Strength",
-                            MuscleGroup = "грудь",
+                            MuscleGroup = "chest",
                             RestTimeSeconds = 90,
                             Sets = new List<ActivitySetDto>
                             {
@@ -461,7 +447,7 @@ namespace FitnessTracker.API.Services
                         {
                             new()
                             {
-                                Name = "Овсяная каша с фруктами",
+                                Name = "Oatmeal with fruits",
                                 Weight = 250,
                                 WeightType = "g",
                                 NutritionPer100g = new NutritionPer100gDto
@@ -481,7 +467,7 @@ namespace FitnessTracker.API.Services
                         {
                             new()
                             {
-                                Name = "Протеиновый коктейль",
+                                Name = "Protein shake",
                                 Weight = 300,
                                 WeightType = "ml",
                                 NutritionPer100g = new NutritionPer100gDto

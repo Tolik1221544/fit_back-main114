@@ -81,6 +81,12 @@ namespace FitnessTracker.API.Services
 
                 var user = await GetOrCreateUserAsync(email, sub, "apple");
 
+                if (user == null)
+                {
+                    _logger.LogError($"❌ Failed to get or create user for {email}");
+                    throw new InvalidOperationException("Failed to create user account");
+                }
+
                 var jwtToken = await _authService.GenerateJwtTokenAsync(user.Id);
 
                 var userDto = CreateUserDto(user);
@@ -94,6 +100,7 @@ namespace FitnessTracker.API.Services
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Apple authentication error: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
                 throw new UnauthorizedAccessException($"Invalid Apple ID token: {ex.Message}");
             }
         }
@@ -103,101 +110,127 @@ namespace FitnessTracker.API.Services
         /// </summary>
         private async Task<User> GetOrCreateUserAsync(string email, string? appleUserId, string registeredVia)
         {
-            email = email.Trim().ToLowerInvariant();
-
-            var existingUser = await _userRepository.GetByEmailAsync(email);
-
-            if (existingUser != null)
+            try
             {
-                _logger.LogInformation($"✅ Existing user found: {email}");
+                email = email.Trim().ToLowerInvariant();
 
-                if (existingUser.LwCoins == 0 || existingUser.FractionalLwCoins == 0)
+                var existingUser = await _userRepository.GetByEmailAsync(email);
+
+                if (existingUser != null)
                 {
-                    var transactions = await _lwCoinService.GetUserLwCoinTransactionsAsync(existingUser.Id);
-                    var hasRegistrationBonus = transactions.Any(t => t.CoinSource == "registration");
+                    _logger.LogInformation($"✅ Existing user found: {email}");
 
-                    if (!hasRegistrationBonus)
+                    if (existingUser.LwCoins == 0 || existingUser.FractionalLwCoins == 0)
                     {
-                        _logger.LogWarning($"⚠️ User {email} missing registration bonus, adding now");
-                        await _lwCoinService.AddRegistrationBonusAsync(existingUser.Id);
+                        var transactions = await _lwCoinService.GetUserLwCoinTransactionsAsync(existingUser.Id);
+                        var hasRegistrationBonus = transactions.Any(t => t.CoinSource == "registration");
+
+                        if (!hasRegistrationBonus)
+                        {
+                            _logger.LogWarning($"⚠️ User {email} missing registration bonus, adding now");
+                            await _lwCoinService.AddRegistrationBonusAsync(existingUser.Id);
+                            existingUser = await _userRepository.GetByIdAsync(existingUser.Id);
+                            if (existingUser == null)
+                            {
+                                _logger.LogError($"❌ Failed to reload existing user {email}");
+                                throw new InvalidOperationException("Failed to reload user");
+                            }
+                        }
                     }
-                };
 
-                bool needsUpdate = false;
+                    bool needsUpdate = false;
 
-                if (!existingUser.IsEmailConfirmed)
-                {
-                    existingUser.IsEmailConfirmed = true;
-                    needsUpdate = true;
+                    if (!existingUser.IsEmailConfirmed)
+                    {
+                        existingUser.IsEmailConfirmed = true;
+                        needsUpdate = true;
+                    }
+
+                    if (string.IsNullOrEmpty(existingUser.ReferralCode))
+                    {
+                        existingUser.ReferralCode = await GenerateUniqueReferralCodeAsync();
+                        needsUpdate = true;
+                    }
+
+                    if (!string.IsNullOrEmpty(appleUserId) && existingUser.AppleUserId != appleUserId)
+                    {
+                        existingUser.AppleUserId = appleUserId;
+                        needsUpdate = true;
+                    }
+
+                    if (needsUpdate)
+                    {
+                        await _userRepository.UpdateAsync(existingUser);
+                    }
+
+                    return existingUser;
                 }
-
-                if (string.IsNullOrEmpty(existingUser.ReferralCode))
+                else
                 {
-                    existingUser.ReferralCode = await GenerateUniqueReferralCodeAsync();
-                    needsUpdate = true;
-                }
+                    _logger.LogInformation($"📝 Creating new user via Apple: {email}");
 
-                if (!string.IsNullOrEmpty(appleUserId) && existingUser.AppleUserId != appleUserId)
-                {
-                    existingUser.AppleUserId = appleUserId;
-                    needsUpdate = true;
-                }
+                    var referralCode = await GenerateUniqueReferralCodeAsync();
 
-                if (needsUpdate)
-                {
-                    await _userRepository.UpdateAsync(existingUser);
-                }
+                    var newUser = new User
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        Email = email,
+                        Name = "",
+                        RegisteredVia = registeredVia,
+                        AppleUserId = appleUserId,
+                        Level = 1,
+                        Experience = 0,
+                        LwCoins = 0,  
+                        FractionalLwCoins = 0.0,
+                        ReferralCode = referralCode,
+                        IsEmailConfirmed = true,
+                        JoinedAt = DateTime.UtcNow,
+                        LastMonthlyRefill = DateTime.UtcNow,
+                        Age = 0,
+                        Gender = "",
+                        Weight = 0,
+                        Height = 0,
+                        Locale = "en"
+                    };
 
-                return existingUser;
+                    var createdUser = await _userRepository.CreateAsync(newUser);
+                    _logger.LogInformation($"✅ User created: {createdUser.Id}");
+
+                    await Task.Delay(100);
+
+                    var bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
+                    if (bonusAdded)
+                    {
+                        _logger.LogInformation($"🎁 Registration bonus added for new user {createdUser.Id}");
+                    }
+                    else
+                    {
+                        _logger.LogError($"❌ Failed to add registration bonus for new user {email}");
+
+                        await Task.Delay(500);
+                        bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
+                        if (!bonusAdded)
+                        {
+                            _logger.LogError($"❌ Second attempt failed for registration bonus {email}");
+                        }
+                    }
+
+                    createdUser = await _userRepository.GetByIdAsync(createdUser.Id);
+                    if (createdUser == null)
+                    {
+                        _logger.LogError($"❌ Failed to reload user {newUser.Id} after creation");
+                        throw new InvalidOperationException("Failed to load created user");
+                    }
+
+                    _logger.LogInformation($"✅ New Apple user created: {email} with {createdUser.LwCoins} coins");
+                    return createdUser;
+                }
             }
-            else
+            catch (Exception ex)
             {
-                var referralCode = await GenerateUniqueReferralCodeAsync();
-
-                var newUser = new User
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    Email = email,
-                    Name = "",
-                    RegisteredVia = registeredVia,
-                    AppleUserId = appleUserId,
-                    Level = 1,
-                    Experience = 0,
-<<<<<<< HEAD
-                    LwCoins = 50,
-=======
-                    LwCoins = 0,  
-                    FractionalLwCoins = 0.0,
->>>>>>> 7529a9123b9f438413454aade598df630316f3c9
-                    ReferralCode = referralCode,
-                    IsEmailConfirmed = true,
-                    JoinedAt = DateTime.UtcNow,
-                    LastMonthlyRefill = DateTime.UtcNow,
-                    Age = 0,
-                    Gender = "",
-                    Weight = 0,
-                    Height = 0,
-<<<<<<< HEAD
-                    Locale = "ru_RU"
-=======
-                    Locale = "en"
->>>>>>> 7529a9123b9f438413454aade598df630316f3c9
-                };
-
-                var createdUser = await _userRepository.CreateAsync(newUser);
-
-                var bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
-                if (!bonusAdded)
-                {
-                    _logger.LogError($"❌ Failed to add registration bonus for {email}");
-                    await Task.Delay(500);
-                    bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
-                }
-
-                createdUser = await _userRepository.GetByIdAsync(createdUser.Id);
-
-                _logger.LogInformation($"✅ New Apple user created: {email} with {createdUser.LwCoins} coins");
-                return createdUser;
+                _logger.LogError($"❌ Error in GetOrCreateUserAsync for {email}: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
+                throw;
             }
         }
 
@@ -226,6 +259,8 @@ namespace FitnessTracker.API.Services
             userDto.MaxExperience = experienceData.MaxExperience;
             userDto.ExperienceToNextLevel = experienceData.ExperienceToNextLevel;
             userDto.ExperienceProgress = experienceData.ExperienceProgress;
+
+            userDto.LwCoins = user.LwCoins;
 
             return userDto;
         }

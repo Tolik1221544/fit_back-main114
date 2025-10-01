@@ -20,6 +20,7 @@ namespace FitnessTracker.API.Services
         public GoogleAuthService(
             IUserRepository userRepository,
             IAuthService authService,
+            ILwCoinService lwCoinService,
             IMapper mapper,
             IConfiguration configuration,
             ILogger<GoogleAuthService> logger,
@@ -27,6 +28,7 @@ namespace FitnessTracker.API.Services
         {
             _userRepository = userRepository;
             _authService = authService;
+            _lwCoinService = lwCoinService;
             _mapper = mapper;
             _configuration = configuration;
             _logger = logger;
@@ -91,21 +93,28 @@ namespace FitnessTracker.API.Services
                     }
                 }
 
-                if (payload.EmailVerified != true)
+                if (string.IsNullOrEmpty(payload?.Email))
                 {
-                    throw new UnauthorizedAccessException("Email not verified by Google");
-                }
-
-                var email = payload.Email;
-                if (string.IsNullOrEmpty(email))
-                {
+                    _logger.LogError($"❌ No email in Google token payload");
                     throw new UnauthorizedAccessException("Unable to get email from Google token");
                 }
 
+                if (payload.EmailVerified == false)
+                {
+                    _logger.LogWarning($"⚠️ Email not verified by Google for {payload.Email}");
+                }
+
+                var email = payload.Email;
                 _logger.LogInformation($"✅ Google ID token validated for email: {email}");
                 _logger.LogInformation($"User info - Name: {payload.Name}, Subject: {payload.Subject}");
 
                 var user = await GetOrCreateUserAsync(email, payload.Name, "google");
+
+                if (user == null)
+                {
+                    _logger.LogError($"❌ Failed to get or create user for {email}");
+                    throw new InvalidOperationException("Failed to create user account");
+                }
 
                 var jwtToken = await _authService.GenerateJwtTokenAsync(user.Id);
 
@@ -143,76 +152,97 @@ namespace FitnessTracker.API.Services
 
         private async Task<User> GetOrCreateUserAsync(string email, string? googleName, string registeredVia)
         {
-            email = email.Trim().ToLowerInvariant();
-
-            var existingUser = await _userRepository.GetByEmailAsync(email);
-
-            if (existingUser != null)
+            try
             {
-                _logger.LogInformation($"✅ Existing user found: {email}");
+                email = email.Trim().ToLowerInvariant();
 
-                if (existingUser.LwCoins == 0 || existingUser.FractionalLwCoins == 0)
+                var existingUser = await _userRepository.GetByEmailAsync(email);
+
+                if (existingUser != null)
                 {
-                    var transactions = await _lwCoinService.GetUserLwCoinTransactionsAsync(existingUser.Id);
-                    var hasRegistrationBonus = transactions.Any(t => t.CoinSource == "registration");
+                    _logger.LogInformation($"✅ Existing user found: {email}");
 
-                    if (!hasRegistrationBonus)
+                    if (existingUser.LwCoins == 0 || existingUser.FractionalLwCoins == 0)
                     {
-                        _logger.LogWarning($"⚠️ User {email} has no registration bonus, adding now");
-                        await _lwCoinService.AddRegistrationBonusAsync(existingUser.Id);
-                    }
-                }
+                        var transactions = await _lwCoinService.GetUserLwCoinTransactionsAsync(existingUser.Id);
+                        var hasRegistrationBonus = transactions.Any(t => t.CoinSource == "registration");
 
-                return existingUser;
+                        if (!hasRegistrationBonus)
+                        {
+                            _logger.LogWarning($"⚠️ User {email} has no registration bonus, adding now");
+                            await _lwCoinService.AddRegistrationBonusAsync(existingUser.Id);
+                            existingUser = await _userRepository.GetByIdAsync(existingUser.Id);
+                        }
+                    }
+
+                    return existingUser;
+                }
+                else
+                {
+                    _logger.LogInformation($"📝 Creating new user via Google: {email}");
+
+                    var referralCode = await GenerateUniqueReferralCodeAsync();
+
+                    var newUser = new User
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        Email = email,
+                        Name = googleName ?? "",
+                        RegisteredVia = registeredVia,
+                        Level = 1,
+                        Experience = 0,
+                        LwCoins = 0,  
+                        FractionalLwCoins = 0.0,
+                        ReferralCode = referralCode,
+                        IsEmailConfirmed = true,
+                        JoinedAt = DateTime.UtcNow,
+                        LastMonthlyRefill = DateTime.UtcNow,
+                        Age = 0,
+                        Gender = "",
+                        Weight = 0,
+                        Height = 0,
+                        Locale = "en"
+                    };
+
+                    var createdUser = await _userRepository.CreateAsync(newUser);
+                    _logger.LogInformation($"✅ User created: {createdUser.Id}");
+
+                    await Task.Delay(100);
+
+                    var bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
+                    if (bonusAdded)
+                    {
+                        _logger.LogInformation($"🎁 Registration bonus added for new user {createdUser.Id}");
+                    }
+                    else
+                    {
+                        _logger.LogError($"❌ Failed to add registration bonus for new user {email}");
+
+                        await Task.Delay(500);
+                        bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
+                        if (!bonusAdded)
+                        {
+                            _logger.LogError($"❌ Second attempt failed for registration bonus {email}");
+                        }
+                    }
+
+                    createdUser = await _userRepository.GetByIdAsync(createdUser.Id);
+                    if (createdUser == null)
+                    {
+                        _logger.LogError($"❌ Failed to reload user {newUser.Id} after creation");
+                        throw new InvalidOperationException("Failed to load created user");
+                    }
+
+                    _logger.LogInformation($"✅ New user created via Google: {email} with {createdUser.LwCoins} coins");
+                    return createdUser;
+                }
             }
-            else
+            catch (Exception ex)
             {
-                var referralCode = await GenerateUniqueReferralCodeAsync();
-
-                var newUser = new User
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    Email = email,
-                    Name = "",
-                    RegisteredVia = registeredVia,
-                    Level = 1,
-                    Experience = 0,
-<<<<<<< HEAD
-                    LwCoins = 50,
-=======
-                    LwCoins = 0,  
-                    FractionalLwCoins = 0.0,
->>>>>>> 7529a9123b9f438413454aade598df630316f3c9
-                    ReferralCode = referralCode,
-                    IsEmailConfirmed = true,
-                    JoinedAt = DateTime.UtcNow,
-                    LastMonthlyRefill = DateTime.UtcNow,
-                    Age = 0,
-                    Gender = "",
-                    Weight = 0,
-                    Height = 0
-                };
-
-                var createdUser = await _userRepository.CreateAsync(newUser);
-
-                var bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
-                if (!bonusAdded)
-                {
-                    _logger.LogError($"❌ Failed to add registration bonus for new user {email}");
-                    await Task.Delay(500);
-                    bonusAdded = await _lwCoinService.AddRegistrationBonusAsync(createdUser.Id);
-                    if (!bonusAdded)
-                    {
-                        _logger.LogError($"❌ Second attempt failed for registration bonus {email}");
-                    }
-                }
-                createdUser = await _userRepository.GetByIdAsync(createdUser.Id);
-
-                _logger.LogInformation($"✅ New user created via Google: {email} with {createdUser.LwCoins} coins");
-                return createdUser;
+                _logger.LogError($"❌ Error in GetOrCreateUserAsync for {email}: {ex.Message}");
+                throw;
             }
         }
-
         private async Task<string> GenerateUniqueReferralCodeAsync()
         {
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
