@@ -52,6 +52,7 @@ namespace FitnessTracker.API.DTOs
         public string Email { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string RegisteredVia { get; set; } = string.Empty;
+        public long? TelegramId { get; set; }
         public int Level { get; set; }
         public int Experience { get; set; }
         public int MaxExperience { get; set; }

@@ -543,6 +543,42 @@ using (var scope = app.Services.CreateScope())
             Console.WriteLine("✅ AppleUserId column already exists");
         }
 
+        var telegramIdExists = false;
+        try
+        {
+            var result = await context.Database
+                .SqlQueryRaw<int>("SELECT COUNT(*) as Value FROM pragma_table_info('Users') WHERE name = 'TelegramId'")
+                .ToListAsync();
+            telegramIdExists = result.FirstOrDefault() > 0;
+        }
+        catch
+        {
+            telegramIdExists = false;
+        }
+
+        if (!telegramIdExists)
+        {
+            Console.WriteLine("📦 Adding TelegramId column to Users table...");
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE Users ADD COLUMN TelegramId INTEGER NULL");
+
+                await context.Database.ExecuteSqlRawAsync(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS IX_Users_TelegramId ON Users(TelegramId) WHERE TelegramId IS NOT NULL");
+
+                Console.WriteLine("✅ TelegramId column and index added successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ Could not add TelegramId column: {ex.Message}");
+            }
+        }
+        else
+        {
+            Console.WriteLine("✅ TelegramId column already exists");
+        }
+
         Console.WriteLine("✅ Database initialized and updated successfully!");
     }
 

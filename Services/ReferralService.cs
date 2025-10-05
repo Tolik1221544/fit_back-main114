@@ -13,7 +13,8 @@ namespace FitnessTracker.API.Services
         private readonly IMapper _mapper;
         private readonly ILogger<ReferralService> _logger;
 
-        private const int REFERRAL_REWARD = 150;
+        private const int REFERRAL_REWARD = 150;  
+        private const int REFERRAL_BONUS_FOR_NEW_USER = 75;  
 
         public ReferralService(
             IReferralRepository referralRepository,
@@ -38,14 +39,12 @@ namespace FitnessTracker.API.Services
                 return false;
             }
 
-            // Check if user already has a referrer
             if (!string.IsNullOrEmpty(user.ReferredByUserId))
             {
                 _logger.LogWarning($"User {userId} already has a referrer");
                 return false;
             }
 
-            // Find referrer by their referral code
             var referrer = await _userRepository.GetByReferralCodeAsync(request.ReferralCode);
             if (referrer == null)
             {
@@ -53,18 +52,15 @@ namespace FitnessTracker.API.Services
                 return false;
             }
 
-            // Can't refer yourself
             if (referrer.Id == userId)
             {
                 _logger.LogWarning($"User {userId} tried to use their own referral code");
                 return false;
             }
 
-            // Set referrer
             user.ReferredByUserId = referrer.Id;
             await _userRepository.UpdateAsync(user);
 
-            // Create referral record
             var newReferral = new Referral
             {
                 ReferrerId = referrer.Id,
@@ -75,40 +71,46 @@ namespace FitnessTracker.API.Services
 
             await _referralRepository.CreateAsync(newReferral);
 
-            // Update referrer stats (1-й уровень)
             referrer.TotalReferrals++;
             referrer.TotalReferralRewards += REFERRAL_REWARD;
             await _userRepository.UpdateAsync(referrer);
 
-            // Give LW Coins to 1-го уровня referrer
             await _lwCoinService.AddLwCoinsAsync(referrer.Id, REFERRAL_REWARD, "referral",
                 $"Referral bonus for inviting {user.Name ?? user.Email}");
 
-            // 🎯 ПРОВЕРЯЕМ 2-Й УРОВЕНЬ: если у referrer есть свой referrer
+            _logger.LogInformation($"💰 Level 1 referral reward: {referrer.Id} got {REFERRAL_REWARD} LW Coins for referring {userId}");
+
             if (!string.IsNullOrEmpty(referrer.ReferredByUserId))
             {
                 var secondLevelReferrer = await _userRepository.GetByIdAsync(referrer.ReferredByUserId);
                 if (secondLevelReferrer != null)
                 {
-                    var secondLevelReward = REFERRAL_REWARD / 2; // 50% от основной награды
+                    var secondLevelReward = REFERRAL_REWARD / 2;
 
-                    // Обновляем статистику 2-го уровня
                     secondLevelReferrer.TotalReferralRewards += secondLevelReward;
                     await _userRepository.UpdateAsync(secondLevelReferrer);
 
-                    // Начисляем LW Coins 2-го уровня
                     await _lwCoinService.AddLwCoinsAsync(secondLevelReferrer.Id, secondLevelReward, "referral_level2",
                         $"Level 2 referral bonus for {user.Name ?? user.Email} (via {referrer.Name ?? referrer.Email})");
 
-                    _logger.LogInformation($"Level 2 referral reward: {secondLevelReferrer.Id} got {secondLevelReward} LW Coins");
+                    _logger.LogInformation($"💰 Level 2 referral reward: {secondLevelReferrer.Id} got {secondLevelReward} LW Coins");
                 }
             }
 
-            // Give trial bonus to new user
-            await _lwCoinService.AddLwCoinsAsync(userId, REFERRAL_REWARD, "trial_bonus",
-                "Welcome bonus for joining via referral");
+            await _lwCoinService.AddLwCoinsAsync(userId, REFERRAL_BONUS_FOR_NEW_USER, "referral_bonus",
+                $"Welcome bonus for joining via referral code from {referrer.Name ?? referrer.Email}");
 
-            _logger.LogInformation($"Referral set successfully: {referrer.Id} -> {userId}");
+            _logger.LogInformation($"🎁 New user {userId} received {REFERRAL_BONUS_FOR_NEW_USER} LW Coins for using referral code");
+            _logger.LogInformation($"✅ Referral set successfully: {referrer.Id} -> {userId}");
+
+            _logger.LogInformation($"📊 Referral rewards summary:");
+            _logger.LogInformation($"   • Referrer ({referrer.Email}): {REFERRAL_REWARD} coins");
+            _logger.LogInformation($"   • New user ({user.Email}): {REFERRAL_BONUS_FOR_NEW_USER} coins");
+            if (!string.IsNullOrEmpty(referrer.ReferredByUserId))
+            {
+                _logger.LogInformation($"   • Level 2 referrer: {REFERRAL_REWARD / 2} coins");
+            }
+
             return true;
         }
 
@@ -117,20 +119,17 @@ namespace FitnessTracker.API.Services
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) throw new ArgumentException("User not found");
 
-            // If user already has a referral code, return it
             if (!string.IsNullOrEmpty(user.ReferralCode))
             {
                 return user.ReferralCode;
             }
 
-            // Generate unique referral code
             string referralCode;
             do
             {
                 referralCode = GenerateUniqueCode();
             } while (await _referralRepository.CodeExistsAsync(referralCode));
 
-            // Save referral code to user
             user.ReferralCode = referralCode;
             await _userRepository.UpdateAsync(user);
 
@@ -149,7 +148,6 @@ namespace FitnessTracker.API.Services
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) throw new ArgumentException("User not found");
 
-            // Получаем рефералов 1-го уровня (прямые приглашения)
             var firstLevelReferrals = await _referralRepository.GetUserReferralsAsync(userId);
             var currentMonth = DateTime.UtcNow.Month;
             var currentYear = DateTime.UtcNow.Year;
@@ -157,7 +155,6 @@ namespace FitnessTracker.API.Services
             var monthlyReferrals = firstLevelReferrals.Count(r => r.CreatedAt.Month == currentMonth && r.CreatedAt.Year == currentYear);
             var monthlyEarnedCoins = monthlyReferrals * REFERRAL_REWARD;
 
-            // Получаем детали рефералов 1-го уровня
             var firstLevelUsers = new List<ReferredUserDto>();
             var secondLevelUsers = new List<ReferredUserDto>();
 
@@ -168,20 +165,18 @@ namespace FitnessTracker.API.Services
                 {
                     var isPremium = await IsUserPremiumAsync(referral.ReferredUserId);
 
-                    // Добавляем пользователя 1-го уровня
                     firstLevelUsers.Add(new ReferredUserDto
                     {
                         Email = MaskEmail(referredUser.Email),
                         Name = MaskName(referredUser.Name),
                         Level = referredUser.Level,
                         JoinedAt = referral.CreatedAt,
-                        RewardCoins = referral.RewardCoins,
+                        RewardCoins = REFERRAL_REWARD, 
                         IsPremium = isPremium,
                         Status = GetUserStatus(referredUser),
                         ReferralLevel = 1
                     });
 
-                    // Получаем рефералов 2-го уровня (рефералы моих рефералов)
                     var secondLevelReferrals = await _referralRepository.GetUserReferralsAsync(referral.ReferredUserId);
 
                     foreach (var secondReferral in secondLevelReferrals)
@@ -197,7 +192,7 @@ namespace FitnessTracker.API.Services
                                 Name = MaskName(secondLevelUser.Name),
                                 Level = secondLevelUser.Level,
                                 JoinedAt = secondReferral.CreatedAt,
-                                RewardCoins = secondReferral.RewardCoins / 2, // 2-й уровень получает 50% от награды
+                                RewardCoins = REFERRAL_REWARD / 2, 
                                 IsPremium = isSecondLevelPremium,
                                 Status = GetUserStatus(secondLevelUser),
                                 ReferralLevel = 2
@@ -207,18 +202,17 @@ namespace FitnessTracker.API.Services
                 }
             }
 
-            // Подсчитываем общее количество рефералов и заработанных монет
             var totalReferrals = firstLevelUsers.Count + secondLevelUsers.Count;
-            var totalEarnedCoins = firstLevelUsers.Sum(u => u.RewardCoins) + secondLevelUsers.Sum(u => u.RewardCoins);
 
-            // Вычисляем месячные показатели для 2-го уровня
+            var totalEarnedFromFirstLevel = firstLevelUsers.Count * REFERRAL_REWARD;
+            var totalEarnedFromSecondLevel = secondLevelUsers.Count * (REFERRAL_REWARD / 2);
+            var totalEarnedCoins = totalEarnedFromFirstLevel + totalEarnedFromSecondLevel;
+
             var monthlySecondLevel = secondLevelUsers.Count(u => u.JoinedAt.Month == currentMonth && u.JoinedAt.Year == currentYear);
             var monthlyEarnedFromSecondLevel = monthlySecondLevel * (REFERRAL_REWARD / 2);
 
-            // Рассчитываем ранг
             var rank = await CalculateUserRankAsync(userId);
 
-            // Получаем лидерборд
             var leaderboard = await GetLeaderboardAsync(userId);
 
             return new ReferralStatsDto
@@ -242,7 +236,7 @@ namespace FitnessTracker.API.Services
         public async Task<GenerateReferralResponse> GenerateReferralLinkAsync(string userId)
         {
             var referralCode = await GenerateReferralCodeAsync(userId);
-            var baseUrl = "https://your-app.com"; // Replace with actual app URL
+            var baseUrl = "https://your-app.com"; 
 
             return new GenerateReferralResponse
             {
@@ -282,7 +276,6 @@ namespace FitnessTracker.API.Services
             };
         }
 
-        // Helper methods
         private string GenerateUniqueCode()
         {
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -320,9 +313,8 @@ namespace FitnessTracker.API.Services
 
         private Task<bool> IsUserPremiumAsync(string userId)
         {
-            // This should check if user has active premium subscription
-            // Implementation depends on your subscription logic
-            return Task.FromResult(false); // Placeholder
+       
+            return Task.FromResult(false);
         }
 
         private string GetUserStatus(User user)
@@ -335,7 +327,6 @@ namespace FitnessTracker.API.Services
         {
             var allUsers = await GetAllUsersAsync();
 
-            // Подсчитываем общее количество рефералов (1-й + 2-й уровень) для каждого пользователя
             var userReferralCounts = new Dictionary<string, int>();
 
             foreach (var user in allUsers)
@@ -356,7 +347,6 @@ namespace FitnessTracker.API.Services
             var userPosition = sortedUsers.FindIndex(kvp => kvp.Key == userId) + 1;
             var currentReferrals = userReferralCounts.GetValueOrDefault(userId, 0);
 
-            // Define rank tiers (обновленные пороги)
             string title;
             string badge;
             int nextLevelRequirement;

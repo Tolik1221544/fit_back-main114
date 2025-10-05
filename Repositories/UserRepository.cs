@@ -23,6 +23,11 @@ namespace FitnessTracker.API.Repositories
             return await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
         }
 
+        public async Task<User?> GetByTelegramIdAsync(long telegramId)
+        {
+            return await _context.Users.FirstOrDefaultAsync(u => u.TelegramId == telegramId);
+        }
+
         public async Task<User?> GetByReferralCodeAsync(string referralCode)
         {
             return await _context.Users.FirstOrDefaultAsync(u => u.ReferralCode == referralCode);

@@ -34,10 +34,11 @@ namespace FitnessTracker.API.Data
                 entity.HasKey(e => e.Id);
                 entity.HasIndex(e => e.Email).IsUnique();
                 entity.HasIndex(e => e.ReferralCode).IsUnique();
+                entity.HasIndex(e => e.TelegramId).IsUnique();
+
                 entity.Property(e => e.Weight).HasPrecision(5, 2);
                 entity.Property(e => e.Height).HasPrecision(5, 2);
 
-                // ✅ НОВОЕ: Конфигурация для дробных монет
                 entity.Property(e => e.FractionalLwCoins).HasPrecision(10, 2);
             });
 
