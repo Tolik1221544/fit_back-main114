@@ -134,33 +134,29 @@ namespace FitnessTracker.API.Controllers
         }
 
         private int DetermineCoinsFromAmount(decimal amount)
-		{
-			return amount switch
-			{
-				0.99m => 50,
-				1.99m => 100,
-				2.99m => 100,
-				3.99m => 200,
-				7.99m => 500,
-				8.99m => 9999, // Premium unlimited
-				_ => 0
-			};
-		}
+        {
+            return amount switch
+            {
+                2m => 100,     
+                5m => 300,     
+                10m => 600,     
+                20m => 1200,   
+                _ => 0
+            };
+        }
 
-		private int DetermineDaysFromAmount(decimal amount)
-		{
-			return amount switch
-			{
-				0.99m => 7,
-				1.99m => 14,
-				2.99m => 30,
-				3.99m => 30,
-				7.99m => 30,
-				8.99m => 30,
-				_ => 0
-			};
-		}
-	}
+        private int DetermineDaysFromAmount(decimal amount)
+        {
+            return amount switch
+            {
+                2m => 30,       
+                5m => 90,      
+                10m => 180,     
+                20m => 365,    
+                _ => 0
+            };
+        }
+    }
 
 	public class TributeWebhookData
 	{
