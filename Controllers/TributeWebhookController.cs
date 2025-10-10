@@ -2,13 +2,11 @@
 using FitnessTracker.API.Services;
 using FitnessTracker.API.Repositories;
 using FitnessTracker.API.Data;
+using FitnessTracker.API.Models; // ✅ ДОБАВЛЕНО
 using Microsoft.EntityFrameworkCore;
 
 namespace FitnessTracker.API.Controllers
 {
-    /// <summary>
-    /// 💳 УЛУЧШЕННЫЙ Webhook контроллер Tribute с дедупликацией
-    /// </summary>
     [ApiController]
     [Route("api/tribute")]
     public class TributeWebhookController : ControllerBase
@@ -19,7 +17,6 @@ namespace FitnessTracker.API.Controllers
         private readonly ApplicationDbContext _context;
         private readonly ILogger<TributeWebhookController> _logger;
 
-        // Кэш обработанных платежей (в продакшене использовать Redis)
         private static readonly HashSet<string> _processedPayments = new();
         private static readonly object _lock = new();
 
@@ -37,19 +34,14 @@ namespace FitnessTracker.API.Controllers
             _logger = logger;
         }
 
-        /// <summary>
-        /// 💳 Webhook от Tribute (улучшенный с дедупликацией)
-        /// </summary>
         [HttpPost("webhook")]
         public async Task<IActionResult> HandleWebhook()
         {
             try
             {
-                // 1. Читаем тело запроса
                 using var reader = new StreamReader(Request.Body);
                 var body = await reader.ReadToEndAsync();
 
-                // 2. Проверяем подпись
                 var signature = Request.Headers["X-Tribute-Signature"].FirstOrDefault();
 
                 if (string.IsNullOrEmpty(signature))
@@ -65,7 +57,6 @@ namespace FitnessTracker.API.Controllers
                     return Unauthorized(new { error = "Invalid signature" });
                 }
 
-                // 3. Парсим данные
                 var data = System.Text.Json.JsonSerializer.Deserialize<TributeWebhookData>(body);
                 if (data == null || string.IsNullOrEmpty(data.OrderId))
                 {
@@ -75,25 +66,22 @@ namespace FitnessTracker.API.Controllers
 
                 _logger.LogInformation($"💳 Webhook received: {data.Status} for order {data.OrderId}");
 
-                // 4. ДЕДУПЛИКАЦИЯ - проверяем не обработан ли уже
                 lock (_lock)
                 {
                     if (_processedPayments.Contains(data.OrderId))
                     {
-                        _logger.LogInformation($"⚠️ Order {data.OrderId} already processed (duplicate webhook)");
+                        _logger.LogInformation($"⚠️ Order {data.OrderId} already processed");
                         return Ok(new { status = "already_processed" });
                     }
                     _processedPayments.Add(data.OrderId);
                 }
 
-                // 5. Обрабатываем только успешные платежи
                 if (data.Status == "success" || data.Status == "completed")
                 {
                     var success = await ProcessSuccessfulPaymentAsync(data);
 
                     if (!success)
                     {
-                        // Убираем из кэша если не удалось обработать
                         lock (_lock)
                         {
                             _processedPayments.Remove(data.OrderId);
@@ -112,14 +100,10 @@ namespace FitnessTracker.API.Controllers
             }
         }
 
-        /// <summary>
-        /// 💰 Обработать успешный платёж
-        /// </summary>
         private async Task<bool> ProcessSuccessfulPaymentAsync(TributeWebhookData data)
         {
             try
             {
-                // 1. Проверяем наличие telegram_id
                 var telegramIdStr = data.Metadata?.TelegramId;
                 if (string.IsNullOrEmpty(telegramIdStr))
                 {
@@ -133,7 +117,6 @@ namespace FitnessTracker.API.Controllers
                     return false;
                 }
 
-                // 2. Находим пользователя
                 var user = await _userRepository.GetByTelegramIdAsync(telegramId);
                 if (user == null)
                 {
@@ -141,7 +124,6 @@ namespace FitnessTracker.API.Controllers
                     return false;
                 }
 
-                // 3. Определяем пакет
                 var (coins, days) = DeterminePackageFromAmount(data.Amount);
                 if (coins == 0)
                 {
@@ -149,7 +131,6 @@ namespace FitnessTracker.API.Controllers
                     return false;
                 }
 
-                // 4. Начисляем монеты
                 var success = await _lwCoinService.PurchaseSubscriptionCoinsAsync(
                     user.Id,
                     coins,
@@ -159,9 +140,7 @@ namespace FitnessTracker.API.Controllers
 
                 if (success)
                 {
-                    _logger.LogInformation($"✅ Processed webhook: {coins} coins for user {user.Email} (order: {data.OrderId})");
-
-                    // 5. Обновляем pending payment если есть
+                    _logger.LogInformation($"✅ Processed webhook: {coins} coins for user {user.Email}");
                     await UpdatePendingPaymentAsync(data.OrderId);
                 }
 
@@ -174,14 +153,11 @@ namespace FitnessTracker.API.Controllers
             }
         }
 
-        /// <summary>
-        /// 📝 Обновить статус pending платежа
-        /// </summary>
         private async Task UpdatePendingPaymentAsync(string orderId)
         {
             try
             {
-                var payment = await _context.Set<PendingPayment>()
+                var payment = await _context.PendingPayments
                     .FirstOrDefaultAsync(p => p.PaymentId == orderId);
 
                 if (payment != null && payment.Status == "pending")

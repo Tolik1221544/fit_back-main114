@@ -256,7 +256,13 @@ namespace FitnessTracker.API.Data
                 entity.HasKey(e => e.Id);
                 entity.HasIndex(e => e.PaymentId).IsUnique();
                 entity.HasIndex(e => new { e.Status, e.CreatedAt });
+                entity.HasIndex(e => e.TelegramId);
                 entity.Property(e => e.Amount).HasPrecision(10, 2);
+
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             modelBuilder.Entity<Mission>().HasData(
