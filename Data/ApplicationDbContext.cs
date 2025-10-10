@@ -24,6 +24,7 @@ namespace FitnessTracker.API.Data
         public DbSet<Subscription> Subscriptions { get; set; }
         public DbSet<Goal> Goals { get; set; }
         public DbSet<DailyGoalProgress> DailyGoalProgress { get; set; }
+        public DbSet<PendingPayment> PendingPayments { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -248,6 +249,14 @@ namespace FitnessTracker.API.Data
 
                 entity.HasIndex(e => new { e.UserId, e.GoalId, e.Date }).IsUnique();
                 entity.HasIndex(e => e.Date);
+            });
+
+            modelBuilder.Entity<PendingPayment>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.PaymentId).IsUnique();
+                entity.HasIndex(e => new { e.Status, e.CreatedAt });
+                entity.Property(e => e.Amount).HasPrecision(10, 2);
             });
 
             modelBuilder.Entity<Mission>().HasData(

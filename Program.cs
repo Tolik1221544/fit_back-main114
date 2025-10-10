@@ -276,6 +276,15 @@ builder.WebHost.ConfigureKestrel(options =>
     options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(60);
 });
 
+builder.Services.AddHttpClient<ITributeApiService, TributeApiService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.Add("User-Agent", "FitnessTracker-API/3.0.0");
+});
+builder.Services.AddScoped<ITributeApiService, TributeApiService>();
+
+builder.Services.AddHostedService<PaymentCheckHostedService>();
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
