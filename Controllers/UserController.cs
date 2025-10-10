@@ -198,6 +198,51 @@ namespace FitnessTracker.API.Controllers
             }
         }
 
+        [HttpPost("link-telegram")]
+        public async Task<IActionResult> LinkTelegram([FromBody] LinkTelegramRequest request)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized();
+
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user == null)
+                    return NotFound(new { error = "User not found" });
+
+                var existingUser = await _userRepository.GetByTelegramIdAsync(request.TelegramId);
+                if (existingUser != null && existingUser.Id != userId)
+                {
+                    _logger.LogWarning($"⚠️ Telegram ID {request.TelegramId} already linked to another user");
+                    return BadRequest(new { error = "This Telegram account is already linked to another user" });
+                }
+
+                user.TelegramId = request.TelegramId;
+                await _userRepository.UpdateAsync(user);
+
+                _logger.LogInformation($"✅ Telegram ID {request.TelegramId} linked to user {user.Email}");
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Telegram account linked successfully",
+                    telegramId = request.TelegramId
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"❌ Error linking Telegram: {ex.Message}");
+                return StatusCode(500, new { error = "Internal server error" });
+            }
+        }
+
+        public class LinkTelegramRequest
+        {
+            public long TelegramId { get; set; }
+            public string Username { get; set; } = "";
+        }
+
         public class SetLocaleRequest
         {
             public string Locale { get; set; } = string.Empty;
