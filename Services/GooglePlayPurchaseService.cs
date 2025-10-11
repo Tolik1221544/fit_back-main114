@@ -5,6 +5,8 @@ using Google.Apis.Services;
 using FitnessTracker.API.DTOs;
 using FitnessTracker.API.Models;
 using FitnessTracker.API.Repositories;
+using FitnessTracker.API.Data; 
+using Microsoft.EntityFrameworkCore; 
 
 namespace FitnessTracker.API.Services
 {

@@ -25,6 +25,7 @@ namespace FitnessTracker.API.Data
         public DbSet<Goal> Goals { get; set; }
         public DbSet<DailyGoalProgress> DailyGoalProgress { get; set; }
         public DbSet<PendingPayment> PendingPayments { get; set; }
+        public DbSet<PurchaseVerification> PurchaseVerifications { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -258,6 +259,20 @@ namespace FitnessTracker.API.Data
                 entity.HasIndex(e => new { e.Status, e.CreatedAt });
                 entity.HasIndex(e => e.TelegramId);
                 entity.Property(e => e.Amount).HasPrecision(10, 2);
+
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<PurchaseVerification>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => new { e.UserId, e.PurchaseToken });
+                entity.HasIndex(e => new { e.UserId, e.TransactionId });
+                entity.HasIndex(e => e.VerificationStatus);
+                entity.Property(e => e.Price).HasPrecision(10, 2);
 
                 entity.HasOne(e => e.User)
                     .WithMany()

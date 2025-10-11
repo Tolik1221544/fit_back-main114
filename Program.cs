@@ -793,3 +793,4 @@ catch (Exception ex)
         }
     }
 }
+public partial class Program { }
