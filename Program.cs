@@ -165,6 +165,18 @@ builder.Services.AddScoped<IAchievementRepository, AchievementRepository>();
 builder.Services.AddScoped<IExperienceRepository, ExperienceRepository>();
 builder.Services.AddScoped<IStepsRepository, StepsRepository>();
 builder.Services.AddScoped<IGoalRepository, GoalRepository>();
+builder.Services.AddScoped<IGooglePlayPurchaseService, GooglePlayPurchaseService>();
+builder.Services.AddScoped<IApplePurchaseService, ApplePurchaseService>();
+
+builder.Services.AddHttpClient<ApplePurchaseService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.Add("User-Agent", "FitnessTracker-API/3.0.0");
+});
+
+Console.WriteLine("✅ Purchase Verification Services registered");
+Console.WriteLine("   - Google Play verification");
+Console.WriteLine("   - Apple App Store verification");
 
 const string JWT_SECRET_KEY = "fitness-tracker-super-secret-key-that-is-definitely-long-enough-for-security-2024";
 var key = Encoding.UTF8.GetBytes(JWT_SECRET_KEY);
