@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using FitnessTracker.API.Data;
-using Microsoft.Extensions.Hosting;
 
 namespace FitnessTracker.API.Tests.IntegrationTests
 {
@@ -11,12 +10,9 @@ namespace FitnessTracker.API.Tests.IntegrationTests
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
-            // Устанавливаем корневую директорию явно
-            builder.UseContentRoot(Directory.GetCurrentDirectory());
-
             builder.ConfigureServices(services =>
             {
-                // Удаляем реальную БД
+                // Удаляем существующий DbContext
                 var descriptor = services.SingleOrDefault(
                     d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>));
 
@@ -25,29 +21,25 @@ namespace FitnessTracker.API.Tests.IntegrationTests
                     services.Remove(descriptor);
                 }
 
-                // Добавляем InMemory БД для тестов
+                // Добавляем InMemory database для тестов
                 services.AddDbContext<ApplicationDbContext>(options =>
                 {
-                    options.UseInMemoryDatabase("TestDatabase_" + Guid.NewGuid());
+                    options.UseInMemoryDatabase("TestDatabase");
                 });
 
-                // Создаём схему БД
+                // Создаем scope и инициализируем БД
                 var sp = services.BuildServiceProvider();
-                using var scope = sp.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-                db.Database.EnsureCreated();
+                using (var scope = sp.CreateScope())
+                {
+                    var scopedServices = scope.ServiceProvider;
+                    var db = scopedServices.GetRequiredService<ApplicationDbContext>();
+
+                    db.Database.EnsureCreated();
+                }
             });
 
-            builder.UseEnvironment("Testing");
-        }
-
-        protected override IHost CreateHost(IHostBuilder builder)
-        {
-            // Добавляем ContentRoot для тестов
-            var projectDir = Directory.GetCurrentDirectory();
-            builder.UseContentRoot(projectDir);
-
-            return base.CreateHost(builder);
+            // КРИТИЧЕСКИ ВАЖНО: устанавливаем корневую директорию контента
+            builder.UseContentRoot(Directory.GetCurrentDirectory());
         }
     }
 }
