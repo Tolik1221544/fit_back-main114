@@ -1,4 +1,4 @@
-using Xunit;
+ï»¿using Xunit;
 using Moq;
 using FluentAssertions;
 using FitnessTracker.API.Services;
@@ -17,7 +17,7 @@ namespace FitnessTracker.API.Tests.UnitTests
         private readonly Mock<IEmailService> _emailServiceMock;
         private readonly Mock<ILwCoinService> _lwCoinServiceMock;
         private readonly Mock<IConfiguration> _configurationMock;
-        private readonly Mock<IMapper> _mapperMock;
+        private readonly IMapper _mapper; // ðŸ”¥ Ð ÐµÐ°Ð»ÑŒÐ½Ñ‹Ð¹ mapper
         private readonly Mock<ILogger<AuthService>> _loggerMock;
         private readonly Mock<IActivityService> _activityServiceMock;
         private readonly Mock<IFoodIntakeService> _foodIntakeServiceMock;
@@ -29,22 +29,29 @@ namespace FitnessTracker.API.Tests.UnitTests
             _emailServiceMock = new Mock<IEmailService>();
             _lwCoinServiceMock = new Mock<ILwCoinService>();
             _configurationMock = new Mock<IConfiguration>();
-            _mapperMock = new Mock<IMapper>();
             _loggerMock = new Mock<ILogger<AuthService>>();
             _activityServiceMock = new Mock<IActivityService>();
             _foodIntakeServiceMock = new Mock<IFoodIntakeService>();
+
+            // ðŸ”¥ Ð¡Ð¾Ð·Ð´Ð°Ñ‘Ð¼ Ñ€ÐµÐ°Ð»ÑŒÐ½Ñ‹Ð¹ AutoMapper Ñ ÐºÐ¾Ð½Ñ„Ð¸Ð³ÑƒÑ€Ð°Ñ†Ð¸ÐµÐ¹
+            var mapperConfig = new MapperConfiguration(cfg =>
+            {
+                cfg.CreateMap<User, UserDto>();
+                // Ð”Ð¾Ð±Ð°Ð²ÑŒÑ‚Ðµ Ð´Ñ€ÑƒÐ³Ð¸Ðµ Ð¼Ð°Ð¿Ð¿Ð¸Ð½Ð³Ð¸ ÐµÑÐ»Ð¸ Ð½ÑƒÐ¶Ð½Ð¾
+            });
+            _mapper = mapperConfig.CreateMapper();
 
             _authService = new AuthService(
                 _userRepositoryMock.Object,
                 _emailServiceMock.Object,
                 _lwCoinServiceMock.Object,
                 _configurationMock.Object,
-                _mapperMock.Object,
+                _mapper, // Ð˜ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐµÐ¼ Ñ€ÐµÐ°Ð»ÑŒÐ½Ñ‹Ð¹ mapper
                 _loggerMock.Object,
                 _activityServiceMock.Object,
                 _foodIntakeServiceMock.Object
             );
-        } 
+        }
 
         [Fact]
         public async Task SendVerificationCodeAsync_WithValidEmail_ReturnsTrue()
@@ -63,46 +70,51 @@ namespace FitnessTracker.API.Tests.UnitTests
         }
 
         [Fact]
-        public async Task ConfirmEmailAsync_WithNewUser_CreatesUserAndAddsBonus()
+        public async Task ConfirmEmailAsync_WithTestAccount_CreatesUserAndAddsBonus()
         {
-            var email = "newuser@example.com";
+            // Arrange
+            var email = "test@lightweightfit.com";
             var code = "123456";
+            var userId = Guid.NewGuid().ToString();
 
-            // ÂÀÆÍÎ: ñíà÷àëà îòïðàâëÿåì êîä
-            _emailServiceMock.Setup(x => x.SendVerificationEmailAsync(email, It.IsAny<string>()))
-                .ReturnsAsync(true);
-
-            // Èñïîëüçóåì òåñòîâûé email, äëÿ êîòîðîãî åñòü ôèêñèðîâàííûé êîä
-            var testEmail = "test@lightweightfit.com";
-            var testCode = "123456";
-
-            _userRepositoryMock.Setup(x => x.GetByEmailAsync(testEmail))
-                .ReturnsAsync((User?)null);
-
-            _userRepositoryMock.Setup(x => x.GetByReferralCodeAsync(It.IsAny<string>()))
-                .ReturnsAsync((User?)null);
-
-            var newUser = new User
+            var user = new User
             {
-                Id = Guid.NewGuid().ToString(),
-                Email = testEmail,
+                Id = userId,
+                Email = email,
                 Name = "Test User",
                 LwCoins = 50,
                 FractionalLwCoins = 50.0,
                 Level = 1,
                 Experience = 0,
-                ReferralCode = "TESTCODE",
-                IsEmailConfirmed = true
+                ReferralCode = "TESTCODE"  
             };
 
+            // ðŸ”¥ Ð˜Ð¡ÐŸÐ ÐÐ’Ð›Ð•ÐÐ˜Ð•: Ð£Ð±Ð¸Ñ€Ð°ÐµÐ¼ ReferralCode Ð¸Ð· UserDto
+            var userDto = new UserDto
+            {
+                Id = user.Id,
+                Email = user.Email,
+                Name = user.Name,
+                LwCoins = user.LwCoins,
+                Level = user.Level,
+                Experience = user.Experience,
+                // ReferralCode = user.ReferralCode,  // âŒ Ð£Ð”ÐÐ›Ð˜Ð¢Ð¬ Ð­Ð¢Ð£ Ð¡Ð¢Ð ÐžÐšÐ£
+                MaxExperience = 100,
+                ExperienceToNextLevel = 100,
+                ExperienceProgress = 0
+            };
+
+            _userRepositoryMock.Setup(x => x.GetByEmailAsync(email))
+                .ReturnsAsync((User?)null);
+
             _userRepositoryMock.Setup(x => x.CreateAsync(It.IsAny<User>()))
-                .ReturnsAsync(newUser);
+                .ReturnsAsync(user);
 
-            _userRepositoryMock.Setup(x => x.GetByIdAsync(It.IsAny<string>()))
-                .ReturnsAsync(newUser);
+            _userRepositoryMock.Setup(x => x.GetByIdAsync(userId))
+                .ReturnsAsync(user);
 
-            _userRepositoryMock.Setup(x => x.UpdateAsync(It.IsAny<User>()))
-                .ReturnsAsync(newUser);
+            _userRepositoryMock.Setup(x => x.GetByReferralCodeAsync(It.IsAny<string>()))
+                .ReturnsAsync((User?)null);
 
             _lwCoinServiceMock.Setup(x => x.AddRegistrationBonusAsync(It.IsAny<string>()))
                 .ReturnsAsync(true);
@@ -110,27 +122,22 @@ namespace FitnessTracker.API.Tests.UnitTests
             _lwCoinServiceMock.Setup(x => x.GetUserLwCoinTransactionsAsync(It.IsAny<string>()))
                 .ReturnsAsync(new List<LwCoinTransactionDto>());
 
-            _mapperMock.Setup(x => x.Map<UserDto>(It.IsAny<User>()))
-                .Returns(new UserDto
-                {
-                    Email = testEmail,
-                    LwCoins = 50,
-                    Id = newUser.Id,
-                    Name = "Test User",
-                    Level = 1,
-                    Experience = 0
-                });
+            _emailServiceMock.Setup(x => x.SendVerificationEmailAsync(email, It.IsAny<string>()))
+                .ReturnsAsync(true);
 
-            // Act - èñïîëüçóåì òåñòîâûé email ñ ôèêñèðîâàííûì êîäîì
-            var result = await _authService.ConfirmEmailAsync(testEmail, testCode);
+            // Act
+            await _authService.SendVerificationCodeAsync(email);
+            var result = await _authService.ConfirmEmailAsync(email, code);
 
             // Assert
             result.Should().NotBeNull();
-            result.User.Should().NotBeNull();
             result.AccessToken.Should().NotBeNullOrEmpty();
-            result.User.Email.Should().Be(testEmail);
+            result.User.Should().NotBeNull();
+            result.User.Email.Should().Be(email);
+            result.User.LwCoins.Should().Be(50);
 
             _userRepositoryMock.Verify(x => x.CreateAsync(It.IsAny<User>()), Times.Once);
+            _lwCoinServiceMock.Verify(x => x.AddRegistrationBonusAsync(It.IsAny<string>()), Times.Once);
         }
 
         [Fact]

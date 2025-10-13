@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using FitnessTracker.API.Data;
 
-namespace FitnessTracker.API.Tests.IntegrationTests
+namespace FitnessTracker.API.Tests
 {
     public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     {
@@ -12,7 +12,7 @@ namespace FitnessTracker.API.Tests.IntegrationTests
         {
             builder.ConfigureServices(services =>
             {
-                // Удаляем существующий DbContext
+                // Удаляем реальную БД
                 var descriptor = services.SingleOrDefault(
                     d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>));
 
@@ -21,25 +21,18 @@ namespace FitnessTracker.API.Tests.IntegrationTests
                     services.Remove(descriptor);
                 }
 
-                // Добавляем InMemory database для тестов
+                // Добавляем InMemory БД для тестов
                 services.AddDbContext<ApplicationDbContext>(options =>
                 {
                     options.UseInMemoryDatabase("TestDatabase");
                 });
 
-                // Создаем scope и инициализируем БД
+                // Создаём БД при запуске тестов
                 var sp = services.BuildServiceProvider();
-                using (var scope = sp.CreateScope())
-                {
-                    var scopedServices = scope.ServiceProvider;
-                    var db = scopedServices.GetRequiredService<ApplicationDbContext>();
-
-                    db.Database.EnsureCreated();
-                }
+                using var scope = sp.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                db.Database.EnsureCreated();
             });
-
-            // КРИТИЧЕСКИ ВАЖНО: устанавливаем корневую директорию контента
-            builder.UseContentRoot(Directory.GetCurrentDirectory());
         }
     }
 }

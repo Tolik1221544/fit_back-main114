@@ -20,7 +20,7 @@ namespace FitnessTracker.API.Services
         private const decimal TEXT_WORKOUT_COST = 0.0m;
         private const decimal BODY_ANALYSIS_COST = 0.0m;
 
-        private const int REGISTRATION_BONUS = 50;
+        private const int REGISTRATION_BONUS = 10;
         private const int REFERRAL_BONUS = 150;
         private const decimal PREMIUM_PRICE = 8.99m;
 
@@ -90,7 +90,7 @@ namespace FitnessTracker.API.Services
                     Amount = REGISTRATION_BONUS,
                     FractionalAmount = REGISTRATION_BONUS,
                     Type = "registration",
-                    Description = "Welcome bonus - 50 coins",
+                    Description = "Welcome bonus - 10 coins",
                     CoinSource = "registration",
                     FeatureUsed = "",
                     CreatedAt = DateTime.UtcNow
