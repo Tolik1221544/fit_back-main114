@@ -611,6 +611,71 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+    try
+    {
+        Console.WriteLine("🔄 Checking PurchaseVerifications table...");
+
+        var tableExists = await context.Database.ExecuteSqlRawAsync(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='PurchaseVerifications';"
+        ) > 0;
+
+        if (!tableExists)
+        {
+            Console.WriteLine("📦 Creating PurchaseVerifications table...");
+
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS PurchaseVerifications (
+                    Id TEXT PRIMARY KEY,
+                    UserId TEXT NOT NULL,
+                    Platform TEXT NOT NULL,
+                    PurchaseToken TEXT NULL,
+                    TransactionId TEXT NULL,
+                    ProductId TEXT NOT NULL,
+                    PackageType TEXT NOT NULL,
+                    VerificationStatus TEXT NOT NULL DEFAULT 'pending',
+                    VerifiedAt TEXT NULL,
+                    ExpiresAt TEXT NULL,
+                    Price REAL NULL,
+                    CoinsAmount INTEGER DEFAULT 0,
+                    DurationDays INTEGER DEFAULT 0,
+                    IsRestored INTEGER DEFAULT 0,
+                    RestoredAt TEXT NULL,
+                    VerificationError TEXT NULL,
+                    CreatedAt TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL,
+                    FOREIGN KEY (UserId) REFERENCES Users(Id) ON DELETE CASCADE
+                )
+            ");
+
+            await context.Database.ExecuteSqlRawAsync(
+                "CREATE INDEX IF NOT EXISTS IX_PurchaseVerifications_UserId_PurchaseToken ON PurchaseVerifications(UserId, PurchaseToken);"
+            );
+
+            await context.Database.ExecuteSqlRawAsync(
+                "CREATE INDEX IF NOT EXISTS IX_PurchaseVerifications_UserId_TransactionId ON PurchaseVerifications(UserId, TransactionId);"
+            );
+
+            await context.Database.ExecuteSqlRawAsync(
+                "CREATE INDEX IF NOT EXISTS IX_PurchaseVerifications_VerificationStatus ON PurchaseVerifications(VerificationStatus);"
+            );
+
+            Console.WriteLine("✅ PurchaseVerifications table created successfully!");
+        }
+        else
+        {
+            Console.WriteLine("✅ PurchaseVerifications table already exists");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ Error creating PurchaseVerifications table: {ex.Message}");
+    }
+}
+
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
