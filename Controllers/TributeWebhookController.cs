@@ -41,7 +41,7 @@ namespace FitnessTracker.API.Controllers
             try
             {
                 using var reader = new StreamReader(Request.Body);
-                var body = await reader.ReadAsStringAsync();
+                var body = await reader.ReadToEndAsync();
 
                 _logger.LogInformation($"📥 Tribute webhook received");
                 _logger.LogInformation($"Body: {body}");
